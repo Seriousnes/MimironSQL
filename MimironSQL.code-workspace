@@ -1,0 +1,17 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"path": "../DBCD"
+		},
+		{
+			"path": "../CASC.Net"
+		},
+		{
+			"path": "../WoWDBDefs"
+		}
+	],
+	"settings": {}
+}

@@ -23,6 +23,37 @@ public sealed class Wdc5File
 
     public int TotalSectionRecordCount => ParsedSections.Sum(s => s.NumRecords);
 
+    public IEnumerable<Wdc5Row> EnumerateRows()
+    {
+        var globalIndex = 0;
+        foreach (var section in ParsedSections)
+        {
+            for (var i = 0; i < section.NumRecords; i++)
+            {
+                var reader = new BitReader(section.RecordsData)
+                {
+                    OffsetBytes = 0,
+                    PositionBits = 0,
+                };
+
+                if (!Header.Flags.HasFlag(Db2Flags.Sparse))
+                {
+                    reader.OffsetBytes = i * Header.RecordSize;
+                }
+                else
+                {
+                    if (section.SparseRecordStartBits.Length == 0)
+                        throw new InvalidDataException("Sparse WDC5 section missing SparseRecordStartBits.");
+                    reader.PositionBits = section.SparseRecordStartBits[i];
+                }
+
+                var id = section.GetRowIdOrDefault(i, defaultId: -1);
+                yield return new Wdc5Row(this, section, reader, globalIndex, i, id);
+                globalIndex++;
+            }
+        }
+    }
+
     public static Wdc5File Open(string path)
     {
         using var stream = File.OpenRead(path);
@@ -183,7 +214,7 @@ public sealed class Wdc5File
                 // index data
                 var indexData = ReadInt32Array(reader, section.IndexDataSize / 4);
                 if (indexData.Length > 0 && indexData.All(x => x == 0))
-                    indexData = Enumerable.Range(minIndex + previousRecordCount, section.NumRecords).ToArray();
+                    indexData = [.. Enumerable.Range(minIndex + previousRecordCount, section.NumRecords)];
 
                 // copy table
                 var copyData = new Dictionary<int, int>();

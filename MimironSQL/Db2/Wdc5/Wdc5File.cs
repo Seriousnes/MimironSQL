@@ -23,35 +23,120 @@ public sealed class Wdc5File
 
     public int TotalSectionRecordCount => ParsedSections.Sum(s => s.NumRecords);
 
+    private Dictionary<int, (int SectionIndex, int RowIndexInSection)>? _idIndex;
+    private Dictionary<int, int>? _copyMap;
+
     public IEnumerable<Wdc5Row> EnumerateRows()
     {
         var globalIndex = 0;
-        foreach (var section in ParsedSections)
+        for (var sectionIndex = 0; sectionIndex < ParsedSections.Count; sectionIndex++)
         {
-            for (var i = 0; i < section.NumRecords; i++)
+            var section = ParsedSections[sectionIndex];
+            for (var rowIndex = 0; rowIndex < section.NumRecords; rowIndex++)
             {
-                var reader = new BitReader(section.RecordsData)
-                {
-                    OffsetBytes = 0,
-                    PositionBits = 0,
-                };
-
-                if (!Header.Flags.HasFlag(Db2Flags.Sparse))
-                {
-                    reader.OffsetBytes = i * Header.RecordSize;
-                }
-                else
-                {
-                    if (section.SparseRecordStartBits.Length == 0)
-                        throw new InvalidDataException("Sparse WDC5 section missing SparseRecordStartBits.");
-                    reader.PositionBits = section.SparseRecordStartBits[i];
-                }
-
-                var id = section.GetRowIdOrDefault(i, defaultId: -1);
-                yield return new Wdc5Row(this, section, reader, globalIndex, i, id);
+                var reader = CreateReaderAtRowStart(section, rowIndex);
+                var id = GetVirtualId(section, rowIndex, reader);
+                yield return new Wdc5Row(this, section, reader, globalIndex, rowIndex, id);
                 globalIndex++;
             }
         }
+    }
+
+    public bool TryGetRowById(int id, out Wdc5Row row)
+    {
+        EnsureIndexesBuilt();
+
+        if (_copyMap!.TryGetValue(id, out var sourceId))
+            id = sourceId;
+
+        if (!_idIndex!.TryGetValue(id, out var location))
+        {
+            row = default;
+            return false;
+        }
+
+        var section = ParsedSections[location.SectionIndex];
+        var reader = CreateReaderAtRowStart(section, location.RowIndexInSection);
+        row = new Wdc5Row(this, section, reader, globalRowIndex: -1, rowIndexInSection: location.RowIndexInSection, id: id);
+        return true;
+    }
+
+    private void EnsureIndexesBuilt()
+    {
+        if (_idIndex is not null)
+            return;
+
+        var idIndex = new Dictionary<int, (int SectionIndex, int RowIndexInSection)>(capacity: Header.RecordsCount);
+        var copyMap = new Dictionary<int, int>();
+
+        for (var sectionIndex = 0; sectionIndex < ParsedSections.Count; sectionIndex++)
+        {
+            var section = ParsedSections[sectionIndex];
+            foreach (var kvp in section.CopyData)
+                copyMap[kvp.Key] = kvp.Value;
+
+            for (var rowIndex = 0; rowIndex < section.NumRecords; rowIndex++)
+            {
+                var reader = CreateReaderAtRowStart(section, rowIndex);
+                var id = GetVirtualId(section, rowIndex, reader);
+                if (id != -1)
+                    idIndex.TryAdd(id, (sectionIndex, rowIndex));
+            }
+        }
+
+        _idIndex = idIndex;
+        _copyMap = copyMap;
+    }
+
+    private BitReader CreateReaderAtRowStart(Wdc5Section section, int rowIndex)
+    {
+        var reader = new BitReader(section.RecordsData)
+        {
+            OffsetBytes = 0,
+            PositionBits = 0,
+        };
+
+        if (!Header.Flags.HasFlag(Db2Flags.Sparse))
+        {
+            reader.OffsetBytes = rowIndex * Header.RecordSize;
+            return reader;
+        }
+
+        if (section.SparseRecordStartBits.Length == 0)
+            throw new InvalidDataException("Sparse WDC5 section missing SparseRecordStartBits.");
+
+        reader.PositionBits = section.SparseRecordStartBits[rowIndex];
+        return reader;
+    }
+
+    private int GetVirtualId(Wdc5Section section, int rowIndex, BitReader readerAtStart)
+    {
+        // A) Prefer IndexData when present.
+        if (section.IndexData.Length != 0)
+            return section.IndexData[rowIndex];
+
+        // Fallback: decode the physical ID field from record bits.
+        if (Header.IdFieldIndex >= Header.FieldsCount)
+            return -1;
+
+        var tmp = readerAtStart;
+        for (var i = 0; i <= Header.IdFieldIndex; i++)
+        {
+            ref readonly var fieldMeta = ref FieldMeta[i];
+            ref readonly var columnMeta = ref ColumnMeta[i];
+            var palletData = PalletData[i];
+            var commonData = CommonData[i];
+
+            if (columnMeta.CompressionType == CompressionType.Common)
+                throw new NotSupportedException("Decoding ID from record bits is not supported for Common-compressed ID fields.");
+
+            if (i == Header.IdFieldIndex)
+                return Wdc5FieldDecoder.ReadScalar<int>(id: 0, ref tmp, fieldMeta, columnMeta, palletData, commonData);
+
+            _ = Wdc5FieldDecoder.ReadScalar<uint>(id: 0, ref tmp, fieldMeta, columnMeta, palletData, commonData);
+        }
+
+        return -1;
     }
 
     public static Wdc5File Open(string path)

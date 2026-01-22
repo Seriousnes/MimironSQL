@@ -15,4 +15,17 @@ public sealed class Wdc5RowDecodeSmokeTests
 
         Should.NotThrow(() => firstRow.GetScalar<uint>(0));
     }
+
+    [Fact]
+    public void Virtual_id_is_available_and_allows_random_access_lookup()
+    {
+        var file = Wdc5File.Open(TestDataPaths.MapDb2);
+        var firstRow = file.EnumerateRows().First();
+
+        firstRow.Id.ShouldNotBe(-1);
+        file.TryGetRowById(firstRow.Id, out var byId).ShouldBeTrue();
+        byId.Id.ShouldBe(firstRow.Id);
+
+        byId.GetScalar<uint>(0).ShouldBe(firstRow.GetScalar<uint>(0));
+    }
 }

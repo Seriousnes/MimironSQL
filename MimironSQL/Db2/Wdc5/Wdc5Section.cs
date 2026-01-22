@@ -1,7 +1,6 @@
 using MimironSQL.Db2;
 using System;
 using System.Collections.Generic;
-using System.Linq;
 
 namespace MimironSQL.Db2.Wdc5;
 
@@ -19,14 +18,6 @@ public sealed class Wdc5Section
     public bool IsEncrypted => Header.TactKeyLookup != 0;
     public int NumRecords => Header.NumRecords;
     public bool HasIndexData => Header.IndexDataSize > 0;
-
-    public int GetRowIdOrDefault(int rowIndex, int defaultId)
-    {
-        if (IndexData.Length == 0)
-            return defaultId;
-
-        return IndexData[rowIndex];
-    }
 
     public static int[] BuildSparseRecordStartBits(SparseEntry[] entries)
     {

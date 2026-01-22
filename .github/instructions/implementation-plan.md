@@ -130,3 +130,4 @@ The engine must map internal WDC5 types to SQL-compatible types:
 - Implemented a BitReader for non-byte-aligned reads (ported behavior from DBCD) with unit tests.
 - Added integration tests using real fixtures in `MimironSQL.Tests/TestData` (map.db2, spell.db2) to validate header/section parsing invariants.
 - Added per-section parsing (records/index/copy/offset-map) and initial row iteration + scalar decode smoke test.
+- Implemented virtual `ID` semantics (prefer `IndexData`, else decode `IdFieldIndex`) and added `TryGetRowById` for random-access lookups (with copy-table indirection).

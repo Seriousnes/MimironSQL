@@ -123,3 +123,9 @@ The engine must map internal WDC5 types to SQL-compatible types:
 
 ## Progress Log
 (keep this updated as phases and steps are updated)
+
+### 2026-01-22
+- Phase 1 started on branch `feature/phase-1-virtual-table`.
+- Added DB2 format detection (WDC3/WDC4/WDC5) and initial WDC5 parsing scaffolding (header, section headers, field meta, column meta, pallet/common blocks).
+- Implemented a BitReader for non-byte-aligned reads (ported behavior from DBCD) with unit tests.
+- Added integration tests using real fixtures in `MimironSQL.Tests/TestData` (map.db2, spell.db2) to validate header/section parsing invariants.

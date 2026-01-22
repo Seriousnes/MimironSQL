@@ -21,9 +21,11 @@ public sealed class Wdc5File
     public required Value32[][] PalletData { get; init; }
     public required Dictionary<int, Value32>[] CommonData { get; init; }
 
+    internal byte[] DenseStringTableBytes { get; init; } = Array.Empty<byte>();
+
     public int TotalSectionRecordCount => ParsedSections.Sum(s => s.NumRecords);
 
-    private Dictionary<int, (int SectionIndex, int RowIndexInSection)>? _idIndex;
+    private Dictionary<int, (int SectionIndex, int RowIndexInSection, int GlobalRecordIndex)>? _idIndex;
     private Dictionary<int, int>? _copyMap;
 
     public IEnumerable<Wdc5Row> EnumerateRows()
@@ -57,7 +59,7 @@ public sealed class Wdc5File
 
         var section = ParsedSections[location.SectionIndex];
         var reader = CreateReaderAtRowStart(section, location.RowIndexInSection);
-        row = new Wdc5Row(this, section, reader, globalRowIndex: -1, rowIndexInSection: location.RowIndexInSection, id: id);
+        row = new Wdc5Row(this, section, reader, globalRowIndex: location.GlobalRecordIndex, rowIndexInSection: location.RowIndexInSection, id: id);
         return true;
     }
 
@@ -66,7 +68,7 @@ public sealed class Wdc5File
         if (_idIndex is not null)
             return;
 
-        var idIndex = new Dictionary<int, (int SectionIndex, int RowIndexInSection)>(capacity: Header.RecordsCount);
+        var idIndex = new Dictionary<int, (int SectionIndex, int RowIndexInSection, int GlobalRecordIndex)>(capacity: Header.RecordsCount);
         var copyMap = new Dictionary<int, int>();
 
         for (var sectionIndex = 0; sectionIndex < ParsedSections.Count; sectionIndex++)
@@ -80,7 +82,7 @@ public sealed class Wdc5File
                 var reader = CreateReaderAtRowStart(section, rowIndex);
                 var id = GetVirtualId(section, rowIndex, reader);
                 if (id != -1)
-                    idIndex.TryAdd(id, (sectionIndex, rowIndex));
+                    idIndex.TryAdd(id, (sectionIndex, rowIndex, section.FirstGlobalRecordIndex + rowIndex));
             }
         }
 
@@ -105,7 +107,13 @@ public sealed class Wdc5File
         if (section.SparseRecordStartBits.Length == 0)
             throw new InvalidDataException("Sparse WDC5 section missing SparseRecordStartBits.");
 
-        reader.PositionBits = section.SparseRecordStartBits[rowIndex];
+        var startBits = section.SparseRecordStartBits[rowIndex];
+        var startBytes = startBits >> 3;
+        var sizeBytes = (int)section.SparseEntries[rowIndex].Size;
+        if ((uint)startBytes > (uint)section.RecordsData.Length || (uint)(startBytes + sizeBytes) > (uint)section.RecordsData.Length)
+            throw new InvalidDataException("Sparse WDC5 row points outside section record data.");
+
+        reader.PositionBits = startBits;
         return reader;
     }
 
@@ -271,10 +279,12 @@ public sealed class Wdc5File
         }
 
         var parsedSections = new List<Wdc5Section>(sections.Count);
+        var denseStringTableBytes = new List<byte>(Math.Max(0, stringTableSize));
 
         if (sectionsCount != 0 && recordsCount != 0)
         {
             var previousRecordCount = 0;
+            var previousStringTableSize = 0;
             foreach (var section in sections)
             {
                 reader.BaseStream.Position = section.FileOffset;
@@ -286,6 +296,8 @@ public sealed class Wdc5File
                     recordsData = reader.ReadBytes(section.NumRecords * recordSize);
                     Array.Resize(ref recordsData, recordsData.Length + 8);
                     stringTableBytes = reader.ReadBytes(section.StringTableSize);
+
+                    denseStringTableBytes.AddRange(stringTableBytes);
                 }
                 else
                 {
@@ -346,12 +358,14 @@ public sealed class Wdc5File
                     indexData = sparseIndexData;
                 }
 
-                var sparseStarts = Wdc5Section.BuildSparseRecordStartBits(sparseEntries);
+                var sparseStarts = Wdc5Section.BuildSparseRecordStartBits(sparseEntries, section.FileOffset);
 
                 parsedSections.Add(new Wdc5Section
                 {
                     Header = section,
+                    FirstGlobalRecordIndex = previousRecordCount,
                     RecordsData = recordsData,
+                    StringTableBaseOffset = previousStringTableSize,
                     StringTableBytes = stringTableBytes,
                     IndexData = indexData,
                     CopyData = copyData,
@@ -360,6 +374,7 @@ public sealed class Wdc5File
                 });
 
                 previousRecordCount += section.NumRecords;
+                previousStringTableSize += section.StringTableSize;
             }
         }
 
@@ -372,6 +387,7 @@ public sealed class Wdc5File
             ColumnMeta = columnMeta,
             PalletData = palletData,
             CommonData = commonData,
+            DenseStringTableBytes = [.. denseStringTableBytes],
         };
     }
 

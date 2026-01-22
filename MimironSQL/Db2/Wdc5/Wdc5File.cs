@@ -29,11 +29,19 @@ public sealed class Wdc5File
     private Dictionary<int, (int SectionIndex, int RowIndexInSection, int GlobalRecordIndex)>? _idIndex;
     private Dictionary<int, int>? _copyMap;
 
-    public Wdc5File(Stream stream)
+    internal Wdc5FileOptions Options { get; }
+
+    public Wdc5File(Stream stream) : this(stream, options: null)
+    {
+    }
+
+    public Wdc5File(Stream stream, Wdc5FileOptions? options)
     {
         ArgumentNullException.ThrowIfNull(stream);
         if (!stream.CanSeek)
             throw new NotSupportedException("WDC5 parsing requires a seekable Stream.");
+
+        Options = options ?? new Wdc5FileOptions();
 
         stream.Position = 0;
         using var reader = new BinaryReader(stream, Encoding.UTF8, leaveOpen: true);
@@ -177,6 +185,10 @@ public sealed class Wdc5File
             {
                 reader.BaseStream.Position = section.FileOffset;
 
+                ReadOnlyMemory<byte> tactKey = ReadOnlyMemory<byte>.Empty;
+                if (section.TactKeyLookup != 0 && Options.TactKeyProvider is not null)
+                    _ = Options.TactKeyProvider.TryGetKey(section.TactKeyLookup, out tactKey);
+
                 byte[] recordsData;
                 byte[] stringTableBytes;
                 int recordDataSizeBytes;
@@ -197,6 +209,32 @@ public sealed class Wdc5File
 
                     if (reader.BaseStream.Position != section.OffsetRecordsEndOffset)
                         throw new InvalidDataException("WDC5 sparse section parsing desynced: expected OffsetRecordsEndOffset.");
+                }
+
+                var isEncrypted = section.TactKeyLookup != 0;
+                var shouldSkipEncryptedSection = false;
+                if (isEncrypted)
+                {
+                    if (tactKey.IsEmpty)
+                    {
+                        shouldSkipEncryptedSection = true;
+                    }
+                    else
+                    {
+                        var allZero = true;
+                        for (var i = 0; i < recordDataSizeBytes; i++)
+                        {
+                            if (recordsData[i] != 0)
+                            {
+                                allZero = false;
+                                break;
+                            }
+                        }
+
+                        // Some encrypted sections may be present as placeholders (all zero-filled). Skip for now.
+                        if (allZero)
+                            shouldSkipEncryptedSection = true;
+                    }
                 }
 
                 // index data
@@ -250,23 +288,27 @@ public sealed class Wdc5File
                 }
 
                 var sparseStarts = flags.HasFlag(Db2Flags.Sparse)
-                    ? Wdc5Section.BuildSparseRecordStartBits(sparseEntries)
+                    ? Wdc5Section.BuildSparseRecordStartBits(sparseEntries, section.FileOffset, recordDataSizeBytes)
                     : Array.Empty<int>();
 
-                parsedSections.Add(new Wdc5Section
+                if (!shouldSkipEncryptedSection)
                 {
-                    Header = section,
-                    FirstGlobalRecordIndex = previousRecordCount,
-                    RecordsData = recordsData,
-                    RecordDataSizeBytes = recordDataSizeBytes,
-                    RecordsBaseOffsetInBlob = previousRecordBlobSizeBytes,
-                    StringTableBaseOffset = previousStringTableSize,
-                    StringTableBytes = stringTableBytes,
-                    IndexData = indexData,
-                    CopyData = copyData,
-                    SparseEntries = sparseEntries,
-                    SparseRecordStartBits = sparseStarts,
-                });
+                    parsedSections.Add(new Wdc5Section
+                    {
+                        Header = section,
+                        FirstGlobalRecordIndex = previousRecordCount,
+                        RecordsData = recordsData,
+                        RecordDataSizeBytes = recordDataSizeBytes,
+                        RecordsBaseOffsetInBlob = previousRecordBlobSizeBytes,
+                        StringTableBaseOffset = previousStringTableSize,
+                        StringTableBytes = stringTableBytes,
+                        IndexData = indexData,
+                        CopyData = copyData,
+                        SparseEntries = sparseEntries,
+                        SparseRecordStartBits = sparseStarts,
+                        TactKey = tactKey,
+                    });
+                }
 
                 previousRecordCount += section.NumRecords;
                 previousStringTableSize += section.StringTableSize;
@@ -288,6 +330,9 @@ public sealed class Wdc5File
         CommonData = commonData;
         DenseStringTableBytes = [.. denseStringTableBytes];
         RecordsBlobSizeBytes = recordsBlobSizeBytes;
+
+        if (recordsCount > 0 && parsedSections.Count == 0)
+            throw new NotSupportedException("All WDC5 sections are encrypted or unreadable (missing TACT keys or placeholder section data).");
     }
 
     public IEnumerable<Wdc5Row> EnumerateRows()
@@ -300,7 +345,7 @@ public sealed class Wdc5File
             {
                 var reader = CreateReaderAtRowStart(section, rowIndex);
                 var id = GetVirtualId(section, rowIndex, reader);
-                yield return new Wdc5Row(this, section, reader, globalIndex, rowIndex, id);
+                yield return new Wdc5Row(this, section, reader, globalIndex, rowIndex, id, sourceId: id);
                 globalIndex++;
             }
         }
@@ -309,6 +354,8 @@ public sealed class Wdc5File
     public bool TryGetRowById(int id, out Wdc5Row row)
     {
         EnsureIndexesBuilt();
+
+        var requestedId = id;
 
         if (_copyMap!.TryGetValue(id, out var sourceId))
             id = sourceId;
@@ -321,7 +368,7 @@ public sealed class Wdc5File
 
         var section = ParsedSections[location.SectionIndex];
         var reader = CreateReaderAtRowStart(section, location.RowIndexInSection);
-        row = new Wdc5Row(this, section, reader, globalRowIndex: location.GlobalRecordIndex, rowIndexInSection: location.RowIndexInSection, id: id);
+        row = new Wdc5Row(this, section, reader, globalRowIndex: location.GlobalRecordIndex, rowIndexInSection: location.RowIndexInSection, id: requestedId, sourceId: id);
         return true;
     }
 
@@ -387,7 +434,7 @@ public sealed class Wdc5File
 
         // Fallback: decode the physical ID field from record bits.
         if (Header.IdFieldIndex >= Header.FieldsCount)
-            return -1;
+            return section.FirstGlobalRecordIndex + rowIndex;
 
         var tmp = readerAtStart;
         for (var i = 0; i <= Header.IdFieldIndex; i++)

@@ -1,4 +1,7 @@
 <Solution>
   <Project Path="MimironSQL.Tests/MimironSQL.Tests.csproj" />
   <Project Path="MimironSQL/MimironSQL.csproj" />
+  <Project Path="Salsa20/Salsa20.csproj">
+    <Build Solution="Debug|*" Project="false" />
+  </Project>
 </Solution>

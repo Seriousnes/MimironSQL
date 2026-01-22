@@ -17,7 +17,7 @@ public sealed class Wdc5SparseInlineStringHeuristicTests
         var file = new Wdc5File(stream);
         file.Header.Flags.HasFlag(Db2Flags.Sparse).ShouldBeTrue();
         file.Header.RecordsCount.ShouldBeGreaterThan(0);
-        file.TotalSectionRecordCount.ShouldBe(file.Header.RecordsCount);
+        file.TotalSectionRecordCount.ShouldBeLessThanOrEqualTo(file.Header.RecordsCount);
 
         var sampleIds = file.EnumerateRows()
             .Take(Math.Min(50, file.Header.RecordsCount))

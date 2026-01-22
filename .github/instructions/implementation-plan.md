@@ -41,6 +41,12 @@ graph TD
 * *Dense Strategy:* Calculate offset via `Header + (Index * RecordSize)`.
 * *Sparse Strategy:* Look up ID in `OffsetMap` to find the exact byte position.
 
+* **Encrypted Sections:** Supported via skip/decrypt policy.
+    * If a section has non-zero `tact_key_lookup` and the key is missing (or the section is a placeholder), skip that section.
+    * If a key is available, decrypt rows on-demand (per-row) using Salsa20 with nonce = Record ID as little-endian `ulong`.
+    * Only hard-fail when no readable sections remain.
+* **Sparse Offset Map:** Prefer explicit offsets when present and consistent; otherwise fall back to contiguous sizing. Fail loudly on inconsistent/out-of-range offsets to avoid silent mis-parses.
+
 
 * **Column Decoding:**
 * Implement `IBitReader` to handle non-byte-aligned reads (e.g., reading 11 bits from bit offset 3).
@@ -126,4 +132,5 @@ The engine must map internal WDC5 types to SQL-compatible types:
 
 ### Phase 1
 - Started on branch `feature/phase-1-virtual-table`
-- Not yet completed
+- Implemented sparse offset map correctness checks (prefer explicit offsets, otherwise contiguous sizes)
+- Implemented per-row encryption support (skip encrypted sections when key missing; decrypt on-demand when key present)

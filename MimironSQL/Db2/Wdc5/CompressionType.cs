@@ -1,0 +1,11 @@
+namespace MimironSQL.Db2.Wdc5;
+
+public enum CompressionType : uint
+{
+    None = 0,
+    Immediate = 1,
+    Common = 2,
+    Pallet = 3,
+    PalletArray = 4,
+    SignedImmediate = 5,
+}

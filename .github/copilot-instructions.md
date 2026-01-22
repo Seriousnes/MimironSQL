@@ -7,6 +7,20 @@ This project is a SQL engine for reading and querying World of Warcraft DB2 file
 - Never modifiy files outside of the MimironSQL repository.
 - Use minimal commenting style, only adding comments on methods or complex logic where absolutely necessary for clarity.
 
+## Modern C# / Style Rules (Hard)
+- Target .NET 10 / C# 14 and prefer the newest language features.
+- Prefer primary constructors where it reduces boilerplate.
+- Prefer collection expressions and spread over `ToArray()` / `ToList()` / manual loops when building collections:
+    - Prefer `[.. someEnumerable]` over `someEnumerable.ToArray()`.
+    - Prefer `var list = someEnumerable.ToList()` over `List<T> list = [.. someEnumerable];` (i.e. variable declaration and assignment)
+    - Prefer `List<T> list = [item1, item2];` and `Dictionary<TKey, TValue> dict = [];` (i.e. property declarations)
+    - Exception: interoperability/compatibility requirements with third-party APIs.
+
+## Performance Attributes (Hard)
+- Do NOT add `[MethodImpl(...)]` attributes (including `MethodImplOptions.AggressiveInlining`).
+- Remove any `[MethodImpl(...)]` attributes you encounter.
+- Only add these attributes back after benchmarking demonstrates a real benefit.
+
 ## Nuget Packages
 - Install packages using the dotnet CLI. Never edit the .csproj files directly.
 - Prefer using latest stable versions of packages unless a specific version is required for compatibility.

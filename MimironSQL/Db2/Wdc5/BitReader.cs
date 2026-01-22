@@ -10,7 +10,6 @@ public struct BitReader(byte[] data)
     public int PositionBits { get; set; } = 0;
     public int OffsetBytes { get; set; } = 0;
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public uint ReadUInt32(int numBits)
     {
         ref byte start = ref data[OffsetBytes + (PositionBits >> 3)];
@@ -19,7 +18,6 @@ public struct BitReader(byte[] data)
         return result;
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public ulong ReadUInt64(int numBits)
     {
         ref byte start = ref data[OffsetBytes + (PositionBits >> 3)];
@@ -28,14 +26,12 @@ public struct BitReader(byte[] data)
         return result;
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public Value32 ReadValue32(int numBits)
     {
         var raw = ReadUInt32(numBits);
         return Unsafe.As<uint, Value32>(ref raw);
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public ulong ReadUInt64Signed(int numBits)
     {
         var raw = ReadUInt64(numBits);

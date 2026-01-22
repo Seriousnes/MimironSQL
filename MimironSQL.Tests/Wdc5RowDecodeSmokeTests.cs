@@ -10,7 +10,8 @@ public sealed class Wdc5RowDecodeSmokeTests
     [Fact]
     public void Can_iterate_rows_and_decode_a_scalar_field_from_map()
     {
-        var file = Wdc5File.Open(TestDataPaths.MapDb2);
+        using var stream = TestDataPaths.OpenMapDb2();
+        var file = new Wdc5File(stream);
         var firstRow = file.EnumerateRows().First();
 
         Should.NotThrow(() => firstRow.GetScalar<uint>(0));
@@ -19,7 +20,8 @@ public sealed class Wdc5RowDecodeSmokeTests
     [Fact]
     public void Virtual_id_is_available_and_allows_random_access_lookup()
     {
-        var file = Wdc5File.Open(TestDataPaths.MapDb2);
+        using var stream = TestDataPaths.OpenMapDb2();
+        var file = new Wdc5File(stream);
         var firstRow = file.EnumerateRows().First();
 
         firstRow.Id.ShouldNotBe(-1);

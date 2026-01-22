@@ -11,28 +11,35 @@ public sealed class Wdc5DenseStringHeuristicTests
     [Fact]
     public void Can_find_at_least_one_dense_string_in_map_by_heuristic()
     {
-        var file = Wdc5File.Open(TestDataPaths.MapDb2);
+        using var stream = TestDataPaths.OpenMapDb2();
+        var file = new Wdc5File(stream);
         file.Header.Flags.HasFlag(Db2.Db2Flags.Sparse).ShouldBeFalse();
+        file.Header.StringTableSize.ShouldBeGreaterThan(0);
 
         var maxRowsToScan = Math.Min(file.Header.RecordsCount, 200);
         var maxFieldsToScan = Math.Min(file.Header.FieldsCount, 256);
 
-        var found = false;
+        var foundStrings = new System.Collections.Generic.HashSet<string>(StringComparer.Ordinal);
         foreach (var row in file.EnumerateRows().Take(maxRowsToScan))
         {
             for (var fieldIndex = 0; fieldIndex < maxFieldsToScan; fieldIndex++)
             {
-                if (row.TryGetDenseString(fieldIndex, out var value) && !string.IsNullOrWhiteSpace(value))
-                {
-                    found = true;
+                if (!row.TryGetDenseString(fieldIndex, out var value))
+                    continue;
+
+                if (string.IsNullOrWhiteSpace(value) || value.Length > 256)
+                    continue;
+
+                foundStrings.Add(value);
+
+                if (foundStrings.Count >= 5)
                     break;
-                }
             }
 
-            if (found)
+            if (foundStrings.Count >= 5)
                 break;
         }
 
-        found.ShouldBeTrue();
+        foundStrings.Count.ShouldBeGreaterThanOrEqualTo(5);
     }
 }

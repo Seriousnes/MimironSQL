@@ -9,6 +9,8 @@ public sealed class Wdc5Section
     public required Wdc5SectionHeader Header { get; init; }
     public required int FirstGlobalRecordIndex { get; init; }
     public required byte[] RecordsData { get; init; }
+    public required int RecordDataSizeBytes { get; init; }
+    public required int RecordsBaseOffsetInBlob { get; init; }
 
     public int StringTableBaseOffset { get; init; } = 0;
     public byte[] StringTableBytes { get; init; } = Array.Empty<byte>();
@@ -21,19 +23,17 @@ public sealed class Wdc5Section
     public int NumRecords => Header.NumRecords;
     public bool HasIndexData => Header.IndexDataSize > 0;
 
-    public static int[] BuildSparseRecordStartBits(SparseEntry[] entries, int sectionFileOffset)
+    public static int[] BuildSparseRecordStartBits(SparseEntry[] entries)
     {
         if (entries.Length == 0)
             return Array.Empty<int>();
 
         var starts = new int[entries.Length];
+        var bitPosition = 0;
         for (var i = 0; i < entries.Length; i++)
         {
-            var relativeOffsetBytes = (long)entries[i].Offset - sectionFileOffset;
-            if (relativeOffsetBytes < 0 || relativeOffsetBytes > int.MaxValue)
-                throw new InvalidOperationException("Sparse offset map entry offset is out of range for this section.");
-
-            starts[i] = checked((int)relativeOffsetBytes * 8);
+            starts[i] = bitPosition;
+            bitPosition += entries[i].Size * 8;
         }
 
         return starts;

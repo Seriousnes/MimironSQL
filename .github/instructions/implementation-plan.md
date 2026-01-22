@@ -58,7 +58,7 @@ graph TD
 * **Mapping Logic:**
 * Map DBD "Fields" to WDC5 "Columns".
 * *Note:* A single DBD field (e.g., `Loc coordinates[3]`) may map to 3 distinct WDC5 columns. The engine must aggregate these back into arrays if requested.
-
+* Replace heuristic string tests with schema-mapped deterministic assertions once Phase 2 (Schema Mapper) is in place.
 
 
 ### Phase 3: The Query Engine (Execution)
@@ -124,11 +124,6 @@ The engine must map internal WDC5 types to SQL-compatible types:
 ## Progress Log
 (keep this updated as phases and steps are updated)
 
-### 2026-01-22
-- Phase 1 started on branch `feature/phase-1-virtual-table`.
-- Added DB2 format detection (WDC3/WDC4/WDC5) and initial WDC5 parsing scaffolding (header, section headers, field meta, column meta, pallet/common blocks).
-- Implemented a BitReader for non-byte-aligned reads (ported behavior from DBCD) with unit tests.
-- Added integration tests using real fixtures in `MimironSQL.Tests/TestData` (map.db2, spell.db2) to validate header/section parsing invariants.
-- Added per-section parsing (records/index/copy/offset-map) and initial row iteration + scalar decode smoke test.
-- Implemented virtual `ID` semantics (prefer `IndexData`, else decode `IdFieldIndex`) and added `TryGetRowById` for random-access lookups (with copy-table indirection).
-- Added dense string table support and a heuristic test to validate string resolution without schema mapping; added basic numeric array decoding for PalletArray/None.
+### Phase 1
+- Started on branch `feature/phase-1-virtual-table`
+- Not yet completed

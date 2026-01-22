@@ -8,6 +8,8 @@ namespace MimironSQL.Db2.Wdc5;
 
 public readonly struct Wdc5Row
 {
+    private static readonly UTF8Encoding Utf8Strict = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
+
     private readonly Wdc5File _file;
     private readonly Wdc5Section _section;
     private readonly BitReader _reader;
@@ -58,12 +60,6 @@ public readonly struct Wdc5Row
 
     public bool TryGetDenseString(int fieldIndex, out string value)
     {
-        if (_file.Header.Flags.HasFlag(Db2Flags.Sparse))
-        {
-            value = string.Empty;
-            return false;
-        }
-
         if ((uint)fieldIndex >= (uint)_file.Header.FieldsCount)
             throw new ArgumentOutOfRangeException(nameof(fieldIndex));
 
@@ -77,28 +73,119 @@ public readonly struct Wdc5Row
             return false;
         }
 
-        var fieldBytePos = localReader.PositionBits >> 3;
+        var fieldStartInBlob = (long)_section.RecordsBaseOffsetInBlob + (localReader.PositionBits >> 3);
         var offset = Wdc5FieldDecoder.ReadScalar<int>(Id, ref localReader, fieldMeta, columnMeta, _file.PalletData[fieldIndex], _file.CommonData[fieldIndex]);
+        var stringAbsInBlob = fieldStartInBlob + offset;
 
-        var recordOffset = (GlobalRowIndex * _file.Header.RecordSize) - (_file.Header.RecordsCount * _file.Header.RecordSize);
-        var stringIndex = recordOffset + fieldBytePos + offset;
+        var stringIndex = stringAbsInBlob - _file.RecordsBlobSizeBytes;
 
-        if ((uint)stringIndex >= (uint)_file.DenseStringTableBytes.Length)
+        // In WDC2+, an offset of 0 commonly represents an empty string, which produces a negative index.
+        if (stringIndex < 0)
+        {
+            value = string.Empty;
+            return true;
+        }
+
+        if (stringIndex > int.MaxValue)
         {
             value = string.Empty;
             return false;
         }
 
-        var span = _file.DenseStringTableBytes.AsSpan(stringIndex);
+        return TryReadNullTerminatedUtf8(_file.DenseStringTableBytes, startIndex: (int)stringIndex, endExclusive: _file.DenseStringTableBytes.Length, out value);
+    }
+
+    public bool TryGetInlineString(int fieldIndex, out string value)
+    {
+        if ((uint)fieldIndex >= (uint)_file.Header.FieldsCount)
+            throw new ArgumentOutOfRangeException(nameof(fieldIndex));
+
+        var localReader = MoveToFieldStart(fieldIndex);
+        ref readonly var fieldMeta = ref _file.FieldMeta[fieldIndex];
+        ref readonly var columnMeta = ref _file.ColumnMeta[fieldIndex];
+
+        var rowStartInSection = _reader.PositionBits >> 3;
+        var rowSizeBytes = _file.Header.Flags.HasFlag(Db2Flags.Sparse)
+            ? (int)_section.SparseEntries[RowIndexInSection].Size
+            : _file.Header.RecordSize;
+        var rowEndExclusive = rowStartInSection + rowSizeBytes;
+
+        // WDC5 sparse sections inline C-strings directly in record data.
+        if (_file.Header.Flags.HasFlag(Db2Flags.Sparse))
+        {
+            var fieldStart = localReader.PositionBits >> 3;
+            if ((uint)fieldStart >= (uint)rowEndExclusive)
+            {
+                value = string.Empty;
+                return false;
+            }
+
+            if (TryReadNullTerminatedUtf8(_section.RecordsData, startIndex: fieldStart, endExclusive: rowEndExclusive, out value))
+                return true;
+        }
+
+        if (columnMeta.CompressionType is not (CompressionType.None or CompressionType.Immediate or CompressionType.SignedImmediate))
+        {
+            value = string.Empty;
+            return false;
+        }
+
+        var fieldStartInBlob = (long)_section.RecordsBaseOffsetInBlob + (localReader.PositionBits >> 3);
+        var offset = Wdc5FieldDecoder.ReadScalar<int>(Id, ref localReader, fieldMeta, columnMeta, _file.PalletData[fieldIndex], _file.CommonData[fieldIndex]);
+        var stringAbsInBlob = fieldStartInBlob + offset;
+
+        if (stringAbsInBlob < 0 || stringAbsInBlob > _file.RecordsBlobSizeBytes)
+        {
+            value = string.Empty;
+            return false;
+        }
+
+        var stringStartInSection = (long)stringAbsInBlob - _section.RecordsBaseOffsetInBlob;
+        if (stringStartInSection < 0 || stringStartInSection > int.MaxValue)
+        {
+            value = string.Empty;
+            return false;
+        }
+
+        var stringStart = (int)stringStartInSection;
+        if ((uint)stringStart < (uint)rowStartInSection || (uint)stringStart >= (uint)rowEndExclusive)
+        {
+            value = string.Empty;
+            return false;
+        }
+
+        return TryReadNullTerminatedUtf8(_section.RecordsData, startIndex: stringStart, endExclusive: rowEndExclusive, out value);
+    }
+
+    public bool TryGetString(int fieldIndex, out string value)
+        => TryGetDenseString(fieldIndex, out value) || TryGetInlineString(fieldIndex, out value);
+
+    private static bool TryReadNullTerminatedUtf8(byte[] bytes, int startIndex, int endExclusive, out string value)
+    {
+        if ((uint)startIndex >= (uint)bytes.Length || (uint)endExclusive > (uint)bytes.Length || startIndex >= endExclusive)
+        {
+            value = string.Empty;
+            return false;
+        }
+
+        var span = bytes.AsSpan(startIndex, endExclusive - startIndex);
         var terminatorIndex = span.IndexOf((byte)0);
-        if (terminatorIndex < 0)
+        if (terminatorIndex <= 0)
         {
             value = string.Empty;
             return false;
         }
 
-        value = Encoding.UTF8.GetString(span[..terminatorIndex]);
-        return true;
+        try
+        {
+            value = Utf8Strict.GetString(span[..terminatorIndex]);
+            return !string.IsNullOrWhiteSpace(value);
+        }
+        catch (DecoderFallbackException)
+        {
+            value = string.Empty;
+            return false;
+        }
     }
 
     private BitReader MoveToFieldStart(int fieldIndex)

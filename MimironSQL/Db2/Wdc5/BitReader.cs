@@ -49,6 +49,6 @@ public struct BitReader(byte[] data)
         List<byte> bytes = new(0x20);
         while ((ch = ReadUInt32(8)) != 0)
             bytes.Add((byte)ch);
-        return Encoding.UTF8.GetString(bytes.ToArray());
+        return Encoding.UTF8.GetString([.. bytes]);
     }
 }

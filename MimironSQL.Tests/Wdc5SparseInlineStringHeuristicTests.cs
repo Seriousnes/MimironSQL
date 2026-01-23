@@ -15,7 +15,8 @@ public sealed class Wdc5SparseInlineStringHeuristicTests
     [Fact]
     public void Can_open_sparse_file_and_lookup_rows_by_id()
     {
-        using var stream = TestDataPaths.OpenCollectableSourceQuestSparseDb2();
+        var db2Provider = new FileSystemDb2StreamProvider(new(TestDataPaths.GetTestDataDirectory()));
+        using var stream = db2Provider.OpenDb2Stream("CollectableSourceQuestSparse");
         var file = new Wdc5File(stream);
         file.Header.Flags.HasFlag(Db2Flags.Sparse).ShouldBeTrue();
         file.Header.RecordsCount.ShouldBeGreaterThan(0);
@@ -41,7 +42,8 @@ public sealed class Wdc5SparseInlineStringHeuristicTests
     [Fact]
     public void Can_decode_schema_mapped_fields_in_sparse_file()
     {
-        using var stream = TestDataPaths.OpenCollectableSourceQuestSparseDb2();
+        var db2Provider = new FileSystemDb2StreamProvider(new(TestDataPaths.GetTestDataDirectory()));
+        using var stream = db2Provider.OpenDb2Stream("CollectableSourceQuestSparse");
         var file = new Wdc5File(stream);
         file.Header.Flags.HasFlag(Db2Flags.Sparse).ShouldBeTrue();
 

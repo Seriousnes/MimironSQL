@@ -116,13 +116,36 @@ Phase 3 must support `.dbd`-declared virtual fields exactly as they appear in th
 
 To make Phase 4 (navigation/joins) straightforward, Phase 3 should also provide:
 
-- A multi-table context (`Db2Database` or similar) that can **auto-open tables by name** via an `IDb2StreamProvider` (filesystem implementation now; CASC later).
+- A multi-table context (`Db2Context` or similar) that can **auto-open tables by name** via an `IDb2StreamProvider` (filesystem implementation now; CASC later).
 - Table caching so repeated opens reuse parsed `Wdc5File` + schema.
 - Schema metadata exposure on the query surface (e.g., `Db2Table<T>.Schema`) for relation discovery.
+
+#### 3.5 Column Lineage & Single-table Column Pruning (Phase 3.5)
+
+**Goal:** Make the single-table query engine capable of decoding only the columns required by the query end-to-end, including projections, without forcing entity materialization.
+
+This is an intentional architectural stage: we will treat queries as a **column-lineage-aware plan** rather than “LINQ over entities with incidental decoding”. This reduces Phase 4 complexity by establishing the core planning primitives before joins/navigation introduce multi-source lineage.
+
+**What it means (single-table):**
+
+- A query analysis step produces a plan where each operator declares its required inputs (column accessors) and produced outputs.
+- `Where` can be compiled into a `Func<Wdc5Row, bool>` that reads only the predicate’s required columns.
+- `Select` can be compiled into a projector that reads only the projected columns (including anonymous types / scalar projections) and avoids full entity materialization when possible.
+- Terminal operators (`Any`/`Count`/`FirstOrDefault`/`Single`) should execute against the plan without inflating the decoded surface.
+
+**Compatibility constraints (important):**
+
+- This stage is **single-table only**. Multi-table pruning/lineage (joins/navigation) is Phase 4+.
+- Keep the execution pipeline shaped so Phase 4 can extend it with multi-source operators while reusing the same lineage concepts.
 
 ### Phase 4: Relationships, Navigation, and Joins
 
 **Goal:** Support multi-table query scenarios without requiring SQL-text, using schema-declared relations to enable navigation and joins.
+
+This phase must build on the Phase 3.5 column-lineage-aware planning model:
+
+- Query planning must track required columns per input source/table.
+- Join planning must be able to request/propagate key columns and projected columns without “decode everything”.
 
 - **Navigation properties:** allow entities to reference other tables via relation IDs (e.g., `CollectableSourceQuestSparse.CollectableSourceInfoID` navigates to `CollectableSourceInfo`).
 - **Join execution:** support efficient joins between tables (likely starting with inner join) while minimizing decoding.
@@ -173,7 +196,9 @@ The engine must map internal WDC5 types to SQL-compatible types:
 3. **StorageParsers:** Write unit tests for each Compression Type (0-4) using known hex snippets from actual WDC5 files.
 4. **OffsetMap:** Implement the parser for the sparse offset map section.
 5. **StringScanner:** Implement the "Backtrack to Null" search algorithm for the String Block.
-6. **LINQ Provider:** Implement an `IQueryable` provider that translates expression trees to row predicates and materializes entities.
+6. **LINQ Provider:** Implement an `IQueryable` provider that translates expression trees into a query plan and can execute queries.
+    - Phase 3 baseline: compile supported predicates to row predicates; materialize entities via schema-backed mapping.
+    - Phase 3.5: add column lineage analysis and single-table column pruning (compile projectors and avoid entity materialization when possible).
 7. **Joins/Navigation:** Build join and navigation support using schema-declared relations.
 8. **Optional SQL-text:** If needed, add a SQL-text layer that compiles to the same underlying query plan.
 
@@ -198,8 +223,9 @@ The engine must map internal WDC5 types to SQL-compatible types:
 
 ### Phase 3
 - Started on branch `feature/phase-3-query-engine`
-- Added LINQ-first query surface (`Db2Database` + `Db2Table<T>`) targeting ORM-style usage (entities/materialization, not SQL text)
+- Added LINQ-first query surface (`Db2Context` + `Db2Table<T>`) targeting ORM-style usage (entities/materialization, not SQL text)
 - Implemented translation of `Where` predicates to row predicates for minimal decoding; supports comparisons + string `Contains`/`StartsWith`/`EndsWith`
 - Implemented dense string-table scanning optimization (string-block-first) when applicable
 - Surfaced parent lookup reference IDs per row and used them to materialize/query `$noninline,relation$` virtual fields
 - Added fixture-based Phase 3 tests covering all existing `.db2` fixtures
+- Added Phase 3.5 plan stage for column-lineage-aware single-table column pruning (projection without entity materialization)

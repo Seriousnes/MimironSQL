@@ -61,7 +61,8 @@ public sealed class SchemaMapperTests
     [Fact]
     public void Resolves_schema_from_layout_hash_and_matches_physical_column_count()
     {
-        using var db2Stream = TestDataPaths.OpenMapDb2();
+        var db2Provider = new FileSystemDb2StreamProvider(new(TestDataPaths.GetTestDataDirectory()));
+        using var db2Stream = db2Provider.OpenDb2Stream("Map");
         var file = new Wdc5File(db2Stream);
 
         var temp = Directory.CreateTempSubdirectory("MimironSQL_Dbd");
@@ -115,7 +116,8 @@ public sealed class SchemaMapperTests
     [Fact]
     public void Resolves_relation_and_reference_table_from_dbd()
     {
-        using var stream = TestDataPaths.OpenCollectableSourceQuestSparseDb2();
+        var db2Provider = new FileSystemDb2StreamProvider(new(TestDataPaths.GetTestDataDirectory()));
+        using var stream = db2Provider.OpenDb2Stream("CollectableSourceQuestSparse");
         var file = new Wdc5File(stream);
 
         var provider = new FileSystemDbdProvider(new FileSystemDbdProviderOptions(TestDataPaths.GetTestDataDirectory()));
@@ -137,7 +139,8 @@ public sealed class SchemaMapperTests
     [Fact]
     public void AccountStoreCategory_real_dbd_db2_inline_id_and_relation_metadata()
     {
-        using var stream = TestDataPaths.OpenAccountStoreCategoryDb2();
+        var db2Provider = new FileSystemDb2StreamProvider(new(TestDataPaths.GetTestDataDirectory()));
+        using var stream = db2Provider.OpenDb2Stream("AccountStoreCategory");
         var file = new Wdc5File(stream);
 
         var provider = new FileSystemDbdProvider(new FileSystemDbdProviderOptions(TestDataPaths.GetTestDataDirectory()));
@@ -161,7 +164,8 @@ public sealed class SchemaMapperTests
     [Fact]
     public void Selects_the_build_block_with_matching_physical_column_count()
     {
-        using var db2Stream = TestDataPaths.OpenMapDb2();
+        var db2Provider = new FileSystemDb2StreamProvider(new(TestDataPaths.GetTestDataDirectory()));
+        using var db2Stream = db2Provider.OpenDb2Stream("Map");
         var file = new Wdc5File(db2Stream);
 
         var temp = Directory.CreateTempSubdirectory("MimironSQL_Dbd");
@@ -187,7 +191,8 @@ public sealed class SchemaMapperTests
     [Fact]
     public void Trailing_question_mark_in_COLUMNS_marks_field_as_unverified()
     {
-        using var db2Stream = TestDataPaths.OpenMapDb2();
+        var db2Provider = new FileSystemDb2StreamProvider(new(TestDataPaths.GetTestDataDirectory()));
+        using var db2Stream = db2Provider.OpenDb2Stream("Map");
         var file = new Wdc5File(db2Stream);
 
         var temp = Directory.CreateTempSubdirectory("MimironSQL_Dbd");

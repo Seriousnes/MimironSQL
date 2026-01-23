@@ -13,7 +13,8 @@ public sealed class Wdc5DenseStringHeuristicTests
     [Fact]
     public void Can_decode_directory_strings_in_map_using_schema()
     {
-        using var stream = TestDataPaths.OpenMapDb2();
+        var db2Provider = new FileSystemDb2StreamProvider(new(TestDataPaths.GetTestDataDirectory()));
+        using var stream = db2Provider.OpenDb2Stream("Map");
         var file = new Wdc5File(stream);
         file.Header.Flags.HasFlag(Db2.Db2Flags.Sparse).ShouldBeFalse();
         file.Header.StringTableSize.ShouldBeGreaterThan(0);

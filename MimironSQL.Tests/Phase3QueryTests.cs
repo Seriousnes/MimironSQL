@@ -14,12 +14,12 @@ public sealed class Phase3QueryTests
     [Fact]
     public void Can_query_dense_table_with_string_filter_and_take()
     {
-        using var stream = TestDataPaths.OpenMapDb2();
+        var testDataDir = TestDataPaths.GetTestDataDirectory();
+        var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
+        var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
+        var context = new TestDb2Context(dbdProvider, db2Provider);
 
-        var provider = new FileSystemDbdProvider(new FileSystemDbdProviderOptions(TestDataPaths.GetTestDataDirectory()));
-        var db = new Db2Database(provider);
-
-        var map = db.OpenTable<MapRow>("Map", stream);
+        var map = context.Map;
 
         var results = map
             .Where(x => x.Directory.Contains("o"))
@@ -33,13 +33,14 @@ public sealed class Phase3QueryTests
     [Fact]
     public void Can_query_dense_table_with_startswith_and_endswith()
     {
-        using var stream = TestDataPaths.OpenMapDb2();
+        var testDataDir = TestDataPaths.GetTestDataDirectory();
+        var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
+        var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
+        var context = new TestDb2Context(dbdProvider, db2Provider);
 
-        var provider = new FileSystemDbdProvider(new FileSystemDbdProviderOptions(TestDataPaths.GetTestDataDirectory()));
-        var db = new Db2Database(provider);
-
+        using var stream = db2Provider.OpenDb2Stream("Map");
         var file = new Wdc5File(stream);
-        var schema = new SchemaMapper(provider).GetSchema("Map", file);
+        var schema = new SchemaMapper(dbdProvider).GetSchema("Map", file);
         schema.TryGetField("Directory", out var directoryField).ShouldBeTrue();
 
         var sample = file.EnumerateRows()
@@ -53,22 +54,19 @@ public sealed class Phase3QueryTests
         var prefix = sample[..2];
         var suffix = sample[^2..];
 
-        stream.Position = 0;
-        var map = db.OpenTable<MapRow>("Map", stream);
-
-        map.Where(x => x.Directory.StartsWith(prefix)).Take(10).ToArray().Length.ShouldBeGreaterThan(0);
-        map.Where(x => x.Directory.EndsWith(suffix)).Take(10).ToArray().Length.ShouldBeGreaterThan(0);
+        context.Map.Where(x => x.Directory.StartsWith(prefix)).Take(10).ToArray().Length.ShouldBeGreaterThan(0);
+        context.Map.Where(x => x.Directory.EndsWith(suffix)).Take(10).ToArray().Length.ShouldBeGreaterThan(0);
     }
 
     [Fact]
     public void Can_query_spell_names_with_string_contains_and_project_ids()
     {
-        using var stream = TestDataPaths.OpenSpellDb2();
+        var testDataDir = TestDataPaths.GetTestDataDirectory();
+        var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
+        var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
+        var context = new TestDb2Context(dbdProvider, db2Provider);
 
-        var provider = new FileSystemDbdProvider(new FileSystemDbdProviderOptions(TestDataPaths.GetTestDataDirectory()));
-        var db = new Db2Database(provider);
-
-        var spells = db.OpenTable<SpellRow>("Spell", stream);
+        var spells = context.Spell;
 
         var ids = spells
             .Where(s => s.Id > 0)
@@ -83,12 +81,12 @@ public sealed class Phase3QueryTests
     [Fact]
     public void Can_query_sparse_table_using_virtual_id_and_virtual_relation_fields()
     {
-        using var stream = TestDataPaths.OpenCollectableSourceQuestSparseDb2();
+        var testDataDir = TestDataPaths.GetTestDataDirectory();
+        var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
+        var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
+        var context = new TestDb2Context(dbdProvider, db2Provider);
 
-        var provider = new FileSystemDbdProvider(new FileSystemDbdProviderOptions(TestDataPaths.GetTestDataDirectory()));
-        var db = new Db2Database(provider);
-
-        var table = db.OpenTable<CollectableSourceQuestSparseRow>("CollectableSourceQuestSparse", stream);
+        var table = context.CollectableSourceQuestSparse;
 
         var results = table
             .Where(x => x.CollectableSourceInfoID > 0)
@@ -104,12 +102,12 @@ public sealed class Phase3QueryTests
     [Fact]
     public void Can_use_first_or_default_on_a_filtered_query()
     {
-        using var stream = TestDataPaths.OpenAccountStoreCategoryDb2();
+        var testDataDir = TestDataPaths.GetTestDataDirectory();
+        var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
+        var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
+        var context = new TestDb2Context(dbdProvider, db2Provider);
 
-        var provider = new FileSystemDbdProvider(new(TestDataPaths.GetTestDataDirectory()));
-        var db = new Db2Database(provider);
-
-        var categories = db.OpenTable<AccountStoreCategoryRow>("AccountStoreCategory", stream);
+        var categories = context.AccountStoreCategory;
 
         var first = categories
             .Where(x => x.StoreFrontID > 0)
@@ -126,9 +124,9 @@ public sealed class Phase3QueryTests
 
         var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
-        var db = new Db2Database(dbdProvider, db2Provider);
+        var context = new TestDb2Context(dbdProvider, db2Provider);
 
-        var map = db.OpenTable<MapRow>("Map");
+        var map = context.Map;
 
         map.Schema.TableName.ShouldBe("Map");
 
@@ -139,29 +137,37 @@ public sealed class Phase3QueryTests
         single.ShouldNotBeNull();
     }
 
-    private sealed class MapRow
+    private sealed class Map
     {
         public int Id { get; set; }
         public string Directory { get; set; } = string.Empty;
         public string MapName_lang { get; set; } = string.Empty;
     }
 
-    private sealed class SpellRow
+    private sealed class Spell
     {
         public int Id { get; set; }
     }
 
-    private sealed class CollectableSourceQuestSparseRow
+    private sealed class CollectableSourceQuestSparse
     {
         public int Id { get; set; }
         public int QuestID { get; set; }
         public int CollectableSourceInfoID { get; set; }
     }
 
-    private sealed class AccountStoreCategoryRow
+    private sealed class AccountStoreCategory
     {
         public int Id { get; set; }
         public int StoreFrontID { get; set; }
         public string Name_lang { get; set; } = string.Empty;
+    }
+
+    private sealed class TestDb2Context(IDbdProvider dbdProvider, IDb2StreamProvider db2StreamProvider) : Db2Context(dbdProvider, db2StreamProvider)
+    {
+        public Db2Table<Map> Map { get; init; } = null!;
+        public Db2Table<Spell> Spell { get; init; } = null!;
+        public Db2Table<CollectableSourceQuestSparse> CollectableSourceQuestSparse { get; init; } = null!;
+        public Db2Table<AccountStoreCategory> AccountStoreCategory { get; init; } = null!;
     }
 }

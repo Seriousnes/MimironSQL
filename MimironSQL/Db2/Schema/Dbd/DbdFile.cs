@@ -37,6 +37,9 @@ internal sealed class DbdFile(Dictionary<string, DbdColumn> columnsByName, List<
                 continue;
             }
 
+            if (line.StartsWith("COMMENT", StringComparison.Ordinal))
+                continue;
+
             if (line.StartsWith("LAYOUT ", StringComparison.Ordinal))
             {
                 inColumns = false;

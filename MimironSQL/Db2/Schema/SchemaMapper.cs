@@ -40,7 +40,7 @@ public sealed class SchemaMapper(IDbdProvider dbdProvider)
                     entry.Name,
                     entry.ValueType,
                     ColumnStartIndex: -1,
-                    ColumnSpan: 0,
+                    ElementCount: 0,
                     IsVirtual: true,
                     IsId: entry.IsId));
                 continue;
@@ -50,11 +50,11 @@ public sealed class SchemaMapper(IDbdProvider dbdProvider)
                 entry.Name,
                 entry.ValueType,
                 ColumnStartIndex: physicalIndex,
-                ColumnSpan: entry.Span,
+                ElementCount: entry.ElementCount,
                 IsVirtual: false,
                 IsId: entry.IsId));
 
-            physicalIndex = checked(physicalIndex + entry.Span);
+            physicalIndex++;
         }
 
         if (physicalIndex != expectedPhysicalCount)

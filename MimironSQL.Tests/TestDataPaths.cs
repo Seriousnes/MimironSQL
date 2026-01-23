@@ -9,6 +9,12 @@ internal static class TestDataPaths
     public static FileStream OpenSpellDb2() => File.OpenRead(GetSpellDb2Path());
     public static FileStream OpenCollectableSourceQuestSparseDb2() => File.OpenRead(GetCollectableSourceQuestSparseDb2Path());
 
+    public static string GetTestDataDirectory()
+    {
+        var baseDir = AppContext.BaseDirectory;
+        return Path.GetFullPath(Path.Combine(baseDir, "..", "..", "..", "TestData"));
+    }
+
     private static string GetMapDb2Path()
     {
         var baseDir = AppContext.BaseDirectory;

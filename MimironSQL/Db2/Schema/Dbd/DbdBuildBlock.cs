@@ -15,7 +15,7 @@ internal sealed class DbdBuildBlock(string buildLine)
             if (entry.IsNonInline)
                 continue;
 
-            count = checked(count + entry.Span);
+            count++;
         }
 
         return count;

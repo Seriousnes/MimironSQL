@@ -7,7 +7,7 @@ namespace MimironSQL.Db2.Schema.Dbd;
 internal readonly record struct DbdLayoutEntry(
     string Name,
     Db2ValueType ValueType,
-    int Span,
+    int ElementCount,
     bool IsNonInline,
     bool IsId);
 
@@ -43,12 +43,12 @@ internal static class DbdLayoutEntryParser
             }
         }
 
-        var span = 1;
+        var elementCount = 1;
         var bracket = text.LastIndexOf('[');
         if (bracket >= 0 && text.EndsWith("]", StringComparison.Ordinal))
         {
             var number = text[(bracket + 1)..^1];
-            span = int.Parse(number, NumberStyles.Integer, CultureInfo.InvariantCulture);
+            elementCount = int.Parse(number, NumberStyles.Integer, CultureInfo.InvariantCulture);
             text = text[..bracket];
         }
 
@@ -84,7 +84,7 @@ internal static class DbdLayoutEntryParser
             return false;
         }
 
-        entry = new DbdLayoutEntry(name, valueType, span, isNonInline, isId);
+        entry = new DbdLayoutEntry(name, valueType, elementCount, isNonInline, isId);
         return true;
     }
 

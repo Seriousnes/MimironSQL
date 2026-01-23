@@ -80,24 +80,24 @@ public sealed class SchemaMapperTests
             schema.TryGetField("ID", out var id).ShouldBeTrue();
             id.IsVirtual.ShouldBeTrue();
             id.IsId.ShouldBeTrue();
-            id.ColumnSpan.ShouldBe(0);
+            id.ElementCount.ShouldBe(0);
             id.ColumnStartIndex.ShouldBe(-1);
 
             schema.TryGetField("Directory", out var directory).ShouldBeTrue();
             directory.IsVirtual.ShouldBeFalse();
             directory.ValueType.ShouldBe(Db2ValueType.String);
             directory.ColumnStartIndex.ShouldBe(0);
-            directory.ColumnSpan.ShouldBe(1);
+            directory.ElementCount.ShouldBe(1);
 
             schema.TryGetField("MinimapIconScale", out var scale).ShouldBeTrue();
             scale.ValueType.ShouldBe(Db2ValueType.Single);
             scale.ColumnStartIndex.ShouldBe(1);
-            scale.ColumnSpan.ShouldBe(1);
+            scale.ElementCount.ShouldBe(1);
 
             schema.TryGetField("Flags", out var flags).ShouldBeTrue();
             flags.ValueType.ShouldBe(Db2ValueType.Int64);
             flags.ColumnStartIndex.ShouldBe(2);
-            flags.ColumnSpan.ShouldBe(2);
+            flags.ElementCount.ShouldBe(2);
         }
         finally
         {
@@ -134,8 +134,8 @@ public sealed class SchemaMapperTests
     private static string CreateMapDbd(uint layoutHash, int fieldsCount)
     {
         // Physical columns:
-        // Directory (1) + MinimapIconScale (1) + Flags[2] (2) + fillers (fieldsCount - 4)
-        var fillersNeeded = fieldsCount - 4;
+        // Directory (1) + MinimapIconScale (1) + Flags[2] (1 physical field) + fillers (fieldsCount - 3)
+        var fillersNeeded = fieldsCount - 3;
 
         var sb = new StringBuilder();
         sb.AppendLine("COLUMNS");

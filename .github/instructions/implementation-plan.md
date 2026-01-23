@@ -140,3 +140,5 @@ The engine must map internal WDC5 types to SQL-compatible types:
 - Added `.dbd`-backed `SchemaMapper` that resolves `layout_hash` and returns field names + types + column spans (including virtual non-inline fields)
 - Added `IDbdProvider` + filesystem implementation (tableName -> `{tableName}.dbd`)
 - Fixed `.dbd` parsing for "many BUILD lines, one entry block" layouts (e.g., ActionBarGroupEntry)
+- Replaced string heuristic tests with schema-backed deterministic tests using in-repo `.dbd` fixtures
+- Corrected `.dbd` array semantics (`[n]` is in-field element count, not extra physical columns) and ignored `COMMENT` lines

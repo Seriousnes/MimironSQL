@@ -4,6 +4,6 @@ public readonly record struct Db2FieldSchema(
     string Name,
     Db2ValueType ValueType,
     int ColumnStartIndex,
-    int ColumnSpan,
+    int ElementCount,
     bool IsVirtual,
     bool IsId);

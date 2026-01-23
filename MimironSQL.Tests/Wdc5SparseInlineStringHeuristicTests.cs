@@ -1,5 +1,7 @@
 using MimironSQL.Db2;
+using MimironSQL.Db2.Schema;
 using MimironSQL.Db2.Wdc5;
+using MimironSQL.Providers;
 using Shouldly;
 using System;
 using System.Collections.Generic;
@@ -37,40 +39,42 @@ public sealed class Wdc5SparseInlineStringHeuristicTests
     }
 
     [Fact]
-    public void Can_find_inline_strings_in_sparse_file_by_heuristic()
+    public void Can_decode_schema_mapped_fields_in_sparse_file()
     {
         using var stream = TestDataPaths.OpenCollectableSourceQuestSparseDb2();
         var file = new Wdc5File(stream);
         file.Header.Flags.HasFlag(Db2Flags.Sparse).ShouldBeTrue();
 
-        var maxRowsToScan = Math.Min(file.Header.RecordsCount, 200);
-        var maxFieldsToScan = Math.Min(file.Header.FieldsCount, 256);
+        var provider = new FileSystemDbdProvider(new FileSystemDbdProviderOptions(TestDataPaths.GetTestDataDirectory()));
+        var mapper = new SchemaMapper(provider);
+        var schema = mapper.GetSchema("CollectableSourceQuestSparse", file);
 
-        HashSet<string> foundStrings = new(StringComparer.Ordinal);
+        schema.TryGetField("ID", out var idField).ShouldBeTrue();
+        idField.IsVirtual.ShouldBeTrue();
+        idField.IsId.ShouldBeTrue();
+
+        schema.TryGetField("CollectableSourceInfoID", out var relation).ShouldBeTrue();
+        relation.IsVirtual.ShouldBeTrue();
+        relation.IsId.ShouldBeFalse();
+
+        schema.TryGetField("QuestID", out var questId).ShouldBeTrue();
+        questId.IsVirtual.ShouldBeFalse();
+        questId.ElementCount.ShouldBe(1);
+
+        schema.TryGetField("QuestPosition", out var pos).ShouldBeTrue();
+        pos.IsVirtual.ShouldBeFalse();
+        pos.ElementCount.ShouldBe(3);
+
+        var maxRowsToScan = Math.Min(file.Header.RecordsCount, 100);
 
         foreach (var row in file.EnumerateRows().Take(maxRowsToScan))
         {
-            for (var fieldIndex = 0; fieldIndex < maxFieldsToScan; fieldIndex++)
-            {
-                if (!row.TryGetInlineString(fieldIndex, out var value))
-                    continue;
+            row.Id.ShouldBeGreaterThan(0);
 
-                if (value.Length > 256)
-                    continue;
+            Should.NotThrow(() => row.GetScalar<uint>(questId.ColumnStartIndex));
 
-                if (!value.Any(char.IsLetterOrDigit))
-                    continue;
-
-                foundStrings.Add(value);
-
-                if (foundStrings.Count >= 5)
-                    break;
-            }
-
-            if (foundStrings.Count >= 5)
-                break;
+            var coords = row.GetArray<float>(pos.ColumnStartIndex);
+            coords.Length.ShouldBe(3);
         }
-
-        foundStrings.Count.ShouldBeGreaterThanOrEqualTo(5);
     }
 }

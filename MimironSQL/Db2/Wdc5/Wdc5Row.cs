@@ -118,30 +118,30 @@ public readonly struct Wdc5Row
             ref readonly var fieldMeta = ref _file.FieldMeta[fieldIndex];
             ref readonly var columnMeta = ref _file.ColumnMeta[fieldIndex];
 
-        if (columnMeta.CompressionType is not (CompressionType.None or CompressionType.Immediate or CompressionType.SignedImmediate))
-        {
-            value = string.Empty;
-            return false;
-        }
+            if (columnMeta.CompressionType is not (CompressionType.None or CompressionType.Immediate or CompressionType.SignedImmediate))
+            {
+                value = string.Empty;
+                return false;
+            }
 
-        var fieldStartInBlob = (long)_section.RecordsBaseOffsetInBlob + rowStartInSection + (fieldBitOffset >> 3);
+            var fieldStartInBlob = (long)_section.RecordsBaseOffsetInBlob + rowStartInSection + (fieldBitOffset >> 3);
             var offset = Wdc5FieldDecoder.ReadScalar<int>(Id, ref localReader, fieldMeta, columnMeta, _file.PalletData[fieldIndex], _file.CommonData[fieldIndex]);
             var stringAbsInBlob = fieldStartInBlob + offset;
 
-        var stringIndex = stringAbsInBlob - _file.RecordsBlobSizeBytes;
+            var stringIndex = stringAbsInBlob - _file.RecordsBlobSizeBytes;
 
-        // In WDC2+, an offset of 0 commonly represents an empty string, which produces a negative index.
-        if (stringIndex < 0)
-        {
-            value = string.Empty;
-            return true;
-        }
+            // In WDC2+, an offset of 0 commonly represents an empty string, which produces a negative index.
+            if (stringIndex < 0)
+            {
+                value = string.Empty;
+                return true;
+            }
 
-        if (stringIndex > int.MaxValue)
-        {
-            value = string.Empty;
-            return false;
-        }
+            if (stringIndex > int.MaxValue)
+            {
+                value = string.Empty;
+                return false;
+            }
 
             return TryReadNullTerminatedUtf8(_file.DenseStringTableBytes, startIndex: (int)stringIndex, endExclusive: _file.DenseStringTableBytes.Length, out value);
         }

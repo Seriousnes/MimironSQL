@@ -134,3 +134,9 @@ The engine must map internal WDC5 types to SQL-compatible types:
 - Started on branch `feature/phase-1-virtual-table`
 - Implemented sparse offset map correctness checks (prefer explicit offsets, otherwise contiguous sizes)
 - Implemented per-row encryption support (skip encrypted sections when key missing; decrypt on-demand when key present)
+
+### Phase 2
+- Started on branch `feature/phase-2-schema-mapper`
+- Added `.dbd`-backed `SchemaMapper` that resolves `layout_hash` and returns field names + types + column spans (including virtual non-inline fields)
+- Added `IDbdProvider` + filesystem implementation (tableName -> `{tableName}.dbd`)
+- Fixed `.dbd` parsing for "many BUILD lines, one entry block" layouts (e.g., ActionBarGroupEntry)

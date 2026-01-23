@@ -79,6 +79,7 @@ For Phase 3, the Query Engine is primarily an `IQueryable` provider that transla
 - Project: `Select(...)`
 - Limit: `Take(...)`
 - Terminal: `FirstOrDefault()`
+- Terminal: `Any()` / `Count()` / `Single()`
 
 The provider should translate supported predicates into per-row predicates to minimize decoding, and materialize entity `T` using schema-backed, case-insensitive field/member mapping.
 
@@ -110,6 +111,14 @@ Phase 3 must support `.dbd`-declared virtual fields exactly as they appear in th
 
 - `$noninline,id$` virtual `ID`: maps to the row's logical primary key (`Wdc5Row.Id`) regardless of dense/sparse.
 - `$noninline,relation$` fields: map to WDC5 parent lookup reference IDs per row ("ReferenceData"), enabling filtering/materialization of relation IDs even when the physical column is not inline.
+
+#### 3.4 Multi-table Context and Schema Exposure
+
+To make Phase 4 (navigation/joins) straightforward, Phase 3 should also provide:
+
+- A multi-table context (`Db2Database` or similar) that can **auto-open tables by name** via an `IDb2StreamProvider` (filesystem implementation now; CASC later).
+- Table caching so repeated opens reuse parsed `Wdc5File` + schema.
+- Schema metadata exposure on the query surface (e.g., `Db2Table<T>.Schema`) for relation discovery.
 
 ### Phase 4: Relationships, Navigation, and Joins
 

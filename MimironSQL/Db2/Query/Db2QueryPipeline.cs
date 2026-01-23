@@ -9,6 +9,9 @@ internal enum Db2FinalOperator
 {
     None = 0,
     FirstOrDefault,
+    Any,
+    Count,
+    Single,
 }
 
 internal abstract record Db2QueryOperation;
@@ -35,11 +38,28 @@ internal sealed record Db2QueryPipeline(
         var finalElementType = GetSequenceElementType(expression.Type) ?? expression.Type;
 
         var expressionWithoutFinal = expression;
-        if (expression is MethodCallExpression { Method.DeclaringType: { } declaring } m0 && declaring == typeof(Queryable) && m0.Method.Name == nameof(Queryable.FirstOrDefault))
+        if (expression is MethodCallExpression { Method.DeclaringType: { } declaring } m0 && declaring == typeof(Queryable))
         {
-            finalOperator = Db2FinalOperator.FirstOrDefault;
-            finalElementType = m0.Method.ReturnType;
-            expressionWithoutFinal = m0.Arguments[0];
+            if (m0.Method.Name is nameof(Queryable.FirstOrDefault) or nameof(Queryable.Any) or nameof(Queryable.Count) or nameof(Queryable.Single))
+            {
+                finalOperator = m0.Method.Name switch
+                {
+                    nameof(Queryable.FirstOrDefault) => Db2FinalOperator.FirstOrDefault,
+                    nameof(Queryable.Any) => Db2FinalOperator.Any,
+                    nameof(Queryable.Count) => Db2FinalOperator.Count,
+                    nameof(Queryable.Single) => Db2FinalOperator.Single,
+                    _ => Db2FinalOperator.None,
+                };
+
+                finalElementType = m0.Method.ReturnType;
+                expressionWithoutFinal = m0.Arguments[0];
+
+                if (m0.Arguments.Count == 2)
+                {
+                    var finalPredicate = UnquoteLambda(m0.Arguments[1]);
+                    opsReversed.Add(new Db2WhereOperation(finalPredicate));
+                }
+            }
         }
 
         var current = expressionWithoutFinal;
@@ -48,8 +68,8 @@ internal sealed record Db2QueryPipeline(
         {
             var name = m.Method.Name;
 
-            if (name == nameof(Queryable.FirstOrDefault))
-                throw new NotSupportedException("FirstOrDefault must be the terminal operator for this provider.");
+            if (name is nameof(Queryable.FirstOrDefault) or nameof(Queryable.Any) or nameof(Queryable.Count) or nameof(Queryable.Single))
+                throw new NotSupportedException($"{name} must be the terminal operator for this provider.");
 
             if (name == nameof(Queryable.Where))
             {

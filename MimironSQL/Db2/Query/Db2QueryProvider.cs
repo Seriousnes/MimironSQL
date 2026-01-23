@@ -115,18 +115,26 @@ internal sealed class Db2QueryProvider<TEntity>(Wdc5File file, Db2TableSchema sc
     private TResult ExecuteScalar<TResult>(Expression expression)
     {
         var pipeline = Db2QueryPipeline.Parse(expression);
-        if (pipeline.FinalOperator is not Db2FinalOperator.FirstOrDefault)
-            throw new NotSupportedException($"Unsupported scalar operator: {pipeline.FinalOperator}.");
+        if (!TryGetEnumerableElementType(pipeline.ExpressionWithoutFinalOperator.Type, out var sequenceElementType))
+            throw new NotSupportedException("Unable to determine sequence element type for scalar execution.");
 
-        var elementType = pipeline.FinalElementType;
-        var enumerable = Execute(expressionWithFinalStripped: pipeline.ExpressionWithoutFinalOperator, elementType);
+        var enumerable = Execute(expressionWithFinalStripped: pipeline.ExpressionWithoutFinalOperator, sequenceElementType);
 
-        var firstOrDefault = typeof(Enumerable)
+        var methodName = pipeline.FinalOperator switch
+        {
+            Db2FinalOperator.FirstOrDefault => nameof(Enumerable.FirstOrDefault),
+            Db2FinalOperator.Any => nameof(Enumerable.Any),
+            Db2FinalOperator.Count => nameof(Enumerable.Count),
+            Db2FinalOperator.Single => nameof(Enumerable.Single),
+            _ => throw new NotSupportedException($"Unsupported scalar operator: {pipeline.FinalOperator}."),
+        };
+
+        var scalar = typeof(Enumerable)
             .GetMethods(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static)
-            .Single(m => m.Name == nameof(Enumerable.FirstOrDefault) && m.GetParameters().Length == 1)
-            .MakeGenericMethod(elementType);
+            .Single(m => m.Name == methodName && m.GetParameters().Length == 1)
+            .MakeGenericMethod(sequenceElementType);
 
-        return (TResult)firstOrDefault.Invoke(null, [enumerable])!;
+        return (TResult)scalar.Invoke(null, [enumerable])!;
     }
 
     private object Execute(Expression expressionWithFinalStripped, Type elementType)

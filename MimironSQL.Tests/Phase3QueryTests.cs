@@ -106,7 +106,7 @@ public sealed class Phase3QueryTests
     {
         using var stream = TestDataPaths.OpenAccountStoreCategoryDb2();
 
-        var provider = new FileSystemDbdProvider(new FileSystemDbdProviderOptions(TestDataPaths.GetTestDataDirectory()));
+        var provider = new FileSystemDbdProvider(new(TestDataPaths.GetTestDataDirectory()));
         var db = new Db2Database(provider);
 
         var categories = db.OpenTable<AccountStoreCategoryRow>("AccountStoreCategory", stream);
@@ -117,6 +117,26 @@ public sealed class Phase3QueryTests
 
         first.ShouldNotBeNull();
         first!.Id.ShouldBeGreaterThan(0);
+    }
+
+    [Fact]
+    public void Can_auto_open_tables_by_name_and_use_any_count_single()
+    {
+        var testDataDir = TestDataPaths.GetTestDataDirectory();
+
+        var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
+        var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
+        var db = new Db2Database(dbdProvider, db2Provider);
+
+        var map = db.OpenTable<MapRow>("Map");
+
+        map.Schema.TableName.ShouldBe("Map");
+
+        map.Any().ShouldBeTrue();
+        map.Count().ShouldBeGreaterThan(0);
+
+        var single = map.Where(x => x.Id == x.Id).Take(1).Single();
+        single.ShouldNotBeNull();
     }
 
     private sealed class MapRow

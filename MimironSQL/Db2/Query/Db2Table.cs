@@ -11,7 +11,7 @@ namespace MimironSQL.Db2.Query;
 public sealed class Db2Table<T> : IQueryable<T>
 {
     internal Wdc5File File { get; }
-    internal Db2TableSchema Schema { get; }
+    public Db2TableSchema Schema { get; }
 
     private readonly Db2QueryProvider<T> _provider;
 

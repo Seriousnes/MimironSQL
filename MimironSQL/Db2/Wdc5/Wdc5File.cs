@@ -270,12 +270,19 @@ public sealed class Wdc5File
                 }
 
                 // parent lookup data (parsed only enough to advance stream)
+                var parentLookupEntries = new Dictionary<int, int>();
                 if (section.ParentLookupDataSize > 0)
                 {
                     var numRecords = reader.ReadInt32();
                     _ = reader.ReadInt32(); // minId
                     _ = reader.ReadInt32(); // maxId
-                    _ = reader.ReadBytes(numRecords * 8);
+
+                    for (var i = 0; i < numRecords; i++)
+                    {
+                        var index = reader.ReadInt32();
+                        var id = reader.ReadInt32();
+                        parentLookupEntries[index] = id;
+                    }
                 }
 
                 // if OffsetMap exists but we didn't read sparse index earlier, WDC5 can have it here too
@@ -304,6 +311,7 @@ public sealed class Wdc5File
                         StringTableBytes = stringTableBytes,
                         IndexData = indexData,
                         CopyData = copyData,
+                        ParentLookupEntries = parentLookupEntries,
                         SparseEntries = sparseEntries,
                         SparseRecordStartBits = sparseStarts,
                         TactKey = tactKey,
@@ -345,7 +353,12 @@ public sealed class Wdc5File
             {
                 var reader = CreateReaderAtRowStart(section, rowIndex);
                 var id = GetVirtualId(section, rowIndex, reader);
-                yield return new Wdc5Row(this, section, reader, globalIndex, rowIndex, id, sourceId: id);
+                var referenceKey = Header.Flags.HasFlag(Db2Flags.SecondaryKey) && section.IndexData.Length != 0
+                    ? section.IndexData[rowIndex]
+                    : rowIndex;
+
+                _ = section.ParentLookupEntries.TryGetValue(referenceKey, out var referenceId);
+                yield return new Wdc5Row(this, section, reader, globalIndex, rowIndex, id, sourceId: id, referenceId);
                 globalIndex++;
             }
         }
@@ -368,7 +381,13 @@ public sealed class Wdc5File
 
         var section = ParsedSections[location.SectionIndex];
         var reader = CreateReaderAtRowStart(section, location.RowIndexInSection);
-        row = new Wdc5Row(this, section, reader, globalRowIndex: location.GlobalRecordIndex, rowIndexInSection: location.RowIndexInSection, id: requestedId, sourceId: id);
+
+        var referenceKey = Header.Flags.HasFlag(Db2Flags.SecondaryKey) && section.IndexData.Length != 0
+            ? section.IndexData[location.RowIndexInSection]
+            : location.RowIndexInSection;
+
+        _ = section.ParentLookupEntries.TryGetValue(referenceKey, out var referenceId);
+        row = new Wdc5Row(this, section, reader, globalRowIndex: location.GlobalRecordIndex, rowIndexInSection: location.RowIndexInSection, id: requestedId, sourceId: id, referenceId);
         return true;
     }
 

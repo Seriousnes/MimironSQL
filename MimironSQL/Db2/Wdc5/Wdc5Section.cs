@@ -18,6 +18,7 @@ public sealed class Wdc5Section
     public byte[] StringTableBytes { get; init; } = Array.Empty<byte>();
     public int[] IndexData { get; init; } = Array.Empty<int>();
     public Dictionary<int, int> CopyData { get; init; } = new();
+    public Dictionary<int, int> ParentLookupEntries { get; init; } = new();
     public SparseEntry[] SparseEntries { get; init; } = Array.Empty<SparseEntry>();
     public int[] SparseRecordStartBits { get; init; } = Array.Empty<int>();
 
@@ -25,6 +26,7 @@ public sealed class Wdc5Section
     public bool IsDecryptable => IsEncrypted && !TactKey.IsEmpty;
     public int NumRecords => Header.NumRecords;
     public bool HasIndexData => Header.IndexDataSize > 0;
+    public bool HasParentLookupData => Header.ParentLookupDataSize > 0;
 
     public static int[] BuildSparseRecordStartBits(SparseEntry[] entries, int sectionFileOffset, int recordDataSizeBytes)
     {

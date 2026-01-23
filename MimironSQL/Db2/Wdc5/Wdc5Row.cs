@@ -22,8 +22,9 @@ public readonly struct Wdc5Row
     public int RowIndexInSection { get; }
     public int Id { get; }
     public int SourceId { get; }
+    public int ReferenceId { get; }
 
-    internal Wdc5Row(Wdc5File file, Wdc5Section section, BitReader reader, int globalRowIndex, int rowIndexInSection, int id, int sourceId)
+    internal Wdc5Row(Wdc5File file, Wdc5Section section, BitReader reader, int globalRowIndex, int rowIndexInSection, int id, int sourceId, int referenceId)
     {
         _file = file;
         _section = section;
@@ -32,6 +33,61 @@ public readonly struct Wdc5Row
         RowIndexInSection = rowIndexInSection;
         Id = id;
         SourceId = sourceId;
+        ReferenceId = referenceId;
+    }
+
+    internal bool TryGetDenseStringTableIndex(int fieldIndex, out int stringTableIndex)
+    {
+        if (_file.Header.Flags.HasFlag(Db2Flags.Sparse))
+        {
+            stringTableIndex = -1;
+            return false;
+        }
+
+        if ((uint)fieldIndex >= (uint)_file.Header.FieldsCount)
+            throw new ArgumentOutOfRangeException(nameof(fieldIndex));
+
+        var rowStartInSection = _reader.OffsetBytes + (_reader.PositionBits >> 3);
+        var fieldBitOffset = _file.ColumnMeta[fieldIndex].RecordOffset;
+
+        DecryptedRowLease decrypted = default;
+        try
+        {
+            var isDecrypted = _section.IsDecryptable;
+            var localReader = isDecrypted
+                ? (decrypted = DecryptRowBytes()).Reader
+                : MoveToFieldStart(fieldIndex);
+
+            if (isDecrypted)
+                localReader.PositionBits = fieldBitOffset;
+
+            ref readonly var fieldMeta = ref _file.FieldMeta[fieldIndex];
+            ref readonly var columnMeta = ref _file.ColumnMeta[fieldIndex];
+
+            if (columnMeta.CompressionType is not (CompressionType.None or CompressionType.Immediate or CompressionType.SignedImmediate))
+            {
+                stringTableIndex = -1;
+                return false;
+            }
+
+            var fieldStartInBlob = (long)_section.RecordsBaseOffsetInBlob + rowStartInSection + (fieldBitOffset >> 3);
+            var offset = Wdc5FieldDecoder.ReadScalar<int>(Id, ref localReader, fieldMeta, columnMeta, _file.PalletData[fieldIndex], _file.CommonData[fieldIndex]);
+            var stringAbsInBlob = fieldStartInBlob + offset;
+            var idx = stringAbsInBlob - _file.RecordsBlobSizeBytes;
+
+            if (idx < 0 || idx > int.MaxValue)
+            {
+                stringTableIndex = -1;
+                return false;
+            }
+
+            stringTableIndex = (int)idx;
+            return true;
+        }
+        finally
+        {
+            decrypted.Dispose();
+        }
     }
 
     public T GetScalar<T>(int fieldIndex) where T : unmanaged

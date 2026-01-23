@@ -1,11 +1,8 @@
 using MimironSQL.Db2.Schema;
 using MimironSQL.Db2.Wdc5;
 using MimironSQL.Providers;
-using System;
-using System.Collections.Generic;
-using System.IO;
+
 using System.Reflection;
-using System.Runtime.CompilerServices;
 
 namespace MimironSQL.Db2.Query;
 
@@ -39,8 +36,8 @@ public abstract class Db2Context
             if (p.SetMethod is not { IsPublic: true })
                 continue;
 
-            var tableName = p.GetCustomAttribute<Db2TableNameAttribute>()?.TableName ?? p.Name;
             var entityType = pt.GetGenericArguments()[0];
+            var tableName = entityType.GetCustomAttribute<Db2TableNameAttribute>(inherit: true)?.TableName ?? entityType.Name;
 
             var table = OpenTable(entityType, tableName);
             p.SetValue(this, table);
@@ -68,9 +65,8 @@ public abstract class Db2Context
         return new Db2Table<T>(file, schema);
     }
 
-    protected Db2Table<T> Table<T>([CallerMemberName] string? tableName = null)
+    protected Db2Table<T> Table<T>(string? tableName = null)
     {
-        ArgumentNullException.ThrowIfNull(tableName);
-        return OpenTableGeneric<T>(tableName);
+        return OpenTableGeneric<T>(tableName ?? typeof(T).Name);
     }
 }

@@ -1,6 +1,3 @@
-using System;
-using System.Collections.Generic;
-
 namespace MimironSQL.Db2.Schema;
 
 public sealed class Db2TableSchema(string tableName, uint layoutHash, int physicalColumnCount, IReadOnlyList<Db2FieldSchema> fields)

@@ -1,5 +1,3 @@
-using MimironSQL.Db2;
-
 namespace MimironSQL.Db2.Wdc5;
 
 public readonly record struct Wdc5Header(

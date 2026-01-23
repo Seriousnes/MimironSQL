@@ -1,6 +1,6 @@
 using MimironSQL.Db2.Wdc5;
+
 using Shouldly;
-using Xunit;
 
 namespace MimironSQL.Tests;
 

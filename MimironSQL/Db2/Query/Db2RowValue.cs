@@ -1,6 +1,5 @@
 using MimironSQL.Db2.Schema;
 using MimironSQL.Db2.Wdc5;
-using System;
 
 namespace MimironSQL.Db2.Query;
 
@@ -52,7 +51,12 @@ internal static class Db2RowValue
             return (T)(object)Convert.ToInt32(ReadNumericRaw(row, field));
 
         if (typeof(T) == typeof(uint))
+        {
+            if (field.IsVirtual)
+                return (T)(object)GetVirtualNumericUInt32(row, field);
+
             return (T)(object)Convert.ToUInt32(ReadNumericRaw(row, field));
+        }
 
         if (typeof(T) == typeof(long))
             return (T)(object)ReadInt64(row, accessor);
@@ -92,7 +96,7 @@ internal static class Db2RowValue
         var field = accessor.Field;
 
         if (field.IsVirtual)
-            return unchecked((ulong)GetVirtualNumeric(row, field));
+            return GetVirtualNumericUInt32(row, field);
 
         return field.ValueType switch
         {
@@ -125,6 +129,20 @@ internal static class Db2RowValue
 
         if (field.IsRelation)
             return row.ReferenceId;
+
+        throw new NotSupportedException($"Unsupported virtual field '{field.Name}'.");
+    }
+
+    private static uint GetVirtualNumericUInt32(Wdc5Row row, Db2FieldSchema field)
+    {
+        if (!field.IsVirtual)
+            throw new InvalidOperationException("Expected a virtual field.");
+
+        if (field.IsId)
+            return unchecked((uint)row.Id);
+
+        if (field.IsRelation)
+            return unchecked((uint)row.ReferenceId);
 
         throw new NotSupportedException($"Unsupported virtual field '{field.Name}'.");
     }

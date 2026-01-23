@@ -1,7 +1,3 @@
-using MimironSQL.Db2;
-using System;
-using System.Collections.Generic;
-
 namespace MimironSQL.Db2.Wdc5;
 
 public sealed class Wdc5Section

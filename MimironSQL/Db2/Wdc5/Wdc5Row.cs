@@ -1,16 +1,13 @@
-using MimironSQL.Db2;
-using System;
 using System.Buffers;
 using System.Buffers.Binary;
-using System.Collections.Generic;
-using System.IO;
 using System.Runtime.CompilerServices;
 using System.Text;
+
 using Security.Cryptography;
 
 namespace MimironSQL.Db2.Wdc5;
 
-public readonly struct Wdc5Row
+internal readonly struct Wdc5Row
 {
     private static readonly UTF8Encoding Utf8Strict = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
 
@@ -47,7 +44,6 @@ public readonly struct Wdc5Row
         if ((uint)fieldIndex >= (uint)_file.Header.FieldsCount)
             throw new ArgumentOutOfRangeException(nameof(fieldIndex));
 
-        var rowStartInSection = _reader.OffsetBytes + (_reader.PositionBits >> 3);
         var fieldBitOffset = _file.ColumnMeta[fieldIndex].RecordOffset;
 
         DecryptedRowLease decrypted = default;
@@ -64,18 +60,31 @@ public readonly struct Wdc5Row
             ref readonly var fieldMeta = ref _file.FieldMeta[fieldIndex];
             ref readonly var columnMeta = ref _file.ColumnMeta[fieldIndex];
 
-            if (columnMeta.CompressionType is not (CompressionType.None or CompressionType.Immediate or CompressionType.SignedImmediate))
+            if (columnMeta.CompressionType == CompressionType.PalletArray && columnMeta.Pallet.Cardinality != 1)
             {
                 stringTableIndex = -1;
                 return false;
             }
 
-            var fieldStartInBlob = (long)_section.RecordsBaseOffsetInBlob + rowStartInSection + (fieldBitOffset >> 3);
             var offset = Wdc5FieldDecoder.ReadScalar<int>(Id, ref localReader, fieldMeta, columnMeta, _file.PalletData[fieldIndex], _file.CommonData[fieldIndex]);
-            var stringAbsInBlob = fieldStartInBlob + offset;
-            var idx = stringAbsInBlob - _file.RecordsBlobSizeBytes;
+            if (offset <= 0)
+            {
+                stringTableIndex = -1;
+                return false;
+            }
 
-            if (idx < 0 || idx > int.MaxValue)
+            var recordOffset = (long)(GlobalRowIndex * _file.Header.RecordSize) - _file.RecordsBlobSizeBytes;
+            var fieldStartBytes = (long)(_file.ColumnMeta[fieldIndex].RecordOffset >> 3);
+            var idx = recordOffset + fieldStartBytes + offset;
+
+            if (idx < _section.StringTableBaseOffset)
+            {
+                stringTableIndex = -1;
+                return false;
+            }
+
+            var sectionEndExclusive = (long)_section.StringTableBaseOffset + _section.Header.StringTableSize;
+            if (idx >= sectionEndExclusive || idx > int.MaxValue)
             {
                 stringTableIndex = -1;
                 return false;
@@ -157,7 +166,6 @@ public readonly struct Wdc5Row
         if ((uint)fieldIndex >= (uint)_file.Header.FieldsCount)
             throw new ArgumentOutOfRangeException(nameof(fieldIndex));
 
-        var rowStartInSection = _reader.OffsetBytes + (_reader.PositionBits >> 3);
         var fieldBitOffset = _file.ColumnMeta[fieldIndex].RecordOffset;
 
         DecryptedRowLease decrypted = default;
@@ -174,32 +182,46 @@ public readonly struct Wdc5Row
             ref readonly var fieldMeta = ref _file.FieldMeta[fieldIndex];
             ref readonly var columnMeta = ref _file.ColumnMeta[fieldIndex];
 
-            if (columnMeta.CompressionType is not (CompressionType.None or CompressionType.Immediate or CompressionType.SignedImmediate))
+            if (columnMeta.CompressionType == CompressionType.PalletArray && columnMeta.Pallet.Cardinality != 1)
             {
                 value = string.Empty;
                 return false;
             }
 
-            var fieldStartInBlob = (long)_section.RecordsBaseOffsetInBlob + rowStartInSection + (fieldBitOffset >> 3);
             var offset = Wdc5FieldDecoder.ReadScalar<int>(Id, ref localReader, fieldMeta, columnMeta, _file.PalletData[fieldIndex], _file.CommonData[fieldIndex]);
-            var stringAbsInBlob = fieldStartInBlob + offset;
-
-            var stringIndex = stringAbsInBlob - _file.RecordsBlobSizeBytes;
-
-            // In WDC2+, an offset of 0 commonly represents an empty string, which produces a negative index.
-            if (stringIndex < 0)
+            if (offset == 0)
             {
                 value = string.Empty;
                 return true;
             }
 
-            if (stringIndex > int.MaxValue)
+            if (offset < 0)
             {
                 value = string.Empty;
                 return false;
             }
 
-            return TryReadNullTerminatedUtf8(_file.DenseStringTableBytes, startIndex: (int)stringIndex, endExclusive: _file.DenseStringTableBytes.Length, out value);
+            var recordOffset = (long)(GlobalRowIndex * _file.Header.RecordSize) - _file.RecordsBlobSizeBytes;
+            var fieldStartBytes = (long)(_file.ColumnMeta[fieldIndex].RecordOffset >> 3);
+            var stringIndex = recordOffset + fieldStartBytes + offset;
+
+            if (stringIndex < 0)
+                stringIndex = 0;
+
+            if (stringIndex < _section.StringTableBaseOffset)
+            {
+                value = string.Empty;
+                return false;
+            }
+
+            var sectionEndExclusive = _section.StringTableBaseOffset + _section.Header.StringTableSize;
+            if (stringIndex >= sectionEndExclusive || stringIndex > int.MaxValue)
+            {
+                value = string.Empty;
+                return false;
+            }
+
+            return TryReadNullTerminatedUtf8(_file.DenseStringTableBytes, startIndex: (int)stringIndex, endExclusive: sectionEndExclusive, out value);
         }
         finally
         {
@@ -207,7 +229,7 @@ public readonly struct Wdc5Row
         }
     }
 
-    public bool TryGetInlineString(int fieldIndex, out string value)
+    public bool TryGetInlineString(int fieldIndex, out string? value)
     {
         if (!_file.Header.Flags.HasFlag(Db2Flags.Sparse))
         {
@@ -218,73 +240,72 @@ public readonly struct Wdc5Row
         if ((uint)fieldIndex >= (uint)_file.Header.FieldsCount)
             throw new ArgumentOutOfRangeException(nameof(fieldIndex));
 
-        var originalRowStartInSection = _reader.OffsetBytes + (_reader.PositionBits >> 3);
+        var rowStartInSection = _reader.OffsetBytes + (_reader.PositionBits >> 3);
         var rowSizeBytes = (int)_section.SparseEntries[RowIndexInSection].Size;
 
         ReadOnlySpan<byte> recordBytes = _section.RecordsData;
-        var rowEndExclusive = originalRowStartInSection + rowSizeBytes;
-
-        var localReader = MoveToFieldStart(fieldIndex);
+        var rowEndExclusive = rowStartInSection + rowSizeBytes;
 
         DecryptedRowLease decrypted = default;
         try
         {
+            var localReader = _reader;
+            localReader.PositionBits = _reader.PositionBits;
+
             if (_section.IsDecryptable)
             {
                 decrypted = DecryptRowBytes();
                 recordBytes = decrypted.Bytes.AsSpan(0, rowSizeBytes);
                 rowEndExclusive = rowSizeBytes;
+                rowStartInSection = 0;
 
                 localReader = decrypted.Reader;
-                localReader.PositionBits = _file.ColumnMeta[fieldIndex].RecordOffset;
+                localReader.PositionBits = 0;
             }
 
-            ref readonly var fieldMeta = ref _file.FieldMeta[fieldIndex];
-            ref readonly var columnMeta = ref _file.ColumnMeta[fieldIndex];
+            for (var i = 0; i < fieldIndex; i++)
+                SkipSparseField(ref localReader, i, recordBytes, rowStartInSection, rowEndExclusive);
 
-            // A) Inline string at field start.
             var fieldStart = localReader.OffsetBytes + (localReader.PositionBits >> 3);
             if ((uint)fieldStart < (uint)rowEndExclusive && TryReadNullTerminatedUtf8(recordBytes, startIndex: fieldStart, endExclusive: rowEndExclusive, out value))
                 return true;
 
-            // B) Offset-based string inside the row.
-            if (columnMeta.CompressionType is not (CompressionType.None or CompressionType.Immediate or CompressionType.SignedImmediate))
-            {
-                value = string.Empty;
-                return false;
-            }
-
-            var fieldBitOffset = _file.ColumnMeta[fieldIndex].RecordOffset;
-            var fieldStartInBlob = (long)_section.RecordsBaseOffsetInBlob + originalRowStartInSection + (fieldBitOffset >> 3);
-            var offset = Wdc5FieldDecoder.ReadScalar<int>(Id, ref localReader, fieldMeta, columnMeta, _file.PalletData[fieldIndex], _file.CommonData[fieldIndex]);
-            var stringAbsInBlob = fieldStartInBlob + offset;
-
-            if (stringAbsInBlob < 0 || stringAbsInBlob > _file.RecordsBlobSizeBytes)
-            {
-                value = string.Empty;
-                return false;
-            }
-
-            var stringStartInSection = (long)stringAbsInBlob - _section.RecordsBaseOffsetInBlob;
-            if (stringStartInSection < 0 || stringStartInSection > int.MaxValue)
-            {
-                value = string.Empty;
-                return false;
-            }
-
-            var stringStart = (int)stringStartInSection;
-            if ((uint)stringStart < (uint)originalRowStartInSection || (uint)stringStart >= (uint)(originalRowStartInSection + rowSizeBytes))
-            {
-                value = string.Empty;
-                return false;
-            }
-
-            var mappedStart = _section.IsDecryptable ? stringStart - originalRowStartInSection : stringStart;
-            return TryReadNullTerminatedUtf8(recordBytes, startIndex: mappedStart, endExclusive: rowEndExclusive, out value);
+            value = null;
+            return false;
         }
         finally
         {
             decrypted.Dispose();
+        }
+    }
+
+    private void SkipSparseField(ref BitReader reader, int fieldIndex, ReadOnlySpan<byte> recordBytes, int rowStartInSection, int rowEndExclusive)
+    {
+        ref readonly var fieldMeta = ref _file.FieldMeta[fieldIndex];
+        ref readonly var columnMeta = ref _file.ColumnMeta[fieldIndex];
+
+        if (columnMeta.CompressionType == CompressionType.None)
+        {
+            var bitSize = 32 - fieldMeta.Bits;
+            if (bitSize <= 0)
+                bitSize = columnMeta.Immediate.BitWidth;
+
+            if (bitSize == 32)
+            {
+                var currentBytePos = reader.OffsetBytes + (reader.PositionBits >> 3);
+                var terminatorIndex = recordBytes[currentBytePos..rowEndExclusive].IndexOf((byte)0);
+                if (terminatorIndex >= 0)
+                {
+                    reader.PositionBits += (terminatorIndex + 1) * 8;
+                    return;
+                }
+            }
+
+            reader.PositionBits += bitSize;
+        }
+        else
+        {
+            _ = Wdc5FieldDecoder.ReadScalar<long>(Id, ref reader, fieldMeta, columnMeta, _file.PalletData[fieldIndex], _file.CommonData[fieldIndex]);
         }
     }
 
@@ -301,16 +322,22 @@ public readonly struct Wdc5Row
 
         var span = bytes.Slice(startIndex, endExclusive - startIndex);
         var terminatorIndex = span.IndexOf((byte)0);
-        if (terminatorIndex <= 0)
+        if (terminatorIndex < 0)
         {
             value = string.Empty;
             return false;
         }
 
+        if (terminatorIndex == 0)
+        {
+            value = string.Empty;
+            return true;
+        }
+
         try
         {
             value = Utf8Strict.GetString(span[..terminatorIndex]);
-            return !string.IsNullOrWhiteSpace(value);
+            return true;
         }
         catch (DecoderFallbackException)
         {

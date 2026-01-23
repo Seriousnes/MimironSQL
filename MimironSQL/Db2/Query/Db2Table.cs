@@ -1,10 +1,9 @@
 using MimironSQL.Db2.Schema;
 using MimironSQL.Db2.Wdc5;
-using System;
+
 using System.Collections;
-using System.Collections.Generic;
-using System.Linq;
 using System.Linq.Expressions;
+using System.Numerics;
 
 namespace MimironSQL.Db2.Query;
 
@@ -31,4 +30,16 @@ public sealed class Db2Table<T> : IQueryable<T>
         => ((IEnumerable<T>)_provider.Execute<IEnumerable<T>>(Expression)).GetEnumerator();
 
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+
+    public T? Find<TId>(TId id)
+        where TId : IBinaryInteger<TId>
+    {
+        if (!typeof(global::MimironSQL.Db2.Wdc5Entity<TId>).IsAssignableFrom(typeof(T)))
+            throw new NotSupportedException($"Entity type {typeof(T).FullName} must derive from {typeof(global::MimironSQL.Db2.Wdc5Entity<TId>).FullName} to use Find with key type {typeof(TId).FullName}.");
+
+        if (!File.TryGetRowById(id, out var row))
+            return default;
+
+        return _provider.Materialize(row);
+    }
 }

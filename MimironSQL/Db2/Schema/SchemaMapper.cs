@@ -1,14 +1,10 @@
 using MimironSQL.Db2.Schema.Dbd;
 using MimironSQL.Db2.Wdc5;
 using MimironSQL.Providers;
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
 
 namespace MimironSQL.Db2.Schema;
 
-public sealed class SchemaMapper(IDbdProvider dbdProvider)
+internal sealed class SchemaMapper(IDbdProvider dbdProvider)
 {
     public Db2TableSchema GetSchema(string tableName, Wdc5File file)
     {

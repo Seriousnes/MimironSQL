@@ -1,5 +1,3 @@
-using System;
-
 namespace MimironSQL.Db2;
 
 [Flags]

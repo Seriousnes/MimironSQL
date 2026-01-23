@@ -2,12 +2,10 @@ using MimironSQL.Db2.Schema;
 using MimironSQL.Db2.Schema.Dbd;
 using MimironSQL.Db2.Wdc5;
 using MimironSQL.Providers;
+
 using Shouldly;
-using System;
-using System.Collections.Generic;
-using System.IO;
+
 using System.Text;
-using Xunit;
 
 namespace MimironSQL.Tests;
 

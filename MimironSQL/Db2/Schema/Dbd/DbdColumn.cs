@@ -1,5 +1,3 @@
-using System;
-
 namespace MimironSQL.Db2.Schema.Dbd;
 
 internal readonly record struct DbdColumn(Db2ValueType ValueType, string? ReferencedTableName, bool IsVerified);

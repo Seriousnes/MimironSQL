@@ -1,7 +1,3 @@
-using System;
-using System.Collections.Generic;
-using System.IO;
-
 namespace MimironSQL.Db2.Schema.Dbd;
 
 internal sealed class DbdFile(Dictionary<string, DbdColumn> columnsByName, List<DbdLayout> layouts)

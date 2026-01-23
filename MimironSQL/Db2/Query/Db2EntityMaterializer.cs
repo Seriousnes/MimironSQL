@@ -1,8 +1,6 @@
 using MimironSQL.Db2.Schema;
 using MimironSQL.Db2.Wdc5;
-using System;
-using System.Collections.Generic;
-using System.Linq;
+
 using System.Linq.Expressions;
 using System.Reflection;
 

@@ -1,5 +1,3 @@
-using System;
-
 namespace MimironSQL.Providers;
 
 public interface ITactKeyProvider

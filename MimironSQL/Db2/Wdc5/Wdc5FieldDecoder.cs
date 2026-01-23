@@ -1,5 +1,3 @@
-using System;
-using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 
 namespace MimironSQL.Db2.Wdc5;

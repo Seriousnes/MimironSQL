@@ -1,8 +1,7 @@
 using MimironSQL.Db2.Wdc5;
 using MimironSQL.Providers;
+
 using Shouldly;
-using System.Linq;
-using Xunit;
 
 namespace MimironSQL.Tests;
 

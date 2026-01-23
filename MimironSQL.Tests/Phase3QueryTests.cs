@@ -1,11 +1,11 @@
 using MimironSQL.Db2.Query;
 using MimironSQL.Db2.Schema;
 using MimironSQL.Db2.Wdc5;
+using MimironSQL.Db2;
 using MimironSQL.Providers;
+
 using Shouldly;
-using System;
-using System.Linq;
-using Xunit;
+using MimironSQL.Tests.Fixtures;
 
 namespace MimironSQL.Tests;
 
@@ -137,37 +137,157 @@ public sealed class Phase3QueryTests
         single.ShouldNotBeNull();
     }
 
-    private sealed class Map
+    [Fact]
+    public void Phase35_prunes_scalar_projection_without_entity_materialization()
     {
-        public int Id { get; set; }
-        public string Directory { get; set; } = string.Empty;
-        public string MapName_lang { get; set; } = string.Empty;
+        MapWithCtor.InstancesCreated = 0;
+
+        var testDataDir = TestDataPaths.GetTestDataDirectory();
+
+        var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
+        var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
+        var context = new PruningTestDb2Context(dbdProvider, db2Provider);
+
+        var ids = context.Map
+            .Where(x => x.Id > 0)
+            .Select(x => x.Id)
+            .Take(10)
+            .ToArray();
+
+        ids.Length.ShouldBeGreaterThan(0);
+        MapWithCtor.InstancesCreated.ShouldBe(0);
     }
 
-    private sealed class Spell
+    [Fact]
+    public void Phase35_prunes_anonymous_and_dto_projections_without_entity_materialization()
     {
-        public int Id { get; set; }
+        MapWithCtor.InstancesCreated = 0;
+
+        var testDataDir = TestDataPaths.GetTestDataDirectory();
+
+        var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
+        var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
+        var context = new PruningTestDb2Context(dbdProvider, db2Provider);
+
+        var anon = context.Map
+            .Where(x => x.Id > 0)
+            .Select(x => new { x.Id, x.Directory })
+            .Take(5)
+            .ToArray();
+
+        anon.Length.ShouldBeGreaterThan(0);
+        anon.All(x => x.Id > 0).ShouldBeTrue();
+
+        var dtos = context.Map
+            .Where(x => x.Id > 0)
+            .Select(x => new MapDto(x.Id, x.Directory))
+            .Take(5)
+            .ToArray();
+
+        dtos.Length.ShouldBeGreaterThan(0);
+        dtos.All(x => x.Id > 0).ShouldBeTrue();
+        MapWithCtor.InstancesCreated.ShouldBe(0);
     }
 
-    private sealed class CollectableSourceQuestSparse
+    [Fact]
+    public void Phase35_does_not_prune_when_where_is_after_select_shape_2()
     {
-        public int Id { get; set; }
-        public int QuestID { get; set; }
-        public int CollectableSourceInfoID { get; set; }
+        MapWithCtor.InstancesCreated = 0;
+
+        var testDataDir = TestDataPaths.GetTestDataDirectory();
+
+        var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
+        var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
+        var context = new PruningTestDb2Context(dbdProvider, db2Provider);
+
+        var ids = context.Map
+            .Select(x => x.Id)
+            .Where(id => id > 0)
+            .Take(5)
+            .ToArray();
+
+        ids.Length.ShouldBeGreaterThan(0);
+        MapWithCtor.InstancesCreated.ShouldBeGreaterThan(0);
     }
 
-    private sealed class AccountStoreCategory
+    [Fact]
+    public void Find_returns_entity_when_present()
     {
-        public int Id { get; set; }
-        public int StoreFrontID { get; set; }
-        public string Name_lang { get; set; } = string.Empty;
+        var testDataDir = TestDataPaths.GetTestDataDirectory();
+
+        var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
+        var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
+        var context = new TestDb2Context(dbdProvider, db2Provider);
+
+        var id = context.Spell.Select(x => x.Id).Take(1).ToArray()[0];
+        var found = context.Spell.Find(id);
+
+        found.ShouldNotBeNull();
+        found!.Id.ShouldBe(id);
     }
 
-    private sealed class TestDb2Context(IDbdProvider dbdProvider, IDb2StreamProvider db2StreamProvider) : Db2Context(dbdProvider, db2StreamProvider)
+    [Fact]
+    public void Find_returns_null_when_missing()
     {
-        public Db2Table<Map> Map { get; init; } = null!;
-        public Db2Table<Spell> Spell { get; init; } = null!;
-        public Db2Table<CollectableSourceQuestSparse> CollectableSourceQuestSparse { get; init; } = null!;
-        public Db2Table<AccountStoreCategory> AccountStoreCategory { get; init; } = null!;
+        var testDataDir = TestDataPaths.GetTestDataDirectory();
+
+        var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
+        var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
+        var context = new TestDb2Context(dbdProvider, db2Provider);
+
+        var file = context.Spell.File;
+
+        var missing = int.MaxValue;
+        for (var i = 0; i < 1_000 && file.TryGetRowById(missing, out _); i++)
+            missing--;
+
+        file.TryGetRowById(missing, out _).ShouldBeFalse();
+
+        var found = context.Spell.Find(missing);
+        found.ShouldBeNull();
     }
+
+    [Fact]
+    public void Find_supports_byte_ids()
+    {
+        var testDataDir = TestDataPaths.GetTestDataDirectory();
+
+        var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
+        var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
+        var context = new TestDb2Context(dbdProvider, db2Provider);
+
+        var id = context.GarrType.Select(x => x.Id).Take(1).ToArray()[0];
+        var found = context.GarrType.Find(id);
+
+        found.ShouldNotBeNull();
+        found!.Id.ShouldBe(id);
+    }
+
+    [Theory]
+    [InlineData(107, "Passive", "Gives a chance to block enemy melee and ranged attacks.", null)]
+    [InlineData(35200, "Shapeshift", "Shapeshifts into a roc for $d., increasing armor and hit points, as well as allowing the use of various bear abilities.", "Shapeshifted into roc.\r\nArmor and hit points increased.")]
+    public void Spell_materialization_matches_raw_row_for_layout_E3D134FB(int id, string? expectedNameSubtext, string? expectedDescription, string? expectedAuraDescription)
+    {
+        var testDataDir = TestDataPaths.GetTestDataDirectory();
+
+        var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
+        var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
+        var context = new TestDb2Context(dbdProvider, db2Provider);
+
+        var expected = new Spell
+        {
+            Id = id,
+            NameSubtext_lang = expectedNameSubtext ?? string.Empty,
+            Description_lang = expectedDescription ?? string.Empty,
+            AuraDescription_lang = expectedAuraDescription ?? string.Empty
+        };
+
+        var byFind = context.Spell.Find(id);
+        byFind.ShouldNotBeNull();
+        byFind.ShouldBeEquivalentTo(expected);
+
+        var byQuery = context.Spell.Where(s => s.Id == id).SingleOrDefault();
+        byQuery.ShouldNotBeNull();
+        byQuery.ShouldBeEquivalentTo(expected);
+    }    
 }

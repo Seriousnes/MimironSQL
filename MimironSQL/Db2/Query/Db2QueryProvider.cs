@@ -1,9 +1,7 @@
 using MimironSQL.Db2.Schema;
 using MimironSQL.Db2.Wdc5;
-using System;
+
 using System.Collections;
-using System.Collections.Generic;
-using System.Linq;
 using System.Linq.Expressions;
 
 namespace MimironSQL.Db2.Query;
@@ -11,6 +9,8 @@ namespace MimironSQL.Db2.Query;
 internal sealed class Db2QueryProvider<TEntity>(Wdc5File file, Db2TableSchema schema) : IQueryProvider
 {
     private readonly Db2EntityMaterializer<TEntity> _materializer = new(schema);
+
+    internal TEntity Materialize(Wdc5Row row) => _materializer.Materialize(row);
 
     public IQueryable CreateQuery(Expression expression)
     {
@@ -64,6 +64,8 @@ internal sealed class Db2QueryProvider<TEntity>(Wdc5File file, Db2TableSchema sc
             .Select(op => (Expression<Func<TEntity, bool>>)op.Predicate)
             .ToArray();
 
+        var selectOp = selectIndex < ops.Count ? ops[selectIndex] as Db2SelectOperation : null;
+
         var preTake = ops
             .Take(selectIndex)
             .OfType<Db2TakeOperation>()
@@ -83,6 +85,22 @@ internal sealed class Db2QueryProvider<TEntity>(Wdc5File file, Db2TableSchema sc
                 continue;
 
             postOps.Add(op);
+        }
+
+        if (selectOp is not null)
+        {
+            var canAttemptPrune =
+                selectOp.Selector.Parameters.Count == 1 &&
+                selectOp.Selector.Parameters[0].Type == typeof(TEntity) &&
+                selectOp.Selector.ReturnType == typeof(TElement) &&
+                postOps.All(op => op is not Db2WhereOperation) &&
+                postOps.Count(op => op is Db2SelectOperation) <= 1;
+
+            if (canAttemptPrune)
+            {
+                if (TryExecuteEnumerablePruned(expression, preEntityWhere, stopAfter, selectOp.Selector, postOps, out var pruned))
+                    return (IEnumerable<TElement>)pruned;
+            }
         }
 
         IEnumerable<TEntity> baseEntities = EnumerateEntities(preEntityWhere, stopAfter);
@@ -112,6 +130,101 @@ internal sealed class Db2QueryProvider<TEntity>(Wdc5File file, Db2TableSchema sc
         return (IEnumerable<TElement>)current;
     }
 
+    private bool TryExecuteEnumerablePruned(
+        Expression expression,
+        Expression<Func<TEntity, bool>>[] preEntityWhere,
+        int? stopAfter,
+        LambdaExpression selector,
+        List<Db2QueryOperation> postOps,
+        out IEnumerable result)
+    {
+        result = Array.Empty<object>();
+
+        if (selector is not Expression<Func<TEntity, TEntity>> && selector.Parameters.Count != 1)
+            return false;
+
+        var rowPredicates = new List<Func<Wdc5Row, bool>>();
+        foreach (var predicate in preEntityWhere)
+        {
+            if (!Db2RowPredicateCompiler.TryCompile(file, schema, predicate, out var rowPredicate))
+                return false;
+
+            rowPredicates.Add(rowPredicate);
+        }
+
+        var selectorReturnType = selector.ReturnType;
+        var projectorMethod = typeof(Db2QueryProvider<TEntity>).GetMethod(nameof(TryCreateProjector), System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+        var projectorGeneric = projectorMethod.MakeGenericMethod(selectorReturnType);
+        var projector = projectorGeneric.Invoke(this, [selector]) as Delegate;
+        if (projector is null)
+            return false;
+
+        var enumerateMethod = typeof(Db2QueryProvider<TEntity>).GetMethod(nameof(EnumerateProjected), System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+        var enumerateGeneric = enumerateMethod.MakeGenericMethod(selectorReturnType);
+        var projected = (IEnumerable)enumerateGeneric.Invoke(this, [rowPredicates, projector, stopAfter])!;
+
+        IEnumerable current = projected;
+        var currentElementType = selectorReturnType;
+
+        foreach (var op in postOps)
+        {
+            switch (op)
+            {
+                case Db2SelectOperation:
+                    continue;
+                case Db2TakeOperation take:
+                    current = ApplyTake(current, currentElementType, take.Count);
+                    break;
+                default:
+                    return false;
+            }
+        }
+
+        result = current;
+        return true;
+    }
+
+    private Func<Wdc5Row, TProjected>? TryCreateProjector<TProjected>(LambdaExpression selector)
+    {
+        if (selector is not Expression<Func<TEntity, TProjected>> typed)
+            return null;
+
+        return Db2RowProjectorCompiler.TryCompile(schema, typed, out var projector)
+            ? projector
+            : null;
+    }
+
+    private IEnumerable<TProjected> EnumerateProjected<TProjected>(
+        List<Func<Wdc5Row, bool>> rowPredicates,
+        Delegate projector,
+        int? take)
+    {
+        var typedProjector = (Func<Wdc5Row, TProjected>)projector;
+
+        var yielded = 0;
+        foreach (var row in file.EnumerateRows())
+        {
+            var ok = true;
+            foreach (var p in rowPredicates)
+            {
+                if (!p(row))
+                {
+                    ok = false;
+                    break;
+                }
+            }
+
+            if (!ok)
+                continue;
+
+            yield return typedProjector(row);
+
+            yielded++;
+            if (take.HasValue && yielded >= take.Value)
+                yield break;
+        }
+    }
+
     private TResult ExecuteScalar<TResult>(Expression expression)
     {
         var pipeline = Db2QueryPipeline.Parse(expression);
@@ -126,6 +239,7 @@ internal sealed class Db2QueryProvider<TEntity>(Wdc5File file, Db2TableSchema sc
             Db2FinalOperator.Any => nameof(Enumerable.Any),
             Db2FinalOperator.Count => nameof(Enumerable.Count),
             Db2FinalOperator.Single => nameof(Enumerable.Single),
+            Db2FinalOperator.SingleOrDefault => nameof(Enumerable.SingleOrDefault),
             _ => throw new NotSupportedException($"Unsupported scalar operator: {pipeline.FinalOperator}."),
         };
 

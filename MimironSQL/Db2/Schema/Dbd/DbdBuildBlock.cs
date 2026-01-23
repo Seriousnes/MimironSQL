@@ -1,5 +1,3 @@
-using System.Collections.Generic;
-
 namespace MimironSQL.Db2.Schema.Dbd;
 
 internal sealed class DbdBuildBlock(string buildLine)

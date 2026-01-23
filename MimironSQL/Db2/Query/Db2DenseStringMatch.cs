@@ -1,5 +1,4 @@
 using MimironSQL.Db2.Wdc5;
-using System.Collections.Generic;
 
 namespace MimironSQL.Db2.Query;
 

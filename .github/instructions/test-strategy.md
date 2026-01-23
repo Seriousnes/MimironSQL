@@ -1,4 +1,5 @@
 ## Testing instructions
+- **IMPORTANT** if tests are skipped because the build fails, immediately stop trying to run tests and fix the build errors
 - Use Test Driven Development (TDD)
 - Unit tests must pass locally before committing code.
 - Use xUnit as the test framework.

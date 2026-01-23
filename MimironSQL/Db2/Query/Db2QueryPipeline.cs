@@ -1,6 +1,3 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Linq.Expressions;
 
 namespace MimironSQL.Db2.Query;
@@ -12,6 +9,7 @@ internal enum Db2FinalOperator
     Any,
     Count,
     Single,
+    SingleOrDefault,
 }
 
 internal abstract record Db2QueryOperation;
@@ -40,7 +38,7 @@ internal sealed record Db2QueryPipeline(
         var expressionWithoutFinal = expression;
         if (expression is MethodCallExpression { Method.DeclaringType: { } declaring } m0 && declaring == typeof(Queryable))
         {
-            if (m0.Method.Name is nameof(Queryable.FirstOrDefault) or nameof(Queryable.Any) or nameof(Queryable.Count) or nameof(Queryable.Single))
+            if (m0.Method.Name is nameof(Queryable.FirstOrDefault) or nameof(Queryable.Any) or nameof(Queryable.Count) or nameof(Queryable.Single) or nameof(Queryable.SingleOrDefault))
             {
                 finalOperator = m0.Method.Name switch
                 {
@@ -48,6 +46,7 @@ internal sealed record Db2QueryPipeline(
                     nameof(Queryable.Any) => Db2FinalOperator.Any,
                     nameof(Queryable.Count) => Db2FinalOperator.Count,
                     nameof(Queryable.Single) => Db2FinalOperator.Single,
+                    nameof(Queryable.SingleOrDefault) => Db2FinalOperator.SingleOrDefault,
                     _ => Db2FinalOperator.None,
                 };
 
@@ -68,7 +67,7 @@ internal sealed record Db2QueryPipeline(
         {
             var name = m.Method.Name;
 
-            if (name is nameof(Queryable.FirstOrDefault) or nameof(Queryable.Any) or nameof(Queryable.Count) or nameof(Queryable.Single))
+            if (name is nameof(Queryable.FirstOrDefault) or nameof(Queryable.Any) or nameof(Queryable.Count) or nameof(Queryable.Single) or nameof(Queryable.SingleOrDefault))
                 throw new NotSupportedException($"{name} must be the terminal operator for this provider.");
 
             if (name == nameof(Queryable.Where))

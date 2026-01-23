@@ -1,14 +1,11 @@
-using MimironSQL.Db2;
-using System;
-using System.Collections.Generic;
-using System.IO;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
 
 namespace MimironSQL.Db2.Wdc5;
 
-public sealed class Wdc5File
+internal sealed class Wdc5File
 {
     private const int HeaderSize = 200;
     private const uint Wdc5Magic = 0x35434457; // "WDC5"
@@ -389,6 +386,26 @@ public sealed class Wdc5File
         _ = section.ParentLookupEntries.TryGetValue(referenceKey, out var referenceId);
         row = new Wdc5Row(this, section, reader, globalRowIndex: location.GlobalRecordIndex, rowIndexInSection: location.RowIndexInSection, id: requestedId, sourceId: id, referenceId);
         return true;
+    }
+
+    public bool TryGetRowById<TId>(TId id, out Wdc5Row row) where TId : IBinaryInteger<TId>
+    {
+        var key = id switch
+        {
+            int x => x,
+            uint x => unchecked((int)x),
+            short x => x,
+            ushort x => x,
+            sbyte x => x,
+            byte x => x,
+            long x => checked((int)x),
+            ulong x => x <= uint.MaxValue ? unchecked((int)(uint)x) : throw new OverflowException("DB2 ID is larger than 32-bit; this engine currently indexes rows by 32-bit ID."),
+            nint x => checked((int)x),
+            nuint x => x <= uint.MaxValue ? unchecked((int)(uint)x) : throw new OverflowException("DB2 ID is larger than 32-bit; this engine currently indexes rows by 32-bit ID."),
+            _ => throw new NotSupportedException($"Unsupported ID type {typeof(TId).FullName}.")
+        };
+
+        return TryGetRowById(key, out row);
     }
 
     private void EnsureIndexesBuilt()

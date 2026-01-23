@@ -1,6 +1,3 @@
-using System;
-using System.IO;
-
 namespace MimironSQL.Tests;
 
 internal static class TestDataPaths

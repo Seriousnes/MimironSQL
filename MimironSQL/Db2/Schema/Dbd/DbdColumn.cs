@@ -2,7 +2,7 @@ using System;
 
 namespace MimironSQL.Db2.Schema.Dbd;
 
-internal readonly record struct DbdColumn(Db2ValueType ValueType);
+internal readonly record struct DbdColumn(Db2ValueType ValueType, string? ReferencedTableName, bool IsVerified);
 
 internal static class DbdColumnParser
 {
@@ -19,14 +19,52 @@ internal static class DbdColumnParser
 
         var typeToken = line[..space].Trim();
         name = line[(space + 1)..].Trim();
+        var isVerified = true;
+        if (name.EndsWith("?", StringComparison.Ordinal))
+        {
+            name = name[..^1];
+            isVerified = false;
+        }
         if (name.Length == 0)
         {
             column = default;
             return false;
         }
 
-        column = new DbdColumn(MapTypeToken(typeToken));
+        column = ParseColumnType(typeToken) with { IsVerified = isVerified };
         return true;
+    }
+
+    private static DbdColumn ParseColumnType(string token)
+    {
+        // Examples:
+        // - int
+        // - int<Map::ID>
+        // - int<ActionBarGroup::ID>
+        var lt = token.IndexOf('<');
+        if (lt >= 0)
+        {
+            var gt = token.LastIndexOf('>');
+            if (gt > lt)
+            {
+                var inner = token[(lt + 1)..gt];
+                var refName = TryParseReferenceTableName(inner);
+                return new DbdColumn(MapTypeToken(token[..lt]), refName, IsVerified: true);
+            }
+        }
+
+        return new DbdColumn(MapTypeToken(token), ReferencedTableName: null, IsVerified: true);
+    }
+
+    private static string? TryParseReferenceTableName(string inner)
+    {
+        // Inner is usually like "Map::ID" or "QuestV2::ID"
+        var idx = inner.IndexOf("::", StringComparison.Ordinal);
+        if (idx <= 0)
+            return null;
+
+        var table = inner[..idx].Trim();
+        return table.Length == 0 ? null : table;
     }
 
     private static Db2ValueType MapTypeToken(string token)

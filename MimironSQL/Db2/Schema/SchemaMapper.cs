@@ -41,8 +41,11 @@ public sealed class SchemaMapper(IDbdProvider dbdProvider)
                     entry.ValueType,
                     ColumnStartIndex: -1,
                     ElementCount: 0,
+                    IsVerified: entry.IsVerified,
                     IsVirtual: true,
-                    IsId: entry.IsId));
+                    IsId: entry.IsId,
+                    IsRelation: entry.IsRelation,
+                    ReferencedTableName: entry.ReferencedTableName));
                 continue;
             }
 
@@ -51,8 +54,11 @@ public sealed class SchemaMapper(IDbdProvider dbdProvider)
                 entry.ValueType,
                 ColumnStartIndex: physicalIndex,
                 ElementCount: entry.ElementCount,
+                IsVerified: entry.IsVerified,
                 IsVirtual: false,
-                IsId: entry.IsId));
+                IsId: entry.IsId,
+                IsRelation: entry.IsRelation,
+                ReferencedTableName: entry.ReferencedTableName));
 
             physicalIndex++;
         }

@@ -5,5 +5,8 @@ public readonly record struct Db2FieldSchema(
     Db2ValueType ValueType,
     int ColumnStartIndex,
     int ElementCount,
+    bool IsVerified,
     bool IsVirtual,
-    bool IsId);
+    bool IsId,
+    bool IsRelation,
+    string? ReferencedTableName);

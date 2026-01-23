@@ -8,6 +8,7 @@ internal static class TestDataPaths
     public static FileStream OpenMapDb2() => File.OpenRead(GetMapDb2Path());
     public static FileStream OpenSpellDb2() => File.OpenRead(GetSpellDb2Path());
     public static FileStream OpenCollectableSourceQuestSparseDb2() => File.OpenRead(GetCollectableSourceQuestSparseDb2Path());
+    public static FileStream OpenAccountStoreCategoryDb2() => File.OpenRead(GetAccountStoreCategoryDb2Path());
 
     public static string GetTestDataDirectory()
     {
@@ -35,6 +36,14 @@ internal static class TestDataPaths
     {
         var baseDir = AppContext.BaseDirectory;
         var path = Path.GetFullPath(Path.Combine(baseDir, "..", "..", "..", "TestData", "collectablesourcequestsparse.db2"));
+        EnsureExists(path);
+        return path;
+    }
+
+    private static string GetAccountStoreCategoryDb2Path()
+    {
+        var baseDir = AppContext.BaseDirectory;
+        var path = Path.GetFullPath(Path.Combine(baseDir, "..", "..", "..", "TestData", "accountstorecategory.db2"));
         EnsureExists(path);
         return path;
     }

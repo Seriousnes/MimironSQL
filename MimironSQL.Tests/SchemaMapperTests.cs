@@ -80,29 +80,82 @@ public sealed class SchemaMapperTests
             schema.TryGetField("ID", out var id).ShouldBeTrue();
             id.IsVirtual.ShouldBeTrue();
             id.IsId.ShouldBeTrue();
+            id.IsVerified.ShouldBeTrue();
             id.ElementCount.ShouldBe(0);
             id.ColumnStartIndex.ShouldBe(-1);
+            id.IsRelation.ShouldBeFalse();
 
             schema.TryGetField("Directory", out var directory).ShouldBeTrue();
             directory.IsVirtual.ShouldBeFalse();
+            directory.IsVerified.ShouldBeTrue();
             directory.ValueType.ShouldBe(Db2ValueType.String);
             directory.ColumnStartIndex.ShouldBe(0);
             directory.ElementCount.ShouldBe(1);
+            directory.IsRelation.ShouldBeFalse();
 
             schema.TryGetField("MinimapIconScale", out var scale).ShouldBeTrue();
             scale.ValueType.ShouldBe(Db2ValueType.Single);
             scale.ColumnStartIndex.ShouldBe(1);
             scale.ElementCount.ShouldBe(1);
+            scale.IsVerified.ShouldBeTrue();
 
             schema.TryGetField("Flags", out var flags).ShouldBeTrue();
             flags.ValueType.ShouldBe(Db2ValueType.Int64);
             flags.ColumnStartIndex.ShouldBe(2);
             flags.ElementCount.ShouldBe(2);
+            flags.IsVerified.ShouldBeTrue();
+            flags.IsRelation.ShouldBeFalse();
         }
         finally
         {
             temp.Delete(recursive: true);
         }
+    }
+
+    [Fact]
+    public void Resolves_relation_and_reference_table_from_dbd()
+    {
+        using var stream = TestDataPaths.OpenCollectableSourceQuestSparseDb2();
+        var file = new Wdc5File(stream);
+
+        var provider = new FileSystemDbdProvider(new FileSystemDbdProviderOptions(TestDataPaths.GetTestDataDirectory()));
+        var mapper = new SchemaMapper(provider);
+        var schema = mapper.GetSchema("CollectableSourceQuestSparse", file);
+
+        schema.TryGetField("QuestID", out var questId).ShouldBeTrue();
+        questId.IsRelation.ShouldBeFalse();
+        questId.ReferencedTableName.ShouldBe("QuestV2");
+        questId.IsVerified.ShouldBeFalse();
+
+        schema.TryGetField("CollectableSourceInfoID", out var sourceInfo).ShouldBeTrue();
+        sourceInfo.IsVirtual.ShouldBeTrue();
+        sourceInfo.IsRelation.ShouldBeTrue();
+        sourceInfo.ReferencedTableName.ShouldBe("CollectableSourceInfo");
+        sourceInfo.IsVerified.ShouldBeFalse();
+    }
+
+    [Fact]
+    public void AccountStoreCategory_real_dbd_db2_inline_id_and_relation_metadata()
+    {
+        using var stream = TestDataPaths.OpenAccountStoreCategoryDb2();
+        var file = new Wdc5File(stream);
+
+        var provider = new FileSystemDbdProvider(new FileSystemDbdProviderOptions(TestDataPaths.GetTestDataDirectory()));
+        var mapper = new SchemaMapper(provider);
+        var schema = mapper.GetSchema("AccountStoreCategory", file);
+
+        schema.LayoutHash.ShouldBe(file.Header.LayoutHash);
+        schema.PhysicalColumnCount.ShouldBe(file.Header.FieldsCount);
+
+        schema.TryGetField("ID", out var id).ShouldBeTrue();
+        id.IsVirtual.ShouldBeFalse();
+        id.IsId.ShouldBeTrue();
+        id.IsVerified.ShouldBeFalse();
+
+        schema.TryGetField("StoreFrontID", out var storeFrontId).ShouldBeTrue();
+        storeFrontId.IsVirtual.ShouldBeFalse();
+        storeFrontId.IsRelation.ShouldBeTrue();
+        storeFrontId.IsVerified.ShouldBeFalse();
     }
 
     [Fact]
@@ -124,6 +177,35 @@ public sealed class SchemaMapperTests
             schema.PhysicalColumnCount.ShouldBe(file.Header.FieldsCount);
             schema.TryGetField("LastField", out var last).ShouldBeTrue();
             last.ColumnStartIndex.ShouldBe(file.Header.FieldsCount - 1);
+        }
+        finally
+        {
+            temp.Delete(recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Trailing_question_mark_in_COLUMNS_marks_field_as_unverified()
+    {
+        using var db2Stream = TestDataPaths.OpenMapDb2();
+        var file = new Wdc5File(db2Stream);
+
+        var temp = Directory.CreateTempSubdirectory("MimironSQL_Dbd");
+        try
+        {
+            var dbdText = CreateDbdWithUnverifiedColumn(layoutHash: file.Header.LayoutHash, fieldsCount: file.Header.FieldsCount);
+            File.WriteAllText(Path.Combine(temp.FullName, "Map.dbd"), dbdText, Encoding.UTF8);
+
+            var provider = new FileSystemDbdProvider(new FileSystemDbdProviderOptions(temp.FullName));
+            var mapper = new SchemaMapper(provider);
+            var schema = mapper.GetSchema("Map", file);
+
+            schema.TryGetField("Unverified", out var unverified).ShouldBeTrue();
+            unverified.IsVerified.ShouldBeFalse();
+            unverified.IsVirtual.ShouldBeFalse();
+            unverified.ValueType.ShouldBe(Db2ValueType.Int64);
+            unverified.ColumnStartIndex.ShouldBe(0);
+            unverified.ElementCount.ShouldBe(1);
         }
         finally
         {
@@ -181,6 +263,27 @@ public sealed class SchemaMapperTests
         for (var i = 0; i < Math.Max(0, fieldsCount - 1); i++)
             sb.AppendLine($"Field_{i}<32>");
         sb.AppendLine("LastField<32>");
+
+        return sb.ToString();
+    }
+
+    private static string CreateDbdWithUnverifiedColumn(uint layoutHash, int fieldsCount)
+    {
+        var fillersNeeded = fieldsCount - 1;
+
+        var sb = new StringBuilder();
+        sb.AppendLine("COLUMNS");
+        sb.AppendLine("int ID");
+        sb.AppendLine("int Unverified?");
+        sb.AppendLine();
+
+        sb.AppendLine($"LAYOUT {layoutHash:X8}");
+        sb.AppendLine("BUILD test");
+        sb.AppendLine("$noninline,id$ID<32>");
+        sb.AppendLine("Unverified<32>");
+
+        for (var i = 0; i < fillersNeeded; i++)
+            sb.AppendLine($"Field_{i}<32>");
 
         return sb.ToString();
     }

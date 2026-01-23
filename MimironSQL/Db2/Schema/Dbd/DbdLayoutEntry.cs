@@ -7,9 +7,12 @@ namespace MimironSQL.Db2.Schema.Dbd;
 internal readonly record struct DbdLayoutEntry(
     string Name,
     Db2ValueType ValueType,
+    string? ReferencedTableName,
     int ElementCount,
+    bool IsVerified,
     bool IsNonInline,
-    bool IsId);
+    bool IsId,
+    bool IsRelation);
 
 internal static class DbdLayoutEntryParser
 {
@@ -24,6 +27,7 @@ internal static class DbdLayoutEntryParser
 
         var isNonInline = false;
         var isId = false;
+        var isRelation = false;
 
         if (text[0] == '$')
         {
@@ -37,6 +41,8 @@ internal static class DbdLayoutEntryParser
                         isNonInline = true;
                     if (m.Equals("id", StringComparison.OrdinalIgnoreCase))
                         isId = true;
+                    if (m.Equals("relation", StringComparison.OrdinalIgnoreCase))
+                        isRelation = true;
                 }
 
                 text = text[(second + 1)..].Trim();
@@ -54,6 +60,8 @@ internal static class DbdLayoutEntryParser
 
         string name;
         Db2ValueType valueType;
+        var referencedTableName = (string?)null;
+        var isVerified = true;
 
         var lt = text.IndexOf('<');
         if (lt >= 0)
@@ -72,10 +80,16 @@ internal static class DbdLayoutEntryParser
         else
         {
             name = text.Trim();
-            if (!columnsByName.TryGetValue(name, out var column))
-                valueType = Db2ValueType.Unknown;
-            else
+            if (columnsByName.TryGetValue(name, out var column))
+            {
                 valueType = column.ValueType;
+                referencedTableName = column.ReferencedTableName;
+                isVerified = column.IsVerified;
+            }
+            else
+            {
+                valueType = Db2ValueType.Unknown;
+            }
         }
 
         if (name.Length == 0)
@@ -84,7 +98,13 @@ internal static class DbdLayoutEntryParser
             return false;
         }
 
-        entry = new DbdLayoutEntry(name, valueType, elementCount, isNonInline, isId);
+        if (referencedTableName is null && columnsByName.TryGetValue(name, out var col))
+        {
+            referencedTableName = col.ReferencedTableName;
+            isVerified = col.IsVerified;
+        }
+
+        entry = new DbdLayoutEntry(name, valueType, referencedTableName, elementCount, isVerified, isNonInline, isId, isRelation);
         return true;
     }
 

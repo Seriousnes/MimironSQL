@@ -142,3 +142,6 @@ The engine must map internal WDC5 types to SQL-compatible types:
 - Fixed `.dbd` parsing for "many BUILD lines, one entry block" layouts (e.g., ActionBarGroupEntry)
 - Replaced string heuristic tests with schema-backed deterministic tests using in-repo `.dbd` fixtures
 - Corrected `.dbd` array semantics (`[n]` is in-field element count, not extra physical columns) and ignored `COMMENT` lines
+- Added relation/reference metadata to schema (`IsRelation`, `ReferencedTableName`)
+- Added `IsVerified` semantics for trailing `?` in `COLUMNS` (unverified columns, not nullable)
+- Added real-pair coverage for `AccountStoreCategory` (inline `ID`, relation `StoreFrontID`)

@@ -34,8 +34,8 @@ public sealed class Db2Table<T> : IQueryable<T>
     public T? Find<TId>(TId id)
         where TId : IBinaryInteger<TId>
     {
-        if (!typeof(global::MimironSQL.Db2.Wdc5Entity<TId>).IsAssignableFrom(typeof(T)))
-            throw new NotSupportedException($"Entity type {typeof(T).FullName} must derive from {typeof(global::MimironSQL.Db2.Wdc5Entity<TId>).FullName} to use Find with key type {typeof(TId).FullName}.");
+        if (!typeof(Wdc5Entity<TId>).IsAssignableFrom(typeof(T)))
+            throw new NotSupportedException($"Entity type {typeof(T).FullName} must derive from {typeof(Wdc5Entity<TId>).FullName} to use Find with key type {typeof(TId).FullName}.");
 
         if (!File.TryGetRowById(id, out var row))
             return default;

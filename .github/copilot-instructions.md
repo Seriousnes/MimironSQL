@@ -7,6 +7,12 @@ This project is a SQL engine for reading and querying World of Warcraft DB2 file
 - Never modifiy files outside of the MimironSQL repository.
 - Use minimal commenting style, only adding comments on methods or complex logic where absolutely necessary for clarity.
 
+## Terminal (Hard)
+- Assume all terminal commands run in **Windows PowerShell (pwsh)**, not `cmd.exe`.
+- Do **not** use `cmd.exe`-specific syntax such as `cd /d`.
+- Prefer `Set-Location` (or `cd`) with **absolute paths** (e.g., `Set-Location "g:\source\MimironSQL"`).
+- Commands can be chained with `;` or `&&`.
+
 ## Modern C# / Style Rules (Hard)
 - Target .NET 10 / C# 14 and prefer the newest language features.
 - Prefer primary constructors where it reduces boilerplate.

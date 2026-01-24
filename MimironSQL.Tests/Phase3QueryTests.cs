@@ -263,6 +263,22 @@ public sealed class Phase3QueryTests
         found!.Id.ShouldBe(id);
     }
 
+    [Fact]
+    public void Phase4_include_is_parsed_and_is_noop_for_now()
+    {
+        var testDataDir = TestDataPaths.GetTestDataDirectory();
+        var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
+        var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
+        var context = new TestDb2Context(dbdProvider, db2Provider);
+
+        var results = context.Map
+            .Include(x => x.Id)
+            .Take(5)
+            .ToArray();
+
+        results.Length.ShouldBeGreaterThan(0);
+    }
+
     [Theory]
     [InlineData(107, "Passive", "Gives a chance to block enemy melee and ranged attacks.", null)]
     [InlineData(35200, "Shapeshift", "Shapeshifts into a roc for $d., increasing armor and hit points, as well as allowing the use of various bear abilities.", "Shapeshifted into roc.\r\nArmor and hit points increased.")]

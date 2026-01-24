@@ -119,6 +119,8 @@ internal sealed class Db2QueryProvider<TEntity>(Wdc5File file, Db2TableSchema sc
                     current = ApplySelect(current, currentElementType, select.Selector);
                     currentElementType = select.Selector.ReturnType;
                     break;
+                case Db2IncludeOperation:
+                    break;
                 case Db2TakeOperation take:
                     current = ApplyTake(current, currentElementType, take.Count);
                     break;
@@ -171,6 +173,8 @@ internal sealed class Db2QueryProvider<TEntity>(Wdc5File file, Db2TableSchema sc
             switch (op)
             {
                 case Db2SelectOperation:
+                    continue;
+                case Db2IncludeOperation:
                     continue;
                 case Db2TakeOperation take:
                     current = ApplyTake(current, currentElementType, take.Count);

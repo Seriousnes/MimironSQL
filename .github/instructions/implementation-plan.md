@@ -151,6 +151,8 @@ This phase must build on the Phase 3.5 column-lineage-aware planning model:
 - **Join execution:** support efficient joins between tables (likely starting with inner join) while minimizing decoding.
 - **Database context:** support a multi-table context that caches opened tables and shares providers/options.
 
+For Phase 4, we will also support an EF Core-style `Include(...)` for reference navigations. Initially this will be parsed and carried through the query pipeline as a no-op; the actual population of navigation properties will be implemented in the query execution layer once join/navigation execution is in place.
+
 This phase may introduce additional query operators (e.g., `Join`, `GroupJoin`, `SelectMany`) and/or a dedicated join planner.
 
 ### Phase 5: Optional SQL-text Layer (Later Enhancement)
@@ -229,3 +231,8 @@ The engine must map internal WDC5 types to SQL-compatible types:
 - Surfaced parent lookup reference IDs per row and used them to materialize/query `$noninline,relation$` virtual fields
 - Added fixture-based Phase 3 tests covering all existing `.db2` fixtures
 - Added Phase 3.5 plan stage for column-lineage-aware single-table column pruning (projection without entity materialization)
+
+### Phase 4
+- Started on branch `feature/phase-4-joins-navigation`
+- Refactored query provider ownership to be context-scoped (tables share a provider entry point)
+- Added `Include(...)` parsing/plumbing as a no-op (execution deferred until navigation loading is implemented)

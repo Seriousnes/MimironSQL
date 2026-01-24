@@ -20,6 +20,8 @@ internal sealed record Db2SelectOperation(LambdaExpression Selector) : Db2QueryO
 
 internal sealed record Db2TakeOperation(int Count) : Db2QueryOperation;
 
+internal sealed record Db2IncludeOperation(LambdaExpression Navigation) : Db2QueryOperation;
+
 internal sealed record Db2QueryPipeline(
     Expression OriginalExpression,
     Expression ExpressionWithoutFinalOperator,
@@ -63,40 +65,53 @@ internal sealed record Db2QueryPipeline(
 
         var current = expressionWithoutFinal;
 
-        while (current is MethodCallExpression m && m.Method.DeclaringType == typeof(Queryable))
+        while (current is MethodCallExpression m)
         {
             var name = m.Method.Name;
 
-            if (name is nameof(Queryable.FirstOrDefault) or nameof(Queryable.Any) or nameof(Queryable.Count) or nameof(Queryable.Single) or nameof(Queryable.SingleOrDefault))
-                throw new NotSupportedException($"{name} must be the terminal operator for this provider.");
-
-            if (name == nameof(Queryable.Where))
+            if (m.Method.DeclaringType == typeof(Queryable))
             {
-                var predicate = UnquoteLambda(m.Arguments[1]);
-                opsReversed.Add(new Db2WhereOperation(predicate));
+                if (name is nameof(Queryable.FirstOrDefault) or nameof(Queryable.Any) or nameof(Queryable.Count) or nameof(Queryable.Single) or nameof(Queryable.SingleOrDefault))
+                    throw new NotSupportedException($"{name} must be the terminal operator for this provider.");
+
+                if (name == nameof(Queryable.Where))
+                {
+                    var predicate = UnquoteLambda(m.Arguments[1]);
+                    opsReversed.Add(new Db2WhereOperation(predicate));
+                    current = m.Arguments[0];
+                    continue;
+                }
+
+                if (name == nameof(Queryable.Select))
+                {
+                    var selector = UnquoteLambda(m.Arguments[1]);
+                    opsReversed.Add(new Db2SelectOperation(selector));
+                    current = m.Arguments[0];
+                    continue;
+                }
+
+                if (name == nameof(Queryable.Take))
+                {
+                    if (m.Arguments[1] is not ConstantExpression c || c.Value is not int count)
+                        throw new NotSupportedException("Queryable.Take requires a constant integer count for this provider.");
+
+                    opsReversed.Add(new Db2TakeOperation(count));
+                    current = m.Arguments[0];
+                    continue;
+                }
+
+                throw new NotSupportedException($"Unsupported Queryable operator: {m.Method.Name}.");
+            }
+
+            if (m.Method.DeclaringType == typeof(Db2QueryableExtensions) && name == nameof(Db2QueryableExtensions.Include))
+            {
+                var navigation = UnquoteLambda(m.Arguments[1]);
+                opsReversed.Add(new Db2IncludeOperation(navigation));
                 current = m.Arguments[0];
                 continue;
             }
 
-            if (name == nameof(Queryable.Select))
-            {
-                var selector = UnquoteLambda(m.Arguments[1]);
-                opsReversed.Add(new Db2SelectOperation(selector));
-                current = m.Arguments[0];
-                continue;
-            }
-
-            if (name == nameof(Queryable.Take))
-            {
-                if (m.Arguments[1] is not ConstantExpression c || c.Value is not int count)
-                    throw new NotSupportedException("Queryable.Take requires a constant integer count for this provider.");
-
-                opsReversed.Add(new Db2TakeOperation(count));
-                current = m.Arguments[0];
-                continue;
-            }
-
-            throw new NotSupportedException($"Unsupported Queryable operator: {m.Method.Name}.");
+            throw new NotSupportedException($"Unsupported operator: {m.Method.DeclaringType?.FullName ?? "<unknown>"}.{m.Method.Name}.");
         }
 
         opsReversed.Reverse();

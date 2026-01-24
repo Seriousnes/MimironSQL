@@ -1,5 +1,6 @@
 using MimironSQL.Db2.Schema;
 using MimironSQL.Db2.Wdc5;
+using MimironSQL.Db2.Model;
 
 using System.Linq.Expressions;
 
@@ -31,7 +32,7 @@ internal sealed class Db2ContextQueryProvider(Db2Context context) : IQueryProvid
         var table = GetRootTable(expression);
         var entityType = table.EntityType;
 
-        var provider = CreatePerTableProvider(entityType, table.File, table.Schema, _context.GetOrOpenTableRaw);
+        var provider = CreatePerTableProvider(entityType, table.File, table.Schema, _context.Model, _context.GetOrOpenTableRaw);
         return provider.Execute(expression);
     }
 
@@ -42,10 +43,11 @@ internal sealed class Db2ContextQueryProvider(Db2Context context) : IQueryProvid
         Type entityType,
         Wdc5File file,
         Db2TableSchema schema,
+        Db2Model model,
         Func<string, (Wdc5File File, Db2TableSchema Schema)> tableResolver)
     {
         var providerType = typeof(Db2QueryProvider<>).MakeGenericType(entityType);
-        return (IQueryProvider)Activator.CreateInstance(providerType, file, schema, tableResolver)!;
+        return (IQueryProvider)Activator.CreateInstance(providerType, file, schema, model, tableResolver)!;
     }
 
     private static IDb2Table GetRootTable(Expression expression)

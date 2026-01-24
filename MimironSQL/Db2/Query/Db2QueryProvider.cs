@@ -1,4 +1,5 @@
 using MimironSQL.Db2.Schema;
+using MimironSQL.Db2.Model;
 using MimironSQL.Db2.Wdc5;
 
 using System.Collections;
@@ -10,9 +11,11 @@ namespace MimironSQL.Db2.Query;
 internal sealed class Db2QueryProvider<TEntity>(
     Wdc5File file,
     Db2TableSchema schema,
+    Db2Model model,
     Func<string, (Wdc5File File, Db2TableSchema Schema)> tableResolver) : IQueryProvider
 {
     private readonly Db2EntityMaterializer<TEntity> _materializer = new(schema);
+    private readonly Db2Model _model = model;
     private readonly Func<string, (Wdc5File File, Db2TableSchema Schema)> _tableResolver = tableResolver;
 
     internal TEntity Materialize(Wdc5Row row) => _materializer.Materialize(row);
@@ -278,6 +281,12 @@ internal sealed class Db2QueryProvider<TEntity>(
 
         foreach (var predicate in predicates)
         {
+            if (TryCompileNavigationSemiJoinPredicate(predicate, out var navPredicate))
+            {
+                rowPredicates.Add(navPredicate);
+                continue;
+            }
+
             if (Db2RowPredicateCompiler.TryCompile(file, schema, predicate, out var rowPredicate))
                 rowPredicates.Add(rowPredicate);
             else
@@ -319,6 +328,98 @@ internal sealed class Db2QueryProvider<TEntity>(
             yielded++;
             if (take.HasValue && yielded >= take.Value)
                 yield break;
+        }
+    }
+
+    private bool TryCompileNavigationSemiJoinPredicate(
+        Expression<Func<TEntity, bool>> predicate,
+        out Func<Wdc5Row, bool> rowPredicate)
+    {
+        rowPredicate = _ => true;
+
+        if (predicate.Parameters.Count != 1 || predicate.Parameters[0].Type != typeof(TEntity))
+            return false;
+
+        Expression body = predicate.Body;
+        if (body is UnaryExpression { NodeType: ExpressionType.Convert or ExpressionType.ConvertChecked } u)
+            body = u.Operand;
+
+        if (body is not BinaryExpression { NodeType: ExpressionType.Equal } eq)
+            return false;
+
+        if (!TryGetStringConstant(eq.Left, out var constant) && !TryGetStringConstant(eq.Right, out constant))
+            return false;
+
+        var memberSide = ReferenceEquals(eq.Left, constant.Expression) ? eq.Right : eq.Left;
+        if (!TryGetNavThenMemberAccess(memberSide, out var navMember, out var relatedMember))
+            return false;
+
+        var navName = navMember.Name;
+        var fkName = $"{navName}ID";
+        var fkField = schema.Fields.FirstOrDefault(f => f.Name.Equals(fkName, StringComparison.OrdinalIgnoreCase));
+        if (fkField.Name is null || fkField.ReferencedTableName is null)
+            return false;
+
+        var (relatedFile, relatedSchema) = _tableResolver(fkField.ReferencedTableName);
+
+        var relatedField = relatedSchema.Fields.FirstOrDefault(f => f.Name.Equals(relatedMember.Name, StringComparison.OrdinalIgnoreCase));
+        if (relatedField.Name is null)
+            return false;
+
+        var relatedFieldIndex = relatedField.ColumnStartIndex;
+
+        HashSet<int> matchingIds = [];
+        foreach (var row in relatedFile.EnumerateRows())
+        {
+            if (row.TryGetString(relatedFieldIndex, out var s) && s == constant.Value)
+                matchingIds.Add(row.Id);
+        }
+
+        var rootFkIndex = fkField.ColumnStartIndex;
+        rowPredicate = row =>
+        {
+            var fk = Convert.ToInt32(row.GetScalar<long>(rootFkIndex));
+            return fk != 0 && matchingIds.Contains(fk);
+        };
+
+        return true;
+
+        static bool TryGetStringConstant(Expression expression, out (string Value, ConstantExpression Expression) constant)
+        {
+            if (expression is ConstantExpression { Value: string s } c)
+            {
+                constant = (s, c);
+                return true;
+            }
+
+            constant = default;
+            return false;
+        }
+
+        static bool TryGetNavThenMemberAccess(Expression expression, out MemberInfo navMember, out MemberInfo relatedMember)
+        {
+            navMember = null!;
+            relatedMember = null!;
+
+            if (expression is UnaryExpression { NodeType: ExpressionType.Convert or ExpressionType.ConvertChecked } u2)
+                expression = u2.Operand;
+
+            if (expression is not MemberExpression { Member: PropertyInfo or FieldInfo } related)
+                return false;
+
+            var navExpr = related.Expression;
+            if (navExpr is UnaryExpression { NodeType: ExpressionType.Convert or ExpressionType.ConvertChecked } u3)
+                navExpr = u3.Operand;
+
+            if (navExpr is not MemberExpression { Member: PropertyInfo or FieldInfo } nav)
+                return false;
+
+            if (nav.Expression is not ParameterExpression)
+                return false;
+
+            navMember = nav.Member;
+            relatedMember = related.Member;
+            return true;
         }
     }
 
@@ -395,7 +496,7 @@ internal sealed class Db2QueryProvider<TEntity>(
 
     private IEnumerable<TEntity> ApplyInclude(IEnumerable<TEntity> source, LambdaExpression navigation)
     {
-        var plan = IncludePlan.Create(schema, navigation, _tableResolver);
+        var plan = IncludePlan.Create(schema, navigation, _model, _tableResolver);
 
         foreach (var entity in source)
         {
@@ -405,13 +506,14 @@ internal sealed class Db2QueryProvider<TEntity>(
     }
 
     private sealed class IncludePlan(
-        Func<TEntity, int> foreignKeyGetter,
+        Func<TEntity, int> keyGetter,
         Action<TEntity, object?> navigationSetter,
         Func<int, object?> loadEntity)
     {
         public static IncludePlan Create(
             Db2TableSchema schema,
             LambdaExpression navigation,
+            Db2Model model,
             Func<string, (Wdc5File File, Db2TableSchema Schema)> tableResolver)
         {
             if (navigation.Parameters.Count != 1 || navigation.Parameters[0].Type != typeof(TEntity))
@@ -431,53 +533,73 @@ internal sealed class Db2QueryProvider<TEntity>(
             var navName = navMember.Name;
             var navType = GetMemberType(navMember);
 
-            var fkName = $"{navName}ID";
-            var fkMember = FindMember(typeof(TEntity), fkName)
-                ?? throw new NotSupportedException($"Include requires a public FK member named '{fkName}' on entity type {typeof(TEntity).FullName}.");
-
-            if (!IsReadable(fkMember))
-                throw new NotSupportedException($"FK member '{fkName}' must be readable.");
-
             if (!IsWritable(navMember))
                 throw new NotSupportedException($"Navigation member '{navName}' must be writable.");
 
+            var hasModelNav = model.TryGetReferenceNavigation(typeof(TEntity), navMember, out var modelNav);
+
+            var fkName = $"{navName}ID";
+            var fkMember = FindMember(typeof(TEntity), fkName);
             var fkField = schema.Fields.FirstOrDefault(f => f.Name.Equals(fkName, StringComparison.OrdinalIgnoreCase));
-            if (fkField.Name is null)
-                throw new NotSupportedException($"Include requires a schema field named '{fkName}' on table '{schema.TableName}'.");
 
-            if (fkField.ReferencedTableName is null)
-                throw new NotSupportedException($"Include requires schema field '{fkName}' to declare a referenced table name (e.g., int<OtherTable::ID>). ");
+            var hasSchemaFk = fkMember is not null && fkField.Name is not null && fkField.ReferencedTableName is not null;
 
-            var foreignKeyGetter = CreateForeignKeyGetter(fkMember);
+            if (hasSchemaFk && !IsReadable(fkMember!))
+                throw new NotSupportedException($"FK member '{fkName}' must be readable.");
+
             var navigationSetter = CreateNavigationSetter(navMember, navType);
 
-            var loadEntity = CreateEntityLoader(navType, fkField.ReferencedTableName, tableResolver);
+            if (hasSchemaFk)
+            {
+                if (hasModelNav && !modelNav!.OverridesSchema)
+                    throw new NotSupportedException($"Include navigation '{typeof(TEntity).FullName}.{navName}' conflicts with schema FK '{fkName}'. Use OverridesSchema() on the model configuration to override schema resolution.");
 
-            return new IncludePlan(foreignKeyGetter, navigationSetter, loadEntity);
+                if (!hasModelNav)
+                {
+                    var foreignKeyGetter = CreateIntGetter(fkMember!);
+                    var loadByFk = CreateEntityLoader(navType, fkField.ReferencedTableName!, tableResolver);
+                    return new IncludePlan(foreignKeyGetter, navigationSetter, loadByFk);
+                }
+            }
+
+            if (!hasModelNav)
+                throw new NotSupportedException($"Include navigation '{typeof(TEntity).FullName}.{navName}' is not configured. Either provide a schema FK '{fkName}' or configure the navigation in OnModelCreating.");
+
+            if (modelNav!.Kind != Db2ReferenceNavigationKind.SharedPrimaryKeyOneToOne)
+                throw new NotSupportedException($"Include navigation '{typeof(TEntity).FullName}.{navName}' has unsupported kind '{modelNav.Kind}'.");
+
+            if (!IsReadable(modelNav.SourceKeyMember))
+                throw new NotSupportedException($"Shared primary key member '{modelNav.SourceKeyMember.Name}' must be readable.");
+
+            var targetEntityType = model.GetEntityType(modelNav.TargetClrType);
+            var loadByKey = CreateEntityLoader(navType, targetEntityType.TableName, tableResolver);
+            var sharedKeyGetter = CreateIntGetter(modelNav.SourceKeyMember);
+
+            return new IncludePlan(sharedKeyGetter, navigationSetter, loadByKey);
         }
 
         public void Apply(TEntity entity)
         {
-            var fk = foreignKeyGetter(entity);
-            if (fk == 0)
+            var key = keyGetter(entity);
+            if (key == 0)
             {
                 navigationSetter(entity, null);
                 return;
             }
 
-            var related = loadEntity(fk);
+            var related = loadEntity(key);
             navigationSetter(entity, related);
         }
 
-        private static Func<TEntity, int> CreateForeignKeyGetter(MemberInfo fkMember)
+        private static Func<TEntity, int> CreateIntGetter(MemberInfo member)
         {
             var entity = Expression.Parameter(typeof(TEntity), "entity");
 
-            Expression access = fkMember switch
+            Expression access = member switch
             {
                 PropertyInfo p => Expression.Property(entity, p),
                 FieldInfo f => Expression.Field(entity, f),
-                _ => throw new InvalidOperationException($"Unexpected FK member type: {fkMember.GetType().FullName}"),
+                _ => throw new InvalidOperationException($"Unexpected member type: {member.GetType().FullName}"),
             };
 
             var toInt32 = typeof(Convert).GetMethod(nameof(Convert.ToInt32), [typeof(object)])!;

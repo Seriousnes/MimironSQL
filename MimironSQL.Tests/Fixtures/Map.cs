@@ -1,5 +1,4 @@
 ﻿using MimironSQL.Db2;
-using MimironSQL.Db2.Query;
 
 namespace MimironSQL.Tests.Fixtures;
 
@@ -12,7 +11,6 @@ internal class Map : Wdc5Entity
     public Map? ParentMap { get; set; }
 }
 
-[Db2TableName("Map")]
 internal class MapWithCtor : Wdc5Entity
 {
     public static int InstancesCreated;

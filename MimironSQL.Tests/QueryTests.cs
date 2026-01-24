@@ -9,7 +9,7 @@ using MimironSQL.Tests.Fixtures;
 
 namespace MimironSQL.Tests;
 
-public sealed class Phase3QueryTests
+public class QueryTests
 {
     [Fact]
     public void Can_query_dense_table_with_string_filter_and_take()
@@ -38,13 +38,11 @@ public sealed class Phase3QueryTests
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
         var context = new TestDb2Context(dbdProvider, db2Provider);
 
-        using var stream = db2Provider.OpenDb2Stream("Map");
-        var file = new Wdc5File(stream);
-        var schema = new SchemaMapper(dbdProvider).GetSchema("Map", file);
-        schema.TryGetField("Directory", out var directoryField).ShouldBeTrue();
+        var map = context.Map;
+        map.Schema.TryGetField("Directory", out var directoryField).ShouldBeTrue();
 
-        var sample = file.EnumerateRows()
-            .Take(Math.Min(200, file.Header.RecordsCount))
+        var sample = map.File.EnumerateRows()
+            .Take(Math.Min(200, map.File.Header.RecordsCount))
             .Select(r => r.TryGetString(directoryField.ColumnStartIndex, out var s) ? s : string.Empty)
             .FirstOrDefault(s => !string.IsNullOrWhiteSpace(s));
 
@@ -290,6 +288,86 @@ public sealed class Phase3QueryTests
         entity.ParentMap!.Id.ShouldBe(candidate.ParentId);
     }
 
+    [Fact]
+    public void Phase4_include_populates_shared_primary_key_navigation_when_row_exists()
+    {
+        var testDataDir = TestDataPaths.GetTestDataDirectory();
+        var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
+        var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
+        var context = new TestDb2Context(dbdProvider, db2Provider);
+
+        var spell = context.Spell;
+        var spellName = context.SpellName;
+
+        var candidateId = spell.File.EnumerateRows()
+            .Select(r => r.Id)
+            .FirstOrDefault(id => id > 0 && spellName.File.TryGetRowById(id, out _));
+
+        candidateId.ShouldBeGreaterThan(0);
+
+        var entity = spell
+            .Where(s => s.Id == candidateId)
+            .Include(s => s.SpellName)
+            .Single();
+
+        entity.SpellName.ShouldNotBeNull();
+        entity.SpellName!.Id.ShouldBe(candidateId);
+    }
+
+    [Fact]
+    public void Phase4_include_throws_on_schema_fk_and_model_navigation_conflict_without_override()
+    {
+        var testDataDir = TestDataPaths.GetTestDataDirectory();
+        var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
+        var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
+        var context = new SchemaFkConflictTestDb2Context(dbdProvider, db2Provider);
+
+        var map = context.Map;
+        var parentMapIdField = map.Schema.Fields.First(f => f.Name.Equals("ParentMapID", StringComparison.OrdinalIgnoreCase));
+
+        var candidate = map.File.EnumerateRows()
+            .Select(r => (Id: r.Id, ParentId: Convert.ToInt32(r.GetScalar<long>(parentMapIdField.ColumnStartIndex))))
+            .FirstOrDefault(x => x.ParentId > 0 && map.File.TryGetRowById(x.ParentId, out _));
+
+        candidate.ParentId.ShouldBeGreaterThan(0);
+
+        var ex = Should.Throw<System.Reflection.TargetInvocationException>(() =>
+            map
+                .Where(x => x.Id == candidate.Id)
+                .Include(x => x.ParentMap)
+                .Single());
+
+        ex.GetBaseException().ShouldBeOfType<NotSupportedException>();
+        ex.GetBaseException().Message.ShouldContain("conflicts with schema FK");
+    }
+
+    [Fact]
+    public void Phase4_include_allows_model_navigation_to_override_schema_fk_when_configured()
+    {
+        var testDataDir = TestDataPaths.GetTestDataDirectory();
+        var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
+        var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
+        var context = new SchemaFkOverrideTestDb2Context(dbdProvider, db2Provider);
+
+        var map = context.Map;
+        var parentMapIdField = map.Schema.Fields.First(f => f.Name.Equals("ParentMapID", StringComparison.OrdinalIgnoreCase));
+
+        var candidate = map.File.EnumerateRows()
+            .Select(r => (Id: r.Id, ParentId: Convert.ToInt32(r.GetScalar<long>(parentMapIdField.ColumnStartIndex))))
+            .FirstOrDefault(x => x.ParentId > 0 && map.File.TryGetRowById(x.ParentId, out _));
+
+        candidate.ParentId.ShouldBeGreaterThan(0);
+
+        var entity = map
+            .Where(x => x.Id == candidate.Id)
+            .Include(x => x.ParentMap)
+            .Single();
+
+        entity.ParentMapID.ShouldBe(candidate.ParentId);
+        entity.ParentMap.ShouldNotBeNull();
+        entity.ParentMap!.Id.ShouldBe(candidate.ParentId);
+    }
+
     [Theory]
     [InlineData(107, "Passive", "Gives a chance to block enemy melee and ranged attacks.", null)]
     [InlineData(35200, "Shapeshift", "Shapeshifts into a roc for $d., increasing armor and hit points, as well as allowing the use of various bear abilities.", "Shapeshifted into roc.\r\nArmor and hit points increased.")]
@@ -316,5 +394,24 @@ public sealed class Phase3QueryTests
         var byQuery = context.Spell.Where(s => s.Id == id).SingleOrDefault();
         byQuery.ShouldNotBeNull();
         byQuery.ShouldBeEquivalentTo(expected);
-    }    
+    }
+
+    [Fact]    
+    public void Test_Tazavesh_map_query()
+    {
+        var testDataDir = TestDataPaths.GetTestDataDirectory();
+        var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
+        var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
+        var context = new TestDb2Context(dbdProvider, db2Provider);
+
+        // Map ID = 2441 is used for two MapChallengeMode entries (Tazavesh, So'leah's Gambit (ID=392), and Tazavesh, Streets of Wonder (ID=391))        
+
+        var results = context.MapChallengeMode
+            .Where(x => x.Map!.MapName_lang == "Tazavesh, the Veiled Market")
+            .ToList();
+
+        results.Count.ShouldBe(2);
+        results.All(x => x.MapID == 2441).ShouldBeTrue();
+    }
+
 }

@@ -83,6 +83,7 @@ Scope (initial):
 
 - 1-hop reference navigation only (e.g., `s.SpellName.Name_lang`, not nested chains)
 - translate navigation access using `Db2Model` relationships
+- initial string predicate support should include `==`, `Contains`, `StartsWith`, and `EndsWith` against related-table string fields
 
 Deliverables:
 
@@ -105,7 +106,7 @@ Deliverables:
 
 - For navigation predicates:
     - prefer semi-join execution when possible (evaluate predicate on related table first → get matching keys → filter root)
-    - specifically for string predicates on the related table, reuse dense string-block scanning where available
+    - specifically for string predicates (`==`, `Contains`, `StartsWith`, `EndsWith`) on the related table, reuse dense string-block scanning where available
 - For `Include(...)`:
     - batch load related rows (avoid N+1) via key collection + lookup
 - Define null/missing-row semantics consistently (e.g., left-join behavior for `Include`, explicit null checks in predicates).

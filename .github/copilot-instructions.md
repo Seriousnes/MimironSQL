@@ -2,10 +2,17 @@
 This project is a SQL engine for reading and querying World of Warcraft DB2 files. It is implemented in C# and designed to be extensible for future file formats used by World of Warcraft. It will support reading DB2 files via the FileSystem (i.e. FileSystemDBDProvider) and via CASC (i.e. CascDBDProvider).
 
 ## IMPORTANT
+- When you receive answers to questions as per the "Follow-up Questions" instructions, incorporate those answers into this project overview and the implementation plan as needed.
 - Ignore all other `copilot-instructions.md` in this workspace.
 - Only consider files within the root directory of MimironSQL and its subdirectories as part of this project. Do not consider files from other repositories (such as DBCD, WoWDBDefs, or CASC.Net) except for understanding how to interface with them.
 - Never modifiy files outside of the MimironSQL repository.
 - Use minimal commenting style, only adding comments on methods or complex logic where absolutely necessary for clarity.
+
+## Terminal (Hard)
+- Assume all terminal commands run in **Windows PowerShell (pwsh)**, not `cmd.exe`.
+- Do **not** use `cmd.exe`-specific syntax such as `cd /d`.
+- Prefer `Set-Location` (or `cd`) with **absolute paths** (e.g., `Set-Location "g:\source\MimironSQL"`).
+- Commands can be chained with `;` or `&&`.
 
 ## Modern C# / Style Rules (Hard)
 - Target .NET 10 / C# 14 and prefer the newest language features.
@@ -41,7 +48,11 @@ Since DB2 files don't contain any metadata about column names or data types, we'
 ## Implementation Plan
 The implementation plan is described in detail in [implementation-plan.md](./instructions/implementation-plan.md)
 
-- There is a progress log section and the end of this file. Keep it updated with progress through phases and steps
-- When receiving clarifications per the follow-up questions instruction, update the implementation plan as needed
+- Supporting docs:
+    - DB2/WDC5 format notes: [db2-format.md](./instructions/db2-format.md)
+    - Query engine notes: [query-engine-notes.md](./instructions/query-engine-notes.md)
+    - Architecture overview: [architecture.md](./instructions/architecture.md)
+
+- When receiving clarifications per the follow-up questions instruction, update the implementation plan and/or supporting docs as needed
 - Use a git branch per phase, e.g. `feature/phase-1-virtual-table`, `feature/phase-2-schema-mapper`, etc.
     - Once a phase is complete, and all tests pass, merge into `main` before starting the next phase

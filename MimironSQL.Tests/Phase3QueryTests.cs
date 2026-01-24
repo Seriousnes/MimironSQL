@@ -263,6 +263,33 @@ public sealed class Phase3QueryTests
         found!.Id.ShouldBe(id);
     }
 
+    [Fact]
+    public void Phase4_include_populates_reference_navigation_when_row_exists()
+    {
+        var testDataDir = TestDataPaths.GetTestDataDirectory();
+        var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
+        var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
+        var context = new TestDb2Context(dbdProvider, db2Provider);
+
+        var map = context.Map;
+        var parentMapIdField = map.Schema.Fields.First(f => f.Name.Equals("ParentMapID", StringComparison.OrdinalIgnoreCase));
+
+        var candidate = map.File.EnumerateRows()
+            .Select(r => (Id: r.Id, ParentId: Convert.ToInt32(r.GetScalar<long>(parentMapIdField.ColumnStartIndex))))
+            .FirstOrDefault(x => x.ParentId > 0 && map.File.TryGetRowById(x.ParentId, out _));
+
+        candidate.ParentId.ShouldBeGreaterThan(0);
+
+        var entity = map
+            .Where(x => x.Id == candidate.Id)
+            .Include(x => x.ParentMap)
+            .Single();
+
+        entity.ParentMapID.ShouldBe(candidate.ParentId);
+        entity.ParentMap.ShouldNotBeNull();
+        entity.ParentMap!.Id.ShouldBe(candidate.ParentId);
+    }
+
     [Theory]
     [InlineData(107, "Passive", "Gives a chance to block enemy melee and ranged attacks.", null)]
     [InlineData(35200, "Shapeshift", "Shapeshifts into a roc for $d., increasing armor and hit points, as well as allowing the use of various bear abilities.", "Shapeshifted into roc.\r\nArmor and hit points increased.")]

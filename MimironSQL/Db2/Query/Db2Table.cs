@@ -7,22 +7,28 @@ using System.Numerics;
 
 namespace MimironSQL.Db2.Query;
 
-public sealed class Db2Table<T> : IQueryable<T>
+public sealed class Db2Table<T> : IQueryable<T>, IDb2Table
 {
     internal Wdc5File File { get; }
     public Db2TableSchema Schema { get; }
 
-    private readonly Db2QueryProvider<T> _provider;
+    private readonly IQueryProvider _provider;
+    private readonly Db2EntityMaterializer<T> _materializer;
 
     public Type ElementType => typeof(T);
     public Expression Expression { get; }
     public IQueryProvider Provider => _provider;
 
-    internal Db2Table(Wdc5File file, Db2TableSchema schema)
+    Type IDb2Table.EntityType => typeof(T);
+    Wdc5File IDb2Table.File => File;
+    Db2TableSchema IDb2Table.Schema => Schema;
+
+    internal Db2Table(Wdc5File file, Db2TableSchema schema, IQueryProvider provider)
     {
         File = file;
         Schema = schema;
-        _provider = new Db2QueryProvider<T>(file, schema);
+        _provider = provider;
+        _materializer = new Db2EntityMaterializer<T>(schema);
         Expression = Expression.Constant(this);
     }
 
@@ -40,6 +46,6 @@ public sealed class Db2Table<T> : IQueryable<T>
         if (!File.TryGetRowById(id, out var row))
             return default;
 
-        return _provider.Materialize(row);
+        return _materializer.Materialize(row);
     }
 }

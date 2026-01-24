@@ -12,14 +12,28 @@ public abstract class Db2Context
 
     private readonly SchemaMapper _schemaMapper;
     private readonly IDb2StreamProvider _db2StreamProvider;
+    private readonly Db2ContextQueryProvider _queryProvider;
     private readonly Dictionary<string, (Wdc5File File, Db2TableSchema Schema)> _cache = new(StringComparer.OrdinalIgnoreCase);
 
     protected Db2Context(IDbdProvider dbdProvider, IDb2StreamProvider db2StreamProvider)
     {
         _schemaMapper = new SchemaMapper(dbdProvider);
         _db2StreamProvider = db2StreamProvider;
+        _queryProvider = new Db2ContextQueryProvider(this);
 
         InitializeTableProperties();
+    }
+
+    internal (Wdc5File File, Db2TableSchema Schema) GetOrOpenTableRaw(string tableName)
+    {
+        if (_cache.TryGetValue(tableName, out var cached))
+            return cached;
+
+        using var stream = _db2StreamProvider.OpenDb2Stream(tableName);
+        var file = new Wdc5File(stream);
+        var schema = _schemaMapper.GetSchema(tableName, file);
+        _cache[tableName] = (file, schema);
+        return (file, schema);
     }
 
     private void InitializeTableProperties()
@@ -55,14 +69,8 @@ public abstract class Db2Context
 
     private Db2Table<T> OpenTableGeneric<T>(string tableName)
     {
-        if (_cache.TryGetValue(tableName, out var cached))
-            return new Db2Table<T>(cached.File, cached.Schema);
-
-        using var stream = _db2StreamProvider.OpenDb2Stream(tableName);
-        var file = new Wdc5File(stream);
-        var schema = _schemaMapper.GetSchema(tableName, file);
-        _cache[tableName] = (file, schema);
-        return new Db2Table<T>(file, schema);
+        var (file, schema) = GetOrOpenTableRaw(tableName);
+        return new Db2Table<T>(file, schema, _queryProvider);
     }
 
     protected Db2Table<T> Table<T>(string? tableName = null)
@@ -70,3 +78,4 @@ public abstract class Db2Context
         return OpenTableGeneric<T>(tableName ?? typeof(T).Name);
     }
 }
+

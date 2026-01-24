@@ -26,7 +26,7 @@ public sealed class Wdc5DenseStringHeuristicTests
 
         var maxRowsToScan = Math.Min(file.Header.RecordsCount, 200);
 
-        var foundStrings = new System.Collections.Generic.HashSet<string>(StringComparer.Ordinal);
+        var foundStrings = new HashSet<string>(StringComparer.Ordinal);
         foreach (var row in file.EnumerateRows().Take(maxRowsToScan))
         {
             if (!row.TryGetDenseString(directory.ColumnStartIndex, out var value))

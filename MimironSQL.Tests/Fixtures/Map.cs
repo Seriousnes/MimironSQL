@@ -7,6 +7,9 @@ internal class Map : Wdc5Entity
 {
     public string Directory { get; set; } = string.Empty;
     public string MapName_lang { get; set; } = string.Empty;
+
+    public int ParentMapID { get; set; }
+    public Map? ParentMap { get; set; }
 }
 
 [Db2TableName("Map")]

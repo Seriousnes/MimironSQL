@@ -264,19 +264,30 @@ public sealed class Phase3QueryTests
     }
 
     [Fact]
-    public void Phase4_include_is_parsed_and_is_noop_for_now()
+    public void Phase4_include_populates_reference_navigation_when_row_exists()
     {
         var testDataDir = TestDataPaths.GetTestDataDirectory();
         var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
         var context = new TestDb2Context(dbdProvider, db2Provider);
 
-        var results = context.Map
-            .Include(x => x.Id)
-            .Take(5)
-            .ToArray();
+        var map = context.Map;
+        var parentMapIdField = map.Schema.Fields.First(f => f.Name.Equals("ParentMapID", StringComparison.OrdinalIgnoreCase));
 
-        results.Length.ShouldBeGreaterThan(0);
+        var candidate = map.File.EnumerateRows()
+            .Select(r => (Id: r.Id, ParentId: Convert.ToInt32(r.GetScalar<long>(parentMapIdField.ColumnStartIndex))))
+            .FirstOrDefault(x => x.ParentId > 0 && map.File.TryGetRowById(x.ParentId, out _));
+
+        candidate.ParentId.ShouldBeGreaterThan(0);
+
+        var entity = map
+            .Where(x => x.Id == candidate.Id)
+            .Include(x => x.ParentMap)
+            .Single();
+
+        entity.ParentMapID.ShouldBe(candidate.ParentId);
+        entity.ParentMap.ShouldNotBeNull();
+        entity.ParentMap!.Id.ShouldBe(candidate.ParentId);
     }
 
     [Theory]

@@ -5,8 +5,10 @@ using System.Linq.Expressions;
 
 namespace MimironSQL.Db2.Query;
 
-internal sealed class Db2ContextQueryProvider : IQueryProvider
+internal sealed class Db2ContextQueryProvider(Db2Context context) : IQueryProvider
 {
+    private readonly Db2Context _context = context;
+
     public IQueryable CreateQuery(Expression expression)
     {
         ArgumentNullException.ThrowIfNull(expression);
@@ -29,17 +31,21 @@ internal sealed class Db2ContextQueryProvider : IQueryProvider
         var table = GetRootTable(expression);
         var entityType = table.EntityType;
 
-        var provider = CreatePerTableProvider(entityType, table.File, table.Schema);
+        var provider = CreatePerTableProvider(entityType, table.File, table.Schema, _context.GetOrOpenTableRaw);
         return provider.Execute(expression);
     }
 
     public TResult Execute<TResult>(Expression expression)
         => (TResult)Execute(expression)!;
 
-    private static IQueryProvider CreatePerTableProvider(Type entityType, Wdc5File file, Db2TableSchema schema)
+    private static IQueryProvider CreatePerTableProvider(
+        Type entityType,
+        Wdc5File file,
+        Db2TableSchema schema,
+        Func<string, (Wdc5File File, Db2TableSchema Schema)> tableResolver)
     {
         var providerType = typeof(Db2QueryProvider<>).MakeGenericType(entityType);
-        return (IQueryProvider)Activator.CreateInstance(providerType, file, schema)!;
+        return (IQueryProvider)Activator.CreateInstance(providerType, file, schema, tableResolver)!;
     }
 
     private static IDb2Table GetRootTable(Expression expression)

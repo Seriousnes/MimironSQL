@@ -3,12 +3,17 @@ using MimironSQL.Db2.Wdc5;
 
 using System.Collections;
 using System.Linq.Expressions;
+using System.Reflection;
 
 namespace MimironSQL.Db2.Query;
 
-internal sealed class Db2QueryProvider<TEntity>(Wdc5File file, Db2TableSchema schema) : IQueryProvider
+internal sealed class Db2QueryProvider<TEntity>(
+    Wdc5File file,
+    Db2TableSchema schema,
+    Func<string, (Wdc5File File, Db2TableSchema Schema)> tableResolver) : IQueryProvider
 {
     private readonly Db2EntityMaterializer<TEntity> _materializer = new(schema);
+    private readonly Func<string, (Wdc5File File, Db2TableSchema Schema)> _tableResolver = tableResolver;
 
     internal TEntity Materialize(Wdc5Row row) => _materializer.Materialize(row);
 
@@ -93,7 +98,7 @@ internal sealed class Db2QueryProvider<TEntity>(Wdc5File file, Db2TableSchema sc
                 selectOp.Selector.Parameters.Count == 1 &&
                 selectOp.Selector.Parameters[0].Type == typeof(TEntity) &&
                 selectOp.Selector.ReturnType == typeof(TElement) &&
-                postOps.All(op => op is not Db2WhereOperation) &&
+                postOps.All(op => op is not Db2WhereOperation && op is not Db2IncludeOperation) &&
                 postOps.Count(op => op is Db2SelectOperation) <= 1;
 
             if (canAttemptPrune)
@@ -120,6 +125,10 @@ internal sealed class Db2QueryProvider<TEntity>(Wdc5File file, Db2TableSchema sc
                     currentElementType = select.Selector.ReturnType;
                     break;
                 case Db2IncludeOperation:
+                    if (currentElementType != typeof(TEntity))
+                        throw new NotSupportedException("Include must appear before Select for this provider.");
+
+                    current = ApplyInclude((IEnumerable<TEntity>)current, ((Db2IncludeOperation)op).Navigation);
                     break;
                 case Db2TakeOperation take:
                     current = ApplyTake(current, currentElementType, take.Count);
@@ -175,7 +184,7 @@ internal sealed class Db2QueryProvider<TEntity>(Wdc5File file, Db2TableSchema sc
                 case Db2SelectOperation:
                     continue;
                 case Db2IncludeOperation:
-                    continue;
+                    return false;
                 case Db2TakeOperation take:
                     current = ApplyTake(current, currentElementType, take.Count);
                     break;
@@ -382,5 +391,181 @@ internal sealed class Db2QueryProvider<TEntity>(Wdc5File file, Db2TableSchema sc
 
         elementType = typeof(object);
         return false;
+    }
+
+    private IEnumerable<TEntity> ApplyInclude(IEnumerable<TEntity> source, LambdaExpression navigation)
+    {
+        var plan = IncludePlan.Create(schema, navigation, _tableResolver);
+
+        foreach (var entity in source)
+        {
+            plan.Apply(entity);
+            yield return entity;
+        }
+    }
+
+    private sealed class IncludePlan(
+        Func<TEntity, int> foreignKeyGetter,
+        Action<TEntity, object?> navigationSetter,
+        Func<int, object?> loadEntity)
+    {
+        public static IncludePlan Create(
+            Db2TableSchema schema,
+            LambdaExpression navigation,
+            Func<string, (Wdc5File File, Db2TableSchema Schema)> tableResolver)
+        {
+            if (navigation.Parameters.Count != 1 || navigation.Parameters[0].Type != typeof(TEntity))
+                throw new NotSupportedException("Include navigation must be a lambda with a single parameter matching the entity type.");
+
+            var body = navigation.Body;
+            if (body is UnaryExpression { NodeType: ExpressionType.Convert or ExpressionType.ConvertChecked } u)
+                body = u.Operand;
+
+            if (body is not MemberExpression { Member: PropertyInfo or FieldInfo } member)
+                throw new NotSupportedException("Include only supports simple member access (e.g., x => x.Parent). ");
+
+            if (member.Expression != navigation.Parameters[0])
+                throw new NotSupportedException("Include only supports direct member access on the root entity parameter.");
+
+            var navMember = member.Member;
+            var navName = navMember.Name;
+            var navType = GetMemberType(navMember);
+
+            var fkName = $"{navName}ID";
+            var fkMember = FindMember(typeof(TEntity), fkName)
+                ?? throw new NotSupportedException($"Include requires a public FK member named '{fkName}' on entity type {typeof(TEntity).FullName}.");
+
+            if (!IsReadable(fkMember))
+                throw new NotSupportedException($"FK member '{fkName}' must be readable.");
+
+            if (!IsWritable(navMember))
+                throw new NotSupportedException($"Navigation member '{navName}' must be writable.");
+
+            var fkField = schema.Fields.FirstOrDefault(f => f.Name.Equals(fkName, StringComparison.OrdinalIgnoreCase));
+            if (fkField.Name is null)
+                throw new NotSupportedException($"Include requires a schema field named '{fkName}' on table '{schema.TableName}'.");
+
+            if (fkField.ReferencedTableName is null)
+                throw new NotSupportedException($"Include requires schema field '{fkName}' to declare a referenced table name (e.g., int<OtherTable::ID>). ");
+
+            var foreignKeyGetter = CreateForeignKeyGetter(fkMember);
+            var navigationSetter = CreateNavigationSetter(navMember, navType);
+
+            var loadEntity = CreateEntityLoader(navType, fkField.ReferencedTableName, tableResolver);
+
+            return new IncludePlan(foreignKeyGetter, navigationSetter, loadEntity);
+        }
+
+        public void Apply(TEntity entity)
+        {
+            var fk = foreignKeyGetter(entity);
+            if (fk == 0)
+            {
+                navigationSetter(entity, null);
+                return;
+            }
+
+            var related = loadEntity(fk);
+            navigationSetter(entity, related);
+        }
+
+        private static Func<TEntity, int> CreateForeignKeyGetter(MemberInfo fkMember)
+        {
+            var entity = Expression.Parameter(typeof(TEntity), "entity");
+
+            Expression access = fkMember switch
+            {
+                PropertyInfo p => Expression.Property(entity, p),
+                FieldInfo f => Expression.Field(entity, f),
+                _ => throw new InvalidOperationException($"Unexpected FK member type: {fkMember.GetType().FullName}"),
+            };
+
+            var toInt32 = typeof(Convert).GetMethod(nameof(Convert.ToInt32), [typeof(object)])!;
+            var call = Expression.Call(toInt32, Expression.Convert(access, typeof(object)));
+            return Expression.Lambda<Func<TEntity, int>>(call, entity).Compile();
+        }
+
+        private static Action<TEntity, object?> CreateNavigationSetter(MemberInfo navMember, Type navType)
+        {
+            var entity = Expression.Parameter(typeof(TEntity), "entity");
+            var value = Expression.Parameter(typeof(object), "value");
+
+            Expression memberAccess = navMember switch
+            {
+                PropertyInfo p => Expression.Property(entity, p),
+                FieldInfo f => Expression.Field(entity, f),
+                _ => throw new InvalidOperationException($"Unexpected navigation member type: {navMember.GetType().FullName}"),
+            };
+
+            var assign = Expression.Assign(memberAccess, Expression.Convert(value, navType));
+            return Expression.Lambda<Action<TEntity, object?>>(assign, entity, value).Compile();
+        }
+
+        private static Func<int, object?> CreateEntityLoader(
+            Type entityType,
+            string referencedTableName,
+            Func<string, (Wdc5File File, Db2TableSchema Schema)> tableResolver)
+        {
+            try
+            {
+                var (file, schema) = tableResolver(referencedTableName);
+                var materializeRow = CreateRowMaterializer(entityType, schema);
+
+                return id => file.TryGetRowById(id, out var row) ? materializeRow(row) : null;
+            }
+            catch
+            {
+                return _ => null;
+            }
+        }
+
+        private static Func<Wdc5Row, object?> CreateRowMaterializer(Type entityType, Db2TableSchema schema)
+        {
+            var materializerType = typeof(Db2EntityMaterializer<>).MakeGenericType(entityType);
+            var materializer = Activator.CreateInstance(materializerType, schema)!;
+
+            var materialize = materializerType.GetMethod(nameof(Db2EntityMaterializer<object>.Materialize), BindingFlags.Instance | BindingFlags.Public)!;
+
+            var row = Expression.Parameter(typeof(Wdc5Row), "row");
+            var call = Expression.Call(Expression.Constant(materializer), materialize, row);
+            var boxed = Expression.Convert(call, typeof(object));
+            return Expression.Lambda<Func<Wdc5Row, object?>>(boxed, row).Compile();
+        }
+
+        private static MemberInfo? FindMember(Type type, string name)
+        {
+            var members = type.GetMember(name, BindingFlags.Instance | BindingFlags.Public);
+            foreach (var m in members)
+            {
+                if (m is PropertyInfo or FieldInfo)
+                    return m;
+            }
+
+            return null;
+        }
+
+        private static bool IsReadable(MemberInfo member)
+            => member switch
+            {
+                PropertyInfo p => p.GetMethod is not null,
+                FieldInfo => true,
+                _ => false,
+            };
+
+        private static bool IsWritable(MemberInfo member)
+            => member switch
+            {
+                PropertyInfo p => p.SetMethod is not null,
+                FieldInfo f => !f.IsInitOnly,
+                _ => false,
+            };
+
+        private static Type GetMemberType(MemberInfo member)
+            => member switch
+            {
+                PropertyInfo p => p.PropertyType,
+                FieldInfo f => f.FieldType,
+                _ => throw new InvalidOperationException($"Unexpected member type: {member.GetType().FullName}"),
+            };
     }
 }

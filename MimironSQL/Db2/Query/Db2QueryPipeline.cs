@@ -5,8 +5,10 @@ namespace MimironSQL.Db2.Query;
 internal enum Db2FinalOperator
 {
     None = 0,
+    First,
     FirstOrDefault,
     Any,
+    All,
     Count,
     Single,
     SingleOrDefault,
@@ -27,7 +29,8 @@ internal sealed record Db2QueryPipeline(
     Expression ExpressionWithoutFinalOperator,
     IReadOnlyList<Db2QueryOperation> Operations,
     Db2FinalOperator FinalOperator,
-    Type FinalElementType)
+    Type FinalElementType,
+    LambdaExpression? FinalPredicate)
 {
     public static Db2QueryPipeline Parse(Expression expression)
     {
@@ -36,16 +39,19 @@ internal sealed record Db2QueryPipeline(
         var opsReversed = new List<Db2QueryOperation>();
         var finalOperator = Db2FinalOperator.None;
         var finalElementType = GetSequenceElementType(expression.Type) ?? expression.Type;
+        LambdaExpression? finalPredicate = null;
 
         var expressionWithoutFinal = expression;
         if (expression is MethodCallExpression { Method.DeclaringType: { } declaring } m0 && declaring == typeof(Queryable))
         {
-            if (m0.Method.Name is nameof(Queryable.FirstOrDefault) or nameof(Queryable.Any) or nameof(Queryable.Count) or nameof(Queryable.Single) or nameof(Queryable.SingleOrDefault))
+            if (m0.Method.Name is nameof(Queryable.First) or nameof(Queryable.FirstOrDefault) or nameof(Queryable.Any) or nameof(Queryable.All) or nameof(Queryable.Count) or nameof(Queryable.Single) or nameof(Queryable.SingleOrDefault))
             {
                 finalOperator = m0.Method.Name switch
                 {
+                    nameof(Queryable.First) => Db2FinalOperator.First,
                     nameof(Queryable.FirstOrDefault) => Db2FinalOperator.FirstOrDefault,
                     nameof(Queryable.Any) => Db2FinalOperator.Any,
+                    nameof(Queryable.All) => Db2FinalOperator.All,
                     nameof(Queryable.Count) => Db2FinalOperator.Count,
                     nameof(Queryable.Single) => Db2FinalOperator.Single,
                     nameof(Queryable.SingleOrDefault) => Db2FinalOperator.SingleOrDefault,
@@ -57,8 +63,17 @@ internal sealed record Db2QueryPipeline(
 
                 if (m0.Arguments.Count == 2)
                 {
-                    var finalPredicate = UnquoteLambda(m0.Arguments[1]);
-                    opsReversed.Add(new Db2WhereOperation(finalPredicate));
+                    finalPredicate = UnquoteLambda(m0.Arguments[1]);
+
+                    if (finalOperator == Db2FinalOperator.All)
+                    {
+                        // All(predicate) is not equivalent to Where(predicate) + All().
+                        // Keep predicate separate so scalar execution can preserve semantics.
+                    }
+                    else
+                    {
+                        opsReversed.Add(new Db2WhereOperation(finalPredicate));
+                    }
                 }
             }
         }
@@ -71,7 +86,7 @@ internal sealed record Db2QueryPipeline(
 
             if (m.Method.DeclaringType == typeof(Queryable))
             {
-                if (name is nameof(Queryable.FirstOrDefault) or nameof(Queryable.Any) or nameof(Queryable.Count) or nameof(Queryable.Single) or nameof(Queryable.SingleOrDefault))
+                if (name is nameof(Queryable.First) or nameof(Queryable.FirstOrDefault) or nameof(Queryable.Any) or nameof(Queryable.All) or nameof(Queryable.Count) or nameof(Queryable.Single) or nameof(Queryable.SingleOrDefault))
                     throw new NotSupportedException($"{name} must be the terminal operator for this provider.");
 
                 if (name == nameof(Queryable.Where))
@@ -121,7 +136,8 @@ internal sealed record Db2QueryPipeline(
             ExpressionWithoutFinalOperator: expressionWithoutFinal,
             Operations: opsReversed,
             FinalOperator: finalOperator,
-            FinalElementType: finalElementType);
+            FinalElementType: finalElementType,
+            FinalPredicate: finalPredicate);
     }
 
     private static LambdaExpression UnquoteLambda(Expression expression)

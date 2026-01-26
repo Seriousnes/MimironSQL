@@ -75,7 +75,9 @@ public abstract class Db2Context
         var builder = new Db2ModelBuilder();
         builder.ApplyTablePropertyConventions(GetType());
         OnModelCreating(builder);
-        return builder.Build();
+
+        builder.ApplySchemaNavigationConventions(tableName => GetOrOpenTableRaw(tableName).Schema);
+        return builder.Build(tableName => GetOrOpenTableRaw(tableName).Schema);
     }
 
     private object OpenTable(Type entityType, string tableName)

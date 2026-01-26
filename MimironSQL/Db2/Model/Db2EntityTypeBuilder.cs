@@ -15,6 +15,7 @@ public sealed partial class Db2EntityTypeBuilder<T>
     public Db2EntityTypeBuilder<T> ToTable(string tableName)
     {
         Metadata.TableName = tableName;
+        Metadata.TableNameWasConfigured = true;
         return this;
     }
 }

@@ -23,10 +23,9 @@ public class QueryTests
 
         var results = map
             .Where(x => x.Directory.Contains("o"))
-            .Take(25)
-            .ToArray();
+            .Take(25);
 
-        results.Length.ShouldBeGreaterThan(0);
+        results.Count().ShouldBeGreaterThan(0);
         results.Any(x => x.Id > 0).ShouldBeTrue();
     }
 
@@ -52,8 +51,8 @@ public class QueryTests
         var prefix = sample[..2];
         var suffix = sample[^2..];
 
-        context.Map.Where(x => x.Directory.StartsWith(prefix)).Take(10).ToArray().Length.ShouldBeGreaterThan(0);
-        context.Map.Where(x => x.Directory.EndsWith(suffix)).Take(10).ToArray().Length.ShouldBeGreaterThan(0);
+        context.Map.Where(x => x.Directory.StartsWith(prefix)).Take(10).Count().ShouldBeGreaterThan(0);
+        context.Map.Where(x => x.Directory.EndsWith(suffix)).Take(10).Count().ShouldBeGreaterThan(0);
     }
 
     [Fact]
@@ -69,10 +68,9 @@ public class QueryTests
         var ids = spells
             .Where(s => s.Id > 0)
             .Select(s => s.Id)
-            .Take(20)
-            .ToArray();
+            .Take(20);
 
-        ids.Length.ShouldBeGreaterThanOrEqualTo(1);
+        ids.Count().ShouldBeGreaterThanOrEqualTo(1);
         ids.All(id => id > 0).ShouldBeTrue();
     }
 
@@ -88,10 +86,9 @@ public class QueryTests
 
         var results = table
             .Where(x => x.CollectableSourceInfoID > 0)
-            .Take(50)
-            .ToArray();
+            .Take(50);
 
-        results.Length.ShouldBeGreaterThan(0);
+        results.Count().ShouldBeGreaterThan(0);
         results.All(r => r.Id > 0).ShouldBeTrue();
         results.All(r => r.CollectableSourceInfoID > 0).ShouldBeTrue();
         results.All(r => r.QuestID >= 0).ShouldBeTrue();
@@ -136,6 +133,17 @@ public class QueryTests
     }
 
     [Fact]
+    public void Phase1_requires_explicit_key_when_entity_has_no_id_member()
+    {
+        var testDataDir = TestDataPaths.GetTestDataDirectory();
+        var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
+        var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
+
+        var ex = Should.Throw<NotSupportedException>(() => _ = new NoKeyTestDb2Context(dbdProvider, db2Provider));
+        ex.Message.ShouldContain("has no key member");
+    }
+
+    [Fact]
     public void Phase35_prunes_scalar_projection_without_entity_materialization()
     {
         MapWithCtor.InstancesCreated = 0;
@@ -149,10 +157,9 @@ public class QueryTests
         var ids = context.Map
             .Where(x => x.Id > 0)
             .Select(x => x.Id)
-            .Take(10)
-            .ToArray();
+            .Take(10);
 
-        ids.Length.ShouldBeGreaterThan(0);
+        ids.Count().ShouldBeGreaterThan(0);
         MapWithCtor.InstancesCreated.ShouldBe(0);
     }
 
@@ -170,19 +177,17 @@ public class QueryTests
         var anon = context.Map
             .Where(x => x.Id > 0)
             .Select(x => new { x.Id, x.Directory })
-            .Take(5)
-            .ToArray();
+            .Take(5);
 
-        anon.Length.ShouldBeGreaterThan(0);
+        anon.Count().ShouldBeGreaterThan(0);
         anon.All(x => x.Id > 0).ShouldBeTrue();
 
         var dtos = context.Map
             .Where(x => x.Id > 0)
             .Select(x => new MapDto(x.Id, x.Directory))
-            .Take(5)
-            .ToArray();
+            .Take(5);
 
-        dtos.Length.ShouldBeGreaterThan(0);
+        dtos.Count().ShouldBeGreaterThan(0);
         dtos.All(x => x.Id > 0).ShouldBeTrue();
         MapWithCtor.InstancesCreated.ShouldBe(0);
     }
@@ -201,10 +206,9 @@ public class QueryTests
         var ids = context.Map
             .Select(x => x.Id)
             .Where(id => id > 0)
-            .Take(5)
-            .ToArray();
+            .Take(5);
 
-        ids.Length.ShouldBeGreaterThan(0);
+        ids.Count().ShouldBeGreaterThan(0);
         MapWithCtor.InstancesCreated.ShouldBeGreaterThan(0);
     }
 
@@ -217,7 +221,7 @@ public class QueryTests
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
         var context = new TestDb2Context(dbdProvider, db2Provider);
 
-        var id = context.Spell.Select(x => x.Id).Take(1).ToArray()[0];
+        var id = context.Spell.Select(x => x.Id).Take(1).First();
         var found = context.Spell.Find(id);
 
         found.ShouldNotBeNull();
@@ -254,7 +258,7 @@ public class QueryTests
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
         var context = new TestDb2Context(dbdProvider, db2Provider);
 
-        var id = context.GarrType.Select(x => x.Id).Take(1).ToArray()[0];
+        var id = context.GarrType.Select(x => x.Id).Take(1).First();
         var found = context.GarrType.Find(id);
 
         found.ShouldNotBeNull();
@@ -320,25 +324,11 @@ public class QueryTests
         var testDataDir = TestDataPaths.GetTestDataDirectory();
         var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
-        var context = new SchemaFkConflictTestDb2Context(dbdProvider, db2Provider);
 
-        var map = context.Map;
-        var parentMapIdField = map.Schema.Fields.First(f => f.Name.Equals("ParentMapID", StringComparison.OrdinalIgnoreCase));
+        var ex = Should.Throw<NotSupportedException>(() =>
+            _ = new SchemaFkConflictTestDb2Context(dbdProvider, db2Provider));
 
-        var candidate = map.File.EnumerateRows()
-            .Select(r => (Id: r.Id, ParentId: Convert.ToInt32(r.GetScalar<long>(parentMapIdField.ColumnStartIndex))))
-            .FirstOrDefault(x => x.ParentId > 0 && map.File.TryGetRowById(x.ParentId, out _));
-
-        candidate.ParentId.ShouldBeGreaterThan(0);
-
-        var ex = Should.Throw<System.Reflection.TargetInvocationException>(() =>
-            map
-                .Where(x => x.Id == candidate.Id)
-                .Include(x => x.ParentMap)
-                .Single());
-
-        ex.GetBaseException().ShouldBeOfType<NotSupportedException>();
-        ex.GetBaseException().Message.ShouldContain("conflicts with schema FK");
+        ex.Message.ShouldContain("conflicts with schema FK");
     }
 
     [Fact]
@@ -412,6 +402,38 @@ public class QueryTests
 
         results.Count.ShouldBe(2);
         results.All(x => x.MapID == 2441).ShouldBeTrue();
+    }
+
+    [Fact]
+    public void Phase3_supports_navigation_string_contains_in_where()
+    {
+        var testDataDir = TestDataPaths.GetTestDataDirectory();
+        var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
+        var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
+        var context = new TestDb2Context(dbdProvider, db2Provider);
+
+        var results = context.MapChallengeMode
+            .Where(x => x.Map!.MapName_lang.Contains("Tazavesh"))
+            .ToList();
+
+        results.Count.ShouldBeGreaterThanOrEqualTo(1);
+        results.All(x => x.MapID == 2441).ShouldBeTrue();
+    }
+
+    [Fact]
+    public void Phase3_supports_navigation_access_in_select_without_explicit_include()
+    {
+        var testDataDir = TestDataPaths.GetTestDataDirectory();
+        var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
+        var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
+        var context = new TestDb2Context(dbdProvider, db2Provider);
+
+        var names = context.MapChallengeMode
+            .Where(x => x.MapID == 2441)
+            .Select(x => x.Map!.MapName_lang);
+
+        names.Count().ShouldBe(2);
+        names.All(n => n == "Tazavesh, the Veiled Market").ShouldBeTrue();
     }
 
 }

@@ -18,6 +18,13 @@ The query surface should support:
 
 Navigation predicates/projections imply internal join semantics, but we do not need to expose `Join(...)` as a public API.
 
+## Clarified Acceptance Criteria (Jan 2026)
+
+- `Db2Model` stores schema-driven metadata per table (PK/FK as derived from `.dbd` + WDC5 layout) plus any `OnModelCreating` overrides.
+- Entities without an `Id` member must explicitly configure a key in `OnModelCreating` (fail fast during model build).
+- Schema hints are used to auto-configure FK-based navigations into the model; the model remains the single source of truth at query time.
+- Phase 3 includes navigation access in both `Where(...)` and `Select(...)` (1-hop reference navigations).
+
 ## Approach (EF-like, not EF Core)
 
 Goal: maximize API familiarity with EF Core patterns while keeping a purpose-built execution engine optimized for WDC5.
@@ -44,8 +51,8 @@ Deliverables:
 
 - `Db2Model` describing:
     - entity ↔ table name mapping
-    - primary key metadata
-    - navigation/relationship metadata
+    - primary key metadata (including required key member mapping)
+    - FK/navigation/relationship metadata (schema-derived + overrides)
     - support for relationships not present in DB2/DBD (e.g., shared-primary-key 1:1 like `Spell` ↔ `SpellName`)
 - `Db2Context` builds/caches its `Db2Model` once and exposes it to query translation/execution.
 
@@ -62,9 +69,9 @@ Deliverables:
 
 - `Db2ModelBuilder` with a minimal fluent API for:
     - configuring table name for an entity
-    - configuring primary key
+    - configuring primary key (required when the entity has no `Id` member)
     - configuring reference navigations:
-        - FK-based navigations (existing schema-backed case)
+        - FK-based navigations (schema-backed via auto-configuration, overridable)
         - shared-primary-key navigations (implicit relationship case)
 - `Db2Context.OnModelCreating(Db2ModelBuilder modelBuilder)` as the primary extension point.
 
@@ -84,6 +91,7 @@ Scope (initial):
 - 1-hop reference navigation only (e.g., `s.SpellName.Name_lang`, not nested chains)
 - translate navigation access using `Db2Model` relationships
 - initial string predicate support should include `==`, `Contains`, `StartsWith`, and `EndsWith` against related-table string fields
+- navigation access in both `Where(...)` and `Select(...)`
 
 Deliverables:
 
@@ -138,3 +146,78 @@ Notes:
 - Collection navigations (1-to-many)
 - Nested navigations (multi-hop)
 - SQL-text layer (only if required)
+
+## Concrete Implementation Breakdown (Jan 2026)
+
+This section translates phases 4–5 into branch/PR-sized work items with commit-sized checkpoints.
+
+Guiding constraints:
+
+- Tests must use existing on-disk fixture DB2 data (no synthetic DB2 bytes).
+- Preserve the “minimal decoding” philosophy: decode only fields required by the plan.
+
+### PR 1 — “Required Columns per Source” (Phase 5 prerequisite)
+
+Branch: `feature/phase-5-required-columns`
+
+Commits:
+
+1. Introduce requirement primitives used by execution/planning
+    - Add small internal types to represent “required fields” per source (root/related): scalars, strings, join keys.
+    - Keep them schema-driven (by `Db2TableSchema` field name + column index), with `MemberInfo` mapping only at translation boundaries.
+2. Extend the navigation plan to carry per-source requirements
+    - Navigation translation should return: join linkage + required columns for root and related source.
+    - Ensure navigation predicates mark required columns on the related source, and join keys on both sources.
+3. Wire requirements into pruning decisions
+    - Refine pruning eligibility so projections that require navigation or extra fields don’t accidentally “prune” into a path that can’t satisfy required columns.
+4. Add/extend fixture-backed tests proving requirements affect decoding
+    - Prefer tests that validate observable behavior (e.g., constructor-count / materialization counters) using existing fixtures.
+
+Acceptance criteria:
+
+- A multi-source plan explicitly records which fields are required on the root and on the related source.
+- Existing pruning behavior remains correct, and navigation projections/predicates no longer “accidentally” force full entity decoding.
+
+### PR 2 — “Efficient Navigation Projections” (Phase 5)
+
+Branch: `feature/phase-5-batched-nav-projections`
+
+Commits:
+
+1. Add an internal batch navigation loader
+    - Given a join linkage and a set of required related fields, build a key→row/field lookup for the related table.
+    - Implement left-join semantics for projections: missing related row ⇒ projected value is `null`/default.
+2. Add a projection path for `Select(x => x.Nav.SomeField)` without N+1
+    - Collect distinct keys from root scan, batch load related lookup once, project from lookup.
+    - Do not materialize the related entity when projecting a scalar/anonymous result.
+3. Expand fixture-backed tests to assert both correctness and “non-N+1” behavior
+    - Use real fixture DB2 data.
+    - Prefer deterministic assertions (e.g., specific known IDs/values already used in tests) rather than heuristics.
+
+Acceptance criteria:
+
+- Navigation access in `Select(...)` no longer performs per-row `TryGetRowById`-style lookups.
+- Projections that read related fields can avoid materializing full entities.
+
+### PR 3 — “Batch Include + Broader Predicate Shapes” (Phase 4 + Phase 3+)
+
+Branch: `feature/phase-4-batched-include-and-predicate-shapes`
+
+Commits:
+
+1. Batch `Include(...)` to avoid N+1
+    - Reuse the batch navigation loader to populate navigations in one pass.
+    - Preserve current semantics: missing related row ⇒ navigation is `null`.
+2. Support additional navigation predicate shapes (start with AND)
+    - Support `AND` combinations of multiple navigation string predicates on the same navigation by intersecting key sets.
+    - Support mixing root predicates with navigation predicates by composing row predicates.
+3. Optional follow-up: captured needles for string predicates
+    - Support closed-over `string` variables (simple closures) in nav string predicates.
+4. Fixture-backed tests for each new predicate shape
+    - Use existing DB2 fixtures only.
+
+Acceptance criteria:
+
+- `Include(...)` is batched and does not do per-entity table lookups.
+- Navigation predicates support at least: `AND` of two nav-string predicates on the same navigation, plus mixing with a root predicate.
+

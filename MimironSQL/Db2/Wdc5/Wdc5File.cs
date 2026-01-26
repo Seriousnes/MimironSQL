@@ -18,7 +18,7 @@ internal sealed class Wdc5File
     public Value32[][] PalletData { get; }
     public Dictionary<int, Value32>[] CommonData { get; }
 
-    internal byte[] DenseStringTableBytes { get; } = Array.Empty<byte>();
+    internal byte[] DenseStringTableBytes { get; } = [];
     internal int RecordsBlobSizeBytes { get; }
 
     public int TotalSectionRecordCount => ParsedSections.Sum(s => s.NumRecords);
@@ -144,7 +144,7 @@ internal sealed class Wdc5File
             }
             else
             {
-                palletData[i] = Array.Empty<Value32>();
+                palletData[i] = [];
             }
         }
 
@@ -202,7 +202,7 @@ internal sealed class Wdc5File
                 {
                     recordDataSizeBytes = section.OffsetRecordsEndOffset - section.FileOffset;
                     recordsData = reader.ReadBytes(recordDataSizeBytes);
-                    stringTableBytes = Array.Empty<byte>();
+                    stringTableBytes = [];
 
                     if (reader.BaseStream.Position != section.OffsetRecordsEndOffset)
                         throw new InvalidDataException("WDC5 sparse section parsing desynced: expected OffsetRecordsEndOffset.");
@@ -253,7 +253,7 @@ internal sealed class Wdc5File
                 }
 
                 // offset map / sparse entries
-                SparseEntry[] sparseEntries = Array.Empty<SparseEntry>();
+                SparseEntry[] sparseEntries = [];
                 if (section.OffsetMapIDCount > 0)
                     sparseEntries = ReadStructArray<SparseEntry>(reader, section.OffsetMapIDCount);
 
@@ -293,7 +293,7 @@ internal sealed class Wdc5File
 
                 var sparseStarts = flags.HasFlag(Db2Flags.Sparse)
                     ? Wdc5Section.BuildSparseRecordStartBits(sparseEntries, section.FileOffset, recordDataSizeBytes)
-                    : Array.Empty<int>();
+                    : [];
 
                 if (!shouldSkipEncryptedSection)
                 {
@@ -495,19 +495,19 @@ internal sealed class Wdc5File
     private static int[] ReadInt32Array(BinaryReader reader, int count)
     {
         if (count <= 0)
-            return Array.Empty<int>();
+            return [];
 
         var bytes = reader.ReadBytes(count * 4);
-        return MemoryMarshal.Cast<byte, int>(bytes).ToArray();
+        return [.. MemoryMarshal.Cast<byte, int>(bytes)];
     }
 
     private static T[] ReadStructArray<T>(BinaryReader reader, int count) where T : unmanaged
     {
         if (count <= 0)
-            return Array.Empty<T>();
+            return [];
 
         var size = Unsafe.SizeOf<T>();
         var bytes = reader.ReadBytes(count * size);
-        return MemoryMarshal.Cast<byte, T>(bytes).ToArray();
+        return [.. MemoryMarshal.Cast<byte, T>(bytes)];
     }
 }

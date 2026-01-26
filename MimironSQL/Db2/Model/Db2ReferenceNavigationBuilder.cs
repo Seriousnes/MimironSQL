@@ -46,4 +46,34 @@ public sealed class Db2ReferenceNavigationBuilder<TSource, TTarget>(Db2ModelBuil
         _metadata.OverridesSchema = true;
         return this;
     }
+
+    public Db2ReferenceNavigationBuilder<TSource, TTarget> WithForeignKey<TKey>(
+        Expression<Func<TSource, TKey>> foreignKey)
+    {
+        ArgumentNullException.ThrowIfNull(foreignKey);
+
+        _metadata.Kind = Db2ReferenceNavigationKind.ForeignKeyToPrimaryKey;
+        _metadata.SourceKeyMember = GetMember(foreignKey);
+
+        _modelBuilder.Entity(typeof(TTarget));
+        return this;
+
+        static MemberInfo GetMember(LambdaExpression expression)
+        {
+            if (expression.Parameters.Count != 1)
+                throw new NotSupportedException("FK selector must have exactly one parameter.");
+
+            var body = expression.Body;
+            if (body is UnaryExpression { NodeType: ExpressionType.Convert or ExpressionType.ConvertChecked } u)
+                body = u.Operand;
+
+            if (body is not MemberExpression { Member: PropertyInfo or FieldInfo } member)
+                throw new NotSupportedException("FK selector only supports simple member access (e.g., x => x.ParentId). ");
+
+            if (member.Expression != expression.Parameters[0])
+                throw new NotSupportedException("FK selector only supports direct member access on the root entity parameter.");
+
+            return member.Member;
+        }
+    }
 }

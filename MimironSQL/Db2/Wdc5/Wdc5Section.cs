@@ -11,12 +11,12 @@ public sealed class Wdc5Section
     public ReadOnlyMemory<byte> TactKey { get; init; } = ReadOnlyMemory<byte>.Empty;
 
     public int StringTableBaseOffset { get; init; } = 0;
-    public byte[] StringTableBytes { get; init; } = Array.Empty<byte>();
-    public int[] IndexData { get; init; } = Array.Empty<int>();
+    public byte[] StringTableBytes { get; init; } = [];
+    public int[] IndexData { get; init; } = [];
     public Dictionary<int, int> CopyData { get; init; } = new();
     public Dictionary<int, int> ParentLookupEntries { get; init; } = new();
-    public SparseEntry[] SparseEntries { get; init; } = Array.Empty<SparseEntry>();
-    public int[] SparseRecordStartBits { get; init; } = Array.Empty<int>();
+    public SparseEntry[] SparseEntries { get; init; } = [];
+    public int[] SparseRecordStartBits { get; init; } = [];
 
     public bool IsEncrypted => Header.TactKeyLookup != 0;
     public bool IsDecryptable => IsEncrypted && !TactKey.IsEmpty;
@@ -27,7 +27,7 @@ public sealed class Wdc5Section
     public static int[] BuildSparseRecordStartBits(SparseEntry[] entries, int sectionFileOffset, int recordDataSizeBytes)
     {
         if (entries.Length == 0)
-            return Array.Empty<int>();
+            return [];
 
         if (recordDataSizeBytes < 0)
             throw new InvalidDataException("Sparse record data size is negative.");

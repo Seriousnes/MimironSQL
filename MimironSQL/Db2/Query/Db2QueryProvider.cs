@@ -1,3 +1,4 @@
+using MimironSQL.Db2;
 using MimironSQL.Db2.Schema;
 using MimironSQL.Db2.Model;
 using MimironSQL.Db2.Wdc5;
@@ -69,8 +70,7 @@ internal sealed class Db2QueryProvider<TEntity>(
             .Take(selectIndex)
             .OfType<Db2WhereOperation>()
             .Where(op => op.Predicate.Parameters.Count == 1 && op.Predicate.Parameters[0].Type == typeof(TEntity))
-            .Select(op => (Expression<Func<TEntity, bool>>)op.Predicate)
-            .ToArray();
+            .Select(op => (Expression<Func<TEntity, bool>>)op.Predicate);
 
         var selectOp = selectIndex < ops.Count ? ops[selectIndex] as Db2SelectOperation : null;
 
@@ -101,17 +101,18 @@ internal sealed class Db2QueryProvider<TEntity>(
                 selectOp.Selector.Parameters.Count == 1 &&
                 selectOp.Selector.Parameters[0].Type == typeof(TEntity) &&
                 selectOp.Selector.ReturnType == typeof(TElement) &&
+                !SelectorUsesNavigation(selectOp.Selector) &&
                 postOps.All(op => op is not Db2WhereOperation && op is not Db2IncludeOperation) &&
                 postOps.Count(op => op is Db2SelectOperation) <= 1;
 
             if (canAttemptPrune)
             {
-                if (TryExecuteEnumerablePruned(expression, preEntityWhere, stopAfter, selectOp.Selector, postOps, out var pruned))
+                if (TryExecuteEnumerablePruned([.. preEntityWhere], stopAfter, selectOp.Selector, postOps, out var pruned))
                     return (IEnumerable<TElement>)pruned;
             }
         }
 
-        IEnumerable<TEntity> baseEntities = EnumerateEntities(preEntityWhere, stopAfter);
+        IEnumerable<TEntity> baseEntities = EnumerateEntities([.. preEntityWhere], stopAfter);
 
         IEnumerable current = baseEntities;
         var currentElementType = typeof(TEntity);
@@ -124,6 +125,20 @@ internal sealed class Db2QueryProvider<TEntity>(
                     current = ApplyWhere(current, currentElementType, where.Predicate);
                     break;
                 case Db2SelectOperation select:
+                    if (currentElementType == typeof(TEntity))
+                    {
+                        var navAccesses = Db2NavigationQueryTranslator.GetNavigationAccesses<TEntity>(_model, select.Selector);
+                        var navMembers = navAccesses
+                            .Select(a => a.Join.Navigation.NavigationMember)
+                            .Distinct();
+
+                        foreach (var navMember in navMembers)
+                        {
+                            var navLambda = CreateNavigationLambda(navMember);
+                            current = ApplyInclude((IEnumerable<TEntity>)current, navLambda);
+                        }
+                    }
+
                     current = ApplySelect(current, currentElementType, select.Selector);
                     currentElementType = select.Selector.ReturnType;
                     break;
@@ -141,11 +156,26 @@ internal sealed class Db2QueryProvider<TEntity>(
             }
         }
 
+        bool SelectorUsesNavigation(LambdaExpression selector)
+            => Db2NavigationQueryTranslator.GetNavigationAccesses<TEntity>(_model, selector).Count != 0;
+
+        LambdaExpression CreateNavigationLambda(MemberInfo navMember)
+        {
+            var entity = Expression.Parameter(typeof(TEntity), "entity");
+            Expression access = navMember switch
+            {
+                PropertyInfo p => Expression.Property(entity, p),
+                FieldInfo f => Expression.Field(entity, f),
+                _ => throw new InvalidOperationException($"Unexpected navigation member type: {navMember.GetType().FullName}"),
+            };
+
+            return Expression.Lambda(access, entity);
+        }
+
         return (IEnumerable<TElement>)current;
     }
 
     private bool TryExecuteEnumerablePruned(
-        Expression expression,
         Expression<Func<TEntity, bool>>[] preEntityWhere,
         int? stopAfter,
         LambdaExpression selector,
@@ -169,8 +199,7 @@ internal sealed class Db2QueryProvider<TEntity>(
         var selectorReturnType = selector.ReturnType;
         var projectorMethod = typeof(Db2QueryProvider<TEntity>).GetMethod(nameof(TryCreateProjector), System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
         var projectorGeneric = projectorMethod.MakeGenericMethod(selectorReturnType);
-        var projector = projectorGeneric.Invoke(this, [selector]) as Delegate;
-        if (projector is null)
+        if (projectorGeneric.Invoke(this, [selector]) is not Delegate projector)
             return false;
 
         var enumerateMethod = typeof(Db2QueryProvider<TEntity>).GetMethod(nameof(EnumerateProjected), System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
@@ -249,8 +278,24 @@ internal sealed class Db2QueryProvider<TEntity>(
 
         var enumerable = Execute(expressionWithFinalStripped: pipeline.ExpressionWithoutFinalOperator, sequenceElementType);
 
+        if (pipeline.FinalOperator == Db2FinalOperator.All)
+        {
+            if (pipeline.FinalPredicate is null)
+                throw new NotSupportedException("Queryable.All requires a predicate for this provider.");
+
+            var typedPredicate = pipeline.FinalPredicate.Compile();
+
+            var all = typeof(Enumerable)
+                .GetMethods(BindingFlags.Public | BindingFlags.Static)
+                .Single(m => m.Name == nameof(Enumerable.All) && m.GetParameters().Length == 2)
+                .MakeGenericMethod(sequenceElementType);
+
+            return (TResult)all.Invoke(null, [enumerable, typedPredicate])!;
+        }
+
         var methodName = pipeline.FinalOperator switch
         {
+            Db2FinalOperator.First => nameof(Enumerable.First),
             Db2FinalOperator.FirstOrDefault => nameof(Enumerable.FirstOrDefault),
             Db2FinalOperator.Any => nameof(Enumerable.Any),
             Db2FinalOperator.Count => nameof(Enumerable.Count),
@@ -281,7 +326,7 @@ internal sealed class Db2QueryProvider<TEntity>(
 
         foreach (var predicate in predicates)
         {
-            if (TryCompileNavigationSemiJoinPredicate(predicate, out var navPredicate))
+            if (Db2NavigationQueryCompiler.TryCompileSemiJoinPredicate(_model, schema, _tableResolver, predicate, out var navPredicate))
             {
                 rowPredicates.Add(navPredicate);
                 continue;
@@ -328,98 +373,6 @@ internal sealed class Db2QueryProvider<TEntity>(
             yielded++;
             if (take.HasValue && yielded >= take.Value)
                 yield break;
-        }
-    }
-
-    private bool TryCompileNavigationSemiJoinPredicate(
-        Expression<Func<TEntity, bool>> predicate,
-        out Func<Wdc5Row, bool> rowPredicate)
-    {
-        rowPredicate = _ => true;
-
-        if (predicate.Parameters.Count != 1 || predicate.Parameters[0].Type != typeof(TEntity))
-            return false;
-
-        Expression body = predicate.Body;
-        if (body is UnaryExpression { NodeType: ExpressionType.Convert or ExpressionType.ConvertChecked } u)
-            body = u.Operand;
-
-        if (body is not BinaryExpression { NodeType: ExpressionType.Equal } eq)
-            return false;
-
-        if (!TryGetStringConstant(eq.Left, out var constant) && !TryGetStringConstant(eq.Right, out constant))
-            return false;
-
-        var memberSide = ReferenceEquals(eq.Left, constant.Expression) ? eq.Right : eq.Left;
-        if (!TryGetNavThenMemberAccess(memberSide, out var navMember, out var relatedMember))
-            return false;
-
-        var navName = navMember.Name;
-        var fkName = $"{navName}ID";
-        var fkField = schema.Fields.FirstOrDefault(f => f.Name.Equals(fkName, StringComparison.OrdinalIgnoreCase));
-        if (fkField.Name is null || fkField.ReferencedTableName is null)
-            return false;
-
-        var (relatedFile, relatedSchema) = _tableResolver(fkField.ReferencedTableName);
-
-        var relatedField = relatedSchema.Fields.FirstOrDefault(f => f.Name.Equals(relatedMember.Name, StringComparison.OrdinalIgnoreCase));
-        if (relatedField.Name is null)
-            return false;
-
-        var relatedFieldIndex = relatedField.ColumnStartIndex;
-
-        HashSet<int> matchingIds = [];
-        foreach (var row in relatedFile.EnumerateRows())
-        {
-            if (row.TryGetString(relatedFieldIndex, out var s) && s == constant.Value)
-                matchingIds.Add(row.Id);
-        }
-
-        var rootFkIndex = fkField.ColumnStartIndex;
-        rowPredicate = row =>
-        {
-            var fk = Convert.ToInt32(row.GetScalar<long>(rootFkIndex));
-            return fk != 0 && matchingIds.Contains(fk);
-        };
-
-        return true;
-
-        static bool TryGetStringConstant(Expression expression, out (string Value, ConstantExpression Expression) constant)
-        {
-            if (expression is ConstantExpression { Value: string s } c)
-            {
-                constant = (s, c);
-                return true;
-            }
-
-            constant = default;
-            return false;
-        }
-
-        static bool TryGetNavThenMemberAccess(Expression expression, out MemberInfo navMember, out MemberInfo relatedMember)
-        {
-            navMember = null!;
-            relatedMember = null!;
-
-            if (expression is UnaryExpression { NodeType: ExpressionType.Convert or ExpressionType.ConvertChecked } u2)
-                expression = u2.Operand;
-
-            if (expression is not MemberExpression { Member: PropertyInfo or FieldInfo } related)
-                return false;
-
-            var navExpr = related.Expression;
-            if (navExpr is UnaryExpression { NodeType: ExpressionType.Convert or ExpressionType.ConvertChecked } u3)
-                navExpr = u3.Operand;
-
-            if (navExpr is not MemberExpression { Member: PropertyInfo or FieldInfo } nav)
-                return false;
-
-            if (nav.Expression is not ParameterExpression)
-                return false;
-
-            navMember = nav.Member;
-            relatedMember = related.Member;
-            return true;
         }
     }
 
@@ -496,7 +449,7 @@ internal sealed class Db2QueryProvider<TEntity>(
 
     private IEnumerable<TEntity> ApplyInclude(IEnumerable<TEntity> source, LambdaExpression navigation)
     {
-        var plan = IncludePlan.Create(schema, navigation, _model, _tableResolver);
+        var plan = IncludePlan.Create(navigation, _model, _tableResolver);
 
         foreach (var entity in source)
         {
@@ -511,7 +464,6 @@ internal sealed class Db2QueryProvider<TEntity>(
         Func<int, object?> loadEntity)
     {
         public static IncludePlan Create(
-            Db2TableSchema schema,
             LambdaExpression navigation,
             Db2Model model,
             Func<string, (Wdc5File File, Db2TableSchema Schema)> tableResolver)
@@ -536,46 +488,25 @@ internal sealed class Db2QueryProvider<TEntity>(
             if (!IsWritable(navMember))
                 throw new NotSupportedException($"Navigation member '{navName}' must be writable.");
 
-            var hasModelNav = model.TryGetReferenceNavigation(typeof(TEntity), navMember, out var modelNav);
-
-            var fkName = $"{navName}ID";
-            var fkMember = FindMember(typeof(TEntity), fkName);
-            var fkField = schema.Fields.FirstOrDefault(f => f.Name.Equals(fkName, StringComparison.OrdinalIgnoreCase));
-
-            var hasSchemaFk = fkMember is not null && fkField.Name is not null && fkField.ReferencedTableName is not null;
-
-            if (hasSchemaFk && !IsReadable(fkMember!))
-                throw new NotSupportedException($"FK member '{fkName}' must be readable.");
+            if (!model.TryGetReferenceNavigation(typeof(TEntity), navMember, out var modelNav))
+                throw new NotSupportedException($"Include navigation '{typeof(TEntity).FullName}.{navName}' is not configured. Configure the navigation in OnModelCreating, or ensure schema FK conventions can apply.");
 
             var navigationSetter = CreateNavigationSetter(navMember, navType);
 
-            if (hasSchemaFk)
-            {
-                if (hasModelNav && !modelNav!.OverridesSchema)
-                    throw new NotSupportedException($"Include navigation '{typeof(TEntity).FullName}.{navName}' conflicts with schema FK '{fkName}'. Use OverridesSchema() on the model configuration to override schema resolution.");
-
-                if (!hasModelNav)
-                {
-                    var foreignKeyGetter = CreateIntGetter(fkMember!);
-                    var loadByFk = CreateEntityLoader(navType, fkField.ReferencedTableName!, tableResolver);
-                    return new IncludePlan(foreignKeyGetter, navigationSetter, loadByFk);
-                }
-            }
-
-            if (!hasModelNav)
-                throw new NotSupportedException($"Include navigation '{typeof(TEntity).FullName}.{navName}' is not configured. Either provide a schema FK '{fkName}' or configure the navigation in OnModelCreating.");
-
-            if (modelNav!.Kind != Db2ReferenceNavigationKind.SharedPrimaryKeyOneToOne)
-                throw new NotSupportedException($"Include navigation '{typeof(TEntity).FullName}.{navName}' has unsupported kind '{modelNav.Kind}'.");
-
             if (!IsReadable(modelNav.SourceKeyMember))
-                throw new NotSupportedException($"Shared primary key member '{modelNav.SourceKeyMember.Name}' must be readable.");
+                throw new NotSupportedException($"Navigation key member '{modelNav.SourceKeyMember.Name}' must be readable.");
 
             var targetEntityType = model.GetEntityType(modelNav.TargetClrType);
             var loadByKey = CreateEntityLoader(navType, targetEntityType.TableName, tableResolver);
-            var sharedKeyGetter = CreateIntGetter(modelNav.SourceKeyMember);
 
-            return new IncludePlan(sharedKeyGetter, navigationSetter, loadByKey);
+            var keyGetter = CreateIntGetter(modelNav.SourceKeyMember);
+
+            return modelNav.Kind switch
+            {
+                Db2ReferenceNavigationKind.ForeignKeyToPrimaryKey => new IncludePlan(keyGetter, navigationSetter, loadByKey),
+                Db2ReferenceNavigationKind.SharedPrimaryKeyOneToOne => new IncludePlan(keyGetter, navigationSetter, loadByKey),
+                _ => throw new NotSupportedException($"Include navigation '{typeof(TEntity).FullName}.{navName}' has unsupported kind '{modelNav.Kind}'."),
+            };
         }
 
         public void Apply(TEntity entity)
@@ -646,7 +577,7 @@ internal sealed class Db2QueryProvider<TEntity>(
             var materializerType = typeof(Db2EntityMaterializer<>).MakeGenericType(entityType);
             var materializer = Activator.CreateInstance(materializerType, schema)!;
 
-            var materialize = materializerType.GetMethod(nameof(Db2EntityMaterializer<object>.Materialize), BindingFlags.Instance | BindingFlags.Public)!;
+            var materialize = materializerType.GetMethod(nameof(Db2EntityMaterializer<>.Materialize), BindingFlags.Instance | BindingFlags.Public)!;
 
             var row = Expression.Parameter(typeof(Wdc5Row), "row");
             var call = Expression.Call(Expression.Constant(materializer), materialize, row);

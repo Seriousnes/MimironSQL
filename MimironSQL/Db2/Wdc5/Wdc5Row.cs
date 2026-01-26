@@ -264,7 +264,7 @@ internal readonly struct Wdc5Row
             }
 
             for (var i = 0; i < fieldIndex; i++)
-                SkipSparseField(ref localReader, i, recordBytes, rowStartInSection, rowEndExclusive);
+                SkipSparseField(ref localReader, i, recordBytes, rowEndExclusive);
 
             var fieldStart = localReader.OffsetBytes + (localReader.PositionBits >> 3);
             if ((uint)fieldStart < (uint)rowEndExclusive && TryReadNullTerminatedUtf8(recordBytes, startIndex: fieldStart, endExclusive: rowEndExclusive, out value))
@@ -279,7 +279,7 @@ internal readonly struct Wdc5Row
         }
     }
 
-    private void SkipSparseField(ref BitReader reader, int fieldIndex, ReadOnlySpan<byte> recordBytes, int rowStartInSection, int rowEndExclusive)
+    private void SkipSparseField(ref BitReader reader, int fieldIndex, ReadOnlySpan<byte> recordBytes, int rowEndExclusive)
     {
         ref readonly var fieldMeta = ref _file.FieldMeta[fieldIndex];
         ref readonly var columnMeta = ref _file.ColumnMeta[fieldIndex];
@@ -320,7 +320,7 @@ internal readonly struct Wdc5Row
             return false;
         }
 
-        var span = bytes.Slice(startIndex, endExclusive - startIndex);
+        var span = bytes[startIndex..endExclusive];
         var terminatorIndex = span.IndexOf((byte)0);
         if (terminatorIndex < 0)
         {
@@ -401,7 +401,7 @@ internal readonly struct Wdc5Row
 
         public BitReader Reader { get; }
 
-        public byte[] Bytes => _buffer ?? Array.Empty<byte>();
+        public byte[] Bytes => _buffer ?? [];
 
         public void Dispose()
         {

@@ -24,10 +24,9 @@ public sealed class Wdc5SparseInlineStringHeuristicTests
             .Select(r => r.Id)
             .Where(id => id > 0)
             .Distinct()
-            .Take(10)
-            .ToArray();
+            .Take(10);
 
-        sampleIds.Length.ShouldBeGreaterThan(0);
+        sampleIds.Count().ShouldBeGreaterThan(0);
 
         foreach (var id in sampleIds)
         {

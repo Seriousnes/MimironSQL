@@ -46,8 +46,7 @@ internal sealed class Db2EntityMaterializer<TEntity>
 
         var members = typeof(TEntity)
             .GetMembers(BindingFlags.Instance | BindingFlags.Public)
-            .Where(m => m is PropertyInfo or FieldInfo)
-            .ToArray();
+            .Where(m => m is PropertyInfo or FieldInfo);
 
         foreach (var member in members)
         {

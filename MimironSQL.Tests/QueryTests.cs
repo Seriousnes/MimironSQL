@@ -436,4 +436,32 @@ public class QueryTests
         names.All(n => n == "Tazavesh, the Veiled Market").ShouldBeTrue();
     }
 
+    [Fact]
+    public void Phase5_batched_navigation_projection_avoids_row_by_id_n_plus_one()
+    {
+        var testDataDir = TestDataPaths.GetTestDataDirectory();
+        var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
+        var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
+        var context = new TestDb2Context(dbdProvider, db2Provider);
+
+        Wdc5FileLookupSnapshot snapshot;
+        List<string?> names;
+
+        using (Wdc5FileLookupTracker.Start())
+        {
+            names = context.Spell
+                .Where(s => s.Id > 0)
+                .Select(s => (string?)s.SpellName!.Name_lang)
+                .Take(50)
+                .ToList();
+
+            snapshot = Wdc5FileLookupTracker.Snapshot();
+        }
+
+        names.Count.ShouldBeGreaterThan(0);
+        names.Any(s => !string.IsNullOrWhiteSpace(s)).ShouldBeTrue();
+
+        snapshot.TotalTryGetRowByIdCalls.ShouldBe(0);
+    }
+
 }

@@ -363,6 +363,8 @@ internal sealed class Wdc5File
 
     public bool TryGetRowById(int id, out Wdc5Row row)
     {
+        Wdc5FileLookupTracker.OnTryGetRowById();
+
         EnsureIndexesBuilt();
 
         var requestedId = id;

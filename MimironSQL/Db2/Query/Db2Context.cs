@@ -1,3 +1,4 @@
+using MimironSQL.Db2.Model;
 using MimironSQL.Db2.Schema;
 using MimironSQL.Db2.Wdc5;
 using MimironSQL.Providers;
@@ -10,6 +11,7 @@ public abstract class Db2Context
 {
     private static readonly Type Db2TableOpenGenericType = typeof(Db2Table<>);
 
+    private readonly Db2Model _model;
     private readonly SchemaMapper _schemaMapper;
     private readonly IDb2StreamProvider _db2StreamProvider;
     private readonly Db2ContextQueryProvider _queryProvider;
@@ -21,8 +23,16 @@ public abstract class Db2Context
         _db2StreamProvider = db2StreamProvider;
         _queryProvider = new Db2ContextQueryProvider(this);
 
+        _model = BuildModel();
+
         InitializeTableProperties();
     }
+
+    protected virtual void OnModelCreating(Db2ModelBuilder modelBuilder)
+    {
+    }
+
+    internal Db2Model Model => _model;
 
     internal (Wdc5File File, Db2TableSchema Schema) GetOrOpenTableRaw(string tableName)
     {
@@ -51,11 +61,23 @@ public abstract class Db2Context
                 continue;
 
             var entityType = pt.GetGenericArguments()[0];
-            var tableName = entityType.GetCustomAttribute<Db2TableNameAttribute>(inherit: true)?.TableName ?? entityType.Name;
+            var tableName = _model.TryGetEntityType(entityType, out var configured)
+                ? configured.TableName
+                : entityType.Name;
 
             var table = OpenTable(entityType, tableName);
             p.SetValue(this, table);
         }
+    }
+
+    private Db2Model BuildModel()
+    {
+        var builder = new Db2ModelBuilder();
+        builder.ApplyTablePropertyConventions(GetType());
+        OnModelCreating(builder);
+
+        builder.ApplySchemaNavigationConventions(tableName => GetOrOpenTableRaw(tableName).Schema);
+        return builder.Build(tableName => GetOrOpenTableRaw(tableName).Schema);
     }
 
     private object OpenTable(Type entityType, string tableName)
@@ -75,7 +97,12 @@ public abstract class Db2Context
 
     protected Db2Table<T> Table<T>(string? tableName = null)
     {
-        return OpenTableGeneric<T>(tableName ?? typeof(T).Name);
+        if (tableName is not null)
+            return OpenTableGeneric<T>(tableName);
+
+        return _model.TryGetEntityType(typeof(T), out var configured)
+            ? OpenTableGeneric<T>(configured.TableName)
+            : OpenTableGeneric<T>(typeof(T).Name);
     }
 }
 

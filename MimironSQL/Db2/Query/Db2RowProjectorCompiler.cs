@@ -9,8 +9,17 @@ namespace MimironSQL.Db2.Query;
 internal static class Db2RowProjectorCompiler
 {
     public static bool TryCompile<TEntity, TResult>(Db2TableSchema schema, Expression<Func<TEntity, TResult>> selector, out Func<Wdc5Row, TResult> projector)
+        => TryCompile(schema, selector, out projector, out _);
+
+    public static bool TryCompile<TEntity, TResult>(
+        Db2TableSchema schema,
+        Expression<Func<TEntity, TResult>> selector,
+        out Func<Wdc5Row, TResult> projector,
+        out Db2SourceRequirements requirements)
     {
         var fieldsByName = schema.Fields.ToDictionary(f => f.Name, StringComparer.OrdinalIgnoreCase);
+
+        requirements = new Db2SourceRequirements(schema, typeof(TEntity));
 
         var entityParam = selector.Parameters[0];
         var rowParam = Expression.Parameter(typeof(Wdc5Row), "row");
@@ -32,7 +41,7 @@ internal static class Db2RowProjectorCompiler
 
         try
         {
-            var rewriter = new SelectorRewriter(entityParam, rowParam, GetAccessor);
+            var rewriter = new SelectorRewriter(entityParam, rowParam, GetAccessor, requirements);
             var rewrittenBody = rewriter.Visit(selector.Body);
 
             if (rewrittenBody is null)
@@ -54,7 +63,8 @@ internal static class Db2RowProjectorCompiler
     private sealed class SelectorRewriter(
         ParameterExpression entityParam,
         ParameterExpression rowParam,
-        Func<string, Db2FieldAccessor> getAccessor) : ExpressionVisitor
+        Func<string, Db2FieldAccessor> getAccessor,
+        Db2SourceRequirements requirements) : ExpressionVisitor
     {
         protected override Expression VisitParameter(ParameterExpression node)
         {
@@ -69,6 +79,7 @@ internal static class Db2RowProjectorCompiler
             if (node.Expression == entityParam)
             {
                 var accessor = getAccessor(node.Member.Name);
+                requirements.RequireField(accessor.Field, node.Type == typeof(string) ? Db2RequiredColumnKind.String : Db2RequiredColumnKind.Scalar);
                 return BuildReadExpression(accessor, node.Type);
             }
 
@@ -80,6 +91,7 @@ internal static class Db2RowProjectorCompiler
             if (node.NodeType == ExpressionType.Convert && node.Operand is MemberExpression m && m.Expression == entityParam)
             {
                 var accessor = getAccessor(m.Member.Name);
+                requirements.RequireField(accessor.Field, m.Type == typeof(string) ? Db2RequiredColumnKind.String : Db2RequiredColumnKind.Scalar);
                 var read = BuildReadExpression(accessor, m.Type);
                 return Expression.Convert(read, node.Type);
             }
@@ -120,6 +132,9 @@ internal static class Db2RowProjectorCompiler
                 var generic = method.MakeGenericMethod(elementType);
                 return Expression.Call(generic, rowParam, Expression.Constant(accessor));
             }
+
+            if (targetType == typeof(string) && accessor.Field.IsVirtual)
+                throw new NotSupportedException($"Virtual field '{accessor.Field.Name}' cannot be materialized as a string.");
 
             var methodInfo = typeof(Db2RowValue).GetMethod(nameof(Db2RowValue.Read), BindingFlags.Public | BindingFlags.Static)!;
             var readType = UnwrapNullable(targetType);

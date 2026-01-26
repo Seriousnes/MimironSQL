@@ -104,6 +104,8 @@ internal readonly struct Wdc5Row
         if ((uint)fieldIndex >= (uint)_file.Header.FieldsCount)
             throw new ArgumentOutOfRangeException(nameof(fieldIndex));
 
+        Wdc5RowReadTracker.OnScalar(fieldIndex);
+
         if (_section.IsDecryptable)
         {
             using var decrypted = DecryptRowBytes();
@@ -124,6 +126,8 @@ internal readonly struct Wdc5Row
     {
         if ((uint)fieldIndex >= (uint)_file.Header.FieldsCount)
             throw new ArgumentOutOfRangeException(nameof(fieldIndex));
+
+        Wdc5RowReadTracker.OnArray(fieldIndex);
 
         if (_section.IsDecryptable)
         {
@@ -310,7 +314,10 @@ internal readonly struct Wdc5Row
     }
 
     public bool TryGetString(int fieldIndex, out string value)
-        => TryGetDenseString(fieldIndex, out value) || TryGetInlineString(fieldIndex, out value);
+    {
+        Wdc5RowReadTracker.OnString(fieldIndex);
+        return TryGetDenseString(fieldIndex, out value) || TryGetInlineString(fieldIndex, out value);
+    }
 
     private static bool TryReadNullTerminatedUtf8(ReadOnlySpan<byte> bytes, int startIndex, int endExclusive, out string value)
     {

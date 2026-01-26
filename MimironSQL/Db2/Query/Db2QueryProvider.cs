@@ -188,23 +188,32 @@ internal sealed class Db2QueryProvider<TEntity>(
             return false;
 
         var rowPredicates = new List<Func<Wdc5Row, bool>>();
+        var requirements = new Db2SourceRequirements(schema, typeof(TEntity));
         foreach (var predicate in preEntityWhere)
         {
-            if (!Db2RowPredicateCompiler.TryCompile(file, schema, predicate, out var rowPredicate))
+            if (!Db2RowPredicateCompiler.TryCompile(file, schema, predicate, out var rowPredicate, out var predicateRequirements))
                 return false;
 
+            requirements.Columns.UnionWith(predicateRequirements.Columns);
             rowPredicates.Add(rowPredicate);
         }
 
         var selectorReturnType = selector.ReturnType;
         var projectorMethod = typeof(Db2QueryProvider<TEntity>).GetMethod(nameof(TryCreateProjector), System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
         var projectorGeneric = projectorMethod.MakeGenericMethod(selectorReturnType);
-        if (projectorGeneric.Invoke(this, [selector]) is not Delegate projector)
+        if (projectorGeneric.Invoke(this, [selector]) is not ValueTuple<Delegate, Db2SourceRequirements> compiled)
+            return false;
+
+        requirements.Columns.UnionWith(compiled.Item2.Columns);
+
+        // Pruning is only safe when we can satisfy the projection/predicate from row-level reads.
+        // Virtual strings cannot be materialized from WDC5 rows.
+        if (requirements.Columns.Any(c => c.Kind == Db2RequiredColumnKind.String && c.Field.IsVirtual))
             return false;
 
         var enumerateMethod = typeof(Db2QueryProvider<TEntity>).GetMethod(nameof(EnumerateProjected), System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
         var enumerateGeneric = enumerateMethod.MakeGenericMethod(selectorReturnType);
-        var projected = (IEnumerable)enumerateGeneric.Invoke(this, [rowPredicates, projector, stopAfter])!;
+        var projected = (IEnumerable)enumerateGeneric.Invoke(this, [rowPredicates, compiled.Item1, stopAfter])!;
 
         IEnumerable current = projected;
         var currentElementType = selectorReturnType;
@@ -229,13 +238,13 @@ internal sealed class Db2QueryProvider<TEntity>(
         return true;
     }
 
-    private Func<Wdc5Row, TProjected>? TryCreateProjector<TProjected>(LambdaExpression selector)
+    private (Delegate Projector, Db2SourceRequirements Requirements)? TryCreateProjector<TProjected>(LambdaExpression selector)
     {
         if (selector is not Expression<Func<TEntity, TProjected>> typed)
             return null;
 
-        return Db2RowProjectorCompiler.TryCompile(schema, typed, out var projector)
-            ? projector
+        return Db2RowProjectorCompiler.TryCompile(schema, typed, out var projector, out var requirements)
+            ? (projector, requirements)
             : null;
     }
 

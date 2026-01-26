@@ -36,10 +36,14 @@ internal sealed record Db2NavigationJoinPlan(
 
 internal sealed record Db2NavigationMemberAccessPlan(
     Db2NavigationJoinPlan Join,
-    MemberInfo TargetMember);
+    MemberInfo TargetMember,
+    Db2SourceRequirements RootRequirements,
+    Db2SourceRequirements TargetRequirements);
 
 internal sealed record Db2NavigationStringPredicatePlan(
     Db2NavigationJoinPlan Join,
     MemberInfo TargetStringMember,
     Db2NavigationStringMatchKind MatchKind,
-    string Needle);
+    string Needle,
+    Db2SourceRequirements RootRequirements,
+    Db2SourceRequirements TargetRequirements);

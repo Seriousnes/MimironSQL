@@ -117,8 +117,9 @@ internal sealed class Db2QueryProvider<TEntity>(
         IEnumerable current = baseEntities;
         var currentElementType = typeof(TEntity);
 
-        foreach (var op in postOps)
+        for (var opIndex = 0; opIndex < postOps.Count; opIndex++)
         {
+            var op = postOps[opIndex];
             switch (op)
             {
                 case Db2WhereOperation where:
@@ -128,6 +129,27 @@ internal sealed class Db2QueryProvider<TEntity>(
                     if (currentElementType == typeof(TEntity))
                     {
                         var navAccesses = Db2NavigationQueryTranslator.GetNavigationAccesses<TEntity>(_model, select.Selector);
+                        if (navAccesses.Count != 0 && select.Selector is Expression<Func<TEntity, TElement>> typedSelector)
+                        {
+                            int? take = null;
+                            if (opIndex + 1 < postOps.Count && postOps[opIndex + 1] is Db2TakeOperation nextTake)
+                            {
+                                take = nextTake.Count;
+                                opIndex++;
+                            }
+
+                            current = Db2BatchedNavigationProjector.Project(
+                                (IEnumerable<TEntity>)current,
+                                _model,
+                                _tableResolver,
+                                [.. navAccesses],
+                                typedSelector,
+                                take);
+
+                            currentElementType = typeof(TElement);
+                            break;
+                        }
+
                         var navMembers = navAccesses
                             .Select(a => a.Join.Navigation.NavigationMember)
                             .Distinct();

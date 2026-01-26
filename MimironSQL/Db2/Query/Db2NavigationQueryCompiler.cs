@@ -1,4 +1,5 @@
 using System.Linq;
+using System.Linq.Expressions;
 using System.Reflection;
 
 using MimironSQL.Db2;
@@ -12,20 +13,96 @@ internal static class Db2NavigationQueryCompiler
 {
     public static bool TryCompileSemiJoinPredicate<TEntity>(
         Db2Model model,
+        Wdc5File rootFile,
         Db2TableSchema rootSchema,
         Func<string, (Wdc5File File, Db2TableSchema Schema)> tableResolver,
-        System.Linq.Expressions.Expression<Func<TEntity, bool>> predicate,
+        Expression<Func<TEntity, bool>> predicate,
         out Func<Wdc5Row, bool> rowPredicate)
     {
         rowPredicate = _ => true;
 
+        var body = predicate.Body is UnaryExpression { NodeType: ExpressionType.Convert or ExpressionType.ConvertChecked } u
+            ? u.Operand
+            : predicate.Body;
+
+        if (body is BinaryExpression { NodeType: ExpressionType.AndAlso } andAlso)
+        {
+            var p = predicate.Parameters[0];
+            var left = Expression.Lambda<Func<TEntity, bool>>(andAlso.Left, p);
+            var right = Expression.Lambda<Func<TEntity, bool>>(andAlso.Right, p);
+
+            if (Db2NavigationQueryTranslator.TryTranslateStringPredicate(model, left, out var leftPlan) &&
+                Db2NavigationQueryTranslator.TryTranslateStringPredicate(model, right, out var rightPlan) &&
+                leftPlan.Join.Navigation.NavigationMember == rightPlan.Join.Navigation.NavigationMember)
+            {
+                var leftIds = FindMatchingIds(tableResolver, leftPlan);
+                var rightIds = FindMatchingIds(tableResolver, rightPlan);
+                leftIds.IntersectWith(rightIds);
+
+                rowPredicate = leftPlan.Join.Kind switch
+                {
+                    Db2ReferenceNavigationKind.ForeignKeyToPrimaryKey => CompileForeignKeySemiJoin(rootSchema, leftPlan.Join.Navigation.SourceKeyMember, leftIds),
+                    Db2ReferenceNavigationKind.SharedPrimaryKeyOneToOne => row => row.Id != 0 && leftIds.Contains(row.Id),
+                    _ => _ => false,
+                };
+
+                return true;
+            }
+
+            if (Db2NavigationQueryTranslator.TryTranslateStringPredicate(model, left, out var navPlanLeft) &&
+                Db2RowPredicateCompiler.TryCompile(rootFile, rootSchema, right, out var rightRowPredicate))
+            {
+                var ids = FindMatchingIds(tableResolver, navPlanLeft);
+                var nav = navPlanLeft.Join.Kind switch
+                {
+                    Db2ReferenceNavigationKind.ForeignKeyToPrimaryKey => CompileForeignKeySemiJoin(rootSchema, navPlanLeft.Join.Navigation.SourceKeyMember, ids),
+                    Db2ReferenceNavigationKind.SharedPrimaryKeyOneToOne => row => row.Id != 0 && ids.Contains(row.Id),
+                    _ => _ => false,
+                };
+
+                rowPredicate = row => nav(row) && rightRowPredicate(row);
+                return true;
+            }
+
+            if (Db2NavigationQueryTranslator.TryTranslateStringPredicate(model, right, out var navPlanRight) &&
+                Db2RowPredicateCompiler.TryCompile(rootFile, rootSchema, left, out var leftRowPredicate))
+            {
+                var ids = FindMatchingIds(tableResolver, navPlanRight);
+                var nav = navPlanRight.Join.Kind switch
+                {
+                    Db2ReferenceNavigationKind.ForeignKeyToPrimaryKey => CompileForeignKeySemiJoin(rootSchema, navPlanRight.Join.Navigation.SourceKeyMember, ids),
+                    Db2ReferenceNavigationKind.SharedPrimaryKeyOneToOne => row => row.Id != 0 && ids.Contains(row.Id),
+                    _ => _ => false,
+                };
+
+                rowPredicate = row => leftRowPredicate(row) && nav(row);
+                return true;
+            }
+        }
+
         if (!Db2NavigationQueryTranslator.TryTranslateStringPredicate(model, predicate, out var plan))
             return false;
 
+        var matchingIds = FindMatchingIds(tableResolver, plan);
+
+        rowPredicate = plan.Join.Kind switch
+        {
+            Db2ReferenceNavigationKind.ForeignKeyToPrimaryKey => CompileForeignKeySemiJoin(rootSchema, plan.Join.Navigation.SourceKeyMember, matchingIds),
+            Db2ReferenceNavigationKind.SharedPrimaryKeyOneToOne => row => row.Id != 0 && matchingIds.Contains(row.Id),
+            _ => _ => false,
+        };
+
+        return true;
+    }
+
+    private static HashSet<int> FindMatchingIds(
+        Func<string, (Wdc5File File, Db2TableSchema Schema)> tableResolver,
+        Db2NavigationStringPredicatePlan plan)
+    {
         var (relatedFile, relatedSchema) = tableResolver(plan.Join.Target.TableName);
 
         if (!relatedSchema.TryGetField(plan.TargetStringMember.Name, out var relatedField))
-            return false;
+            return [];
 
         var relatedFieldIndex = relatedField.ColumnStartIndex;
 
@@ -60,44 +137,37 @@ internal static class Db2NavigationQueryCompiler
                     if (ok)
                         matchingIds.Add(relatedRow.Id);
                 }
-            }
-            else
-            {
-                foreach (var relatedRow in relatedFile.EnumerateRows())
-                {
-                    if (!relatedRow.TryGetString(relatedFieldIndex, out var s))
-                        continue;
 
-                    var ok = plan.MatchKind switch
-                    {
-                        Db2NavigationStringMatchKind.Contains => s.Contains(plan.Needle, StringComparison.Ordinal),
-                        Db2NavigationStringMatchKind.StartsWith => s.StartsWith(plan.Needle, StringComparison.Ordinal),
-                        Db2NavigationStringMatchKind.EndsWith => s.EndsWith(plan.Needle, StringComparison.Ordinal),
-                        _ => false,
-                    };
-
-                    if (ok)
-                        matchingIds.Add(relatedRow.Id);
-                }
+                return matchingIds;
             }
-        }
-        else
-        {
+
             foreach (var relatedRow in relatedFile.EnumerateRows())
             {
-                if (relatedRow.TryGetString(relatedFieldIndex, out var s) && s == plan.Needle)
+                if (!relatedRow.TryGetString(relatedFieldIndex, out var s))
+                    continue;
+
+                var ok = plan.MatchKind switch
+                {
+                    Db2NavigationStringMatchKind.Contains => s.Contains(plan.Needle, StringComparison.Ordinal),
+                    Db2NavigationStringMatchKind.StartsWith => s.StartsWith(plan.Needle, StringComparison.Ordinal),
+                    Db2NavigationStringMatchKind.EndsWith => s.EndsWith(plan.Needle, StringComparison.Ordinal),
+                    _ => false,
+                };
+
+                if (ok)
                     matchingIds.Add(relatedRow.Id);
             }
+
+            return matchingIds;
         }
 
-        rowPredicate = plan.Join.Kind switch
+        foreach (var relatedRow in relatedFile.EnumerateRows())
         {
-            Db2ReferenceNavigationKind.ForeignKeyToPrimaryKey => CompileForeignKeySemiJoin(rootSchema, plan.Join.Navigation.SourceKeyMember, matchingIds),
-            Db2ReferenceNavigationKind.SharedPrimaryKeyOneToOne => row => row.Id != 0 && matchingIds.Contains(row.Id),
-            _ => _ => false,
-        };
+            if (relatedRow.TryGetString(relatedFieldIndex, out var s) && s == plan.Needle)
+                matchingIds.Add(relatedRow.Id);
+        }
 
-        return true;
+        return matchingIds;
     }
 
     private static Func<Wdc5Row, bool> CompileForeignKeySemiJoin(Db2TableSchema rootSchema, MemberInfo foreignKeyMember, HashSet<int> ids)

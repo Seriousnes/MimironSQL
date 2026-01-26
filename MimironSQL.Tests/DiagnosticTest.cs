@@ -18,7 +18,7 @@ public sealed class DiagnosticTest(ITestOutputHelper output)
         output.WriteLine($"Header.StringTableSize = {file.Header.StringTableSize}");
         output.WriteLine($"DenseStringTableBytes.Length = {file.DenseStringTableBytes.Length}");
         output.WriteLine($"RecordsCount = {file.Header.RecordsCount}");
-        output.WriteLine($"Sparse = {file.Header.Flags.HasFlag(MimironSQL.Db2.Db2Flags.Sparse)}");
+        output.WriteLine($"Sparse = {file.Header.Flags.HasFlag(Db2.Db2Flags.Sparse)}");
 
         var provider = new FileSystemDbdProvider(new FileSystemDbdProviderOptions(TestDataPaths.GetTestDataDirectory()));
         var mapper = new SchemaMapper(provider);

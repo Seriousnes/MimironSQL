@@ -421,6 +421,40 @@ public class QueryTests
     }
 
     [Fact]
+    public void Phase3_supports_navigation_string_contains_in_where_with_captured_needle()
+    {
+        var testDataDir = TestDataPaths.GetTestDataDirectory();
+        var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
+        var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
+        var context = new TestDb2Context(dbdProvider, db2Provider);
+
+        var needle = "Tazavesh";
+
+        var results = context.MapChallengeMode
+            .Where(x => x.Map!.MapName_lang.Contains(needle))
+            .ToList();
+
+        results.Count.ShouldBeGreaterThanOrEqualTo(1);
+        results.All(x => x.MapID == 2441).ShouldBeTrue();
+    }
+
+    [Fact]
+    public void Phase3_supports_navigation_string_contains_conjunction_in_where()
+    {
+        var testDataDir = TestDataPaths.GetTestDataDirectory();
+        var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
+        var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
+        var context = new TestDb2Context(dbdProvider, db2Provider);
+
+        var results = context.MapChallengeMode
+            .Where(x => x.Map!.MapName_lang.Contains("Tazavesh") && x.Map!.MapName_lang.Contains("Veiled"))
+            .ToList();
+
+        results.Count.ShouldBe(2);
+        results.All(x => x.MapID == 2441).ShouldBeTrue();
+    }
+
+    [Fact]
     public void Phase3_supports_navigation_access_in_select_without_explicit_include()
     {
         var testDataDir = TestDataPaths.GetTestDataDirectory();
@@ -460,6 +494,80 @@ public class QueryTests
 
         names.Count.ShouldBeGreaterThan(0);
         names.Any(s => !string.IsNullOrWhiteSpace(s)).ShouldBeTrue();
+
+        snapshot.TotalTryGetRowByIdCalls.ShouldBe(0);
+    }
+
+    [Fact]
+    public void Phase4_include_is_batched_for_schema_fk_navigation_and_avoids_row_by_id_n_plus_one()
+    {
+        var testDataDir = TestDataPaths.GetTestDataDirectory();
+        var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
+        var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
+        var context = new TestDb2Context(dbdProvider, db2Provider);
+
+        var map = context.Map;
+        var parentMapIdField = map.Schema.Fields.First(f => f.Name.Equals("ParentMapID", StringComparison.OrdinalIgnoreCase));
+
+        var allIds = map.File.EnumerateRows().Select(r => r.Id).ToHashSet();
+
+        var candidate = map.File.EnumerateRows()
+            .Select(r => (Id: r.Id, ParentId: Convert.ToInt32(r.GetScalar<long>(parentMapIdField.ColumnStartIndex))))
+            .FirstOrDefault(x => x.ParentId > 0 && allIds.Contains(x.ParentId));
+
+        candidate.ParentId.ShouldBeGreaterThan(0);
+
+        Wdc5FileLookupSnapshot snapshot;
+        Map entity;
+
+        using (Wdc5FileLookupTracker.Start())
+        {
+            entity = map
+                .Where(x => x.Id == candidate.Id)
+                .Include(x => x.ParentMap)
+                .Single();
+
+            snapshot = Wdc5FileLookupTracker.Snapshot();
+        }
+
+        entity.ParentMapID.ShouldBe(candidate.ParentId);
+        entity.ParentMap.ShouldNotBeNull();
+        entity.ParentMap!.Id.ShouldBe(candidate.ParentId);
+
+        snapshot.TotalTryGetRowByIdCalls.ShouldBe(0);
+    }
+
+    [Fact]
+    public void Phase4_include_is_batched_for_shared_primary_key_navigation_and_avoids_row_by_id_n_plus_one()
+    {
+        var testDataDir = TestDataPaths.GetTestDataDirectory();
+        var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
+        var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
+        var context = new TestDb2Context(dbdProvider, db2Provider);
+
+        var spell = context.Spell;
+        var spellName = context.SpellName;
+
+        var spellNameIds = spellName.File.EnumerateRows().Select(r => r.Id).ToHashSet();
+        var candidateId = spell.File.EnumerateRows().Select(r => r.Id).FirstOrDefault(id => id > 0 && spellNameIds.Contains(id));
+
+        candidateId.ShouldBeGreaterThan(0);
+
+        Wdc5FileLookupSnapshot snapshot;
+        Spell entity;
+
+        using (Wdc5FileLookupTracker.Start())
+        {
+            entity = spell
+                .Where(s => s.Id == candidateId)
+                .Include(s => s.SpellName)
+                .Single();
+
+            snapshot = Wdc5FileLookupTracker.Snapshot();
+        }
+
+        entity.SpellName.ShouldNotBeNull();
+        entity.SpellName!.Id.ShouldBe(candidateId);
 
         snapshot.TotalTryGetRowByIdCalls.ShouldBe(0);
     }

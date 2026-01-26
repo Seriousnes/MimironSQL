@@ -174,10 +174,10 @@ internal static class Db2NavigationQueryTranslator
 
         if (expression is BinaryExpression { NodeType: ExpressionType.Equal } eq)
         {
-            if (!TryGetStringConstant(eq.Left, out var constant) && !TryGetStringConstant(eq.Right, out constant))
+            if (!TryGetString(eq.Left, rootParam, out var constant) && !TryGetString(eq.Right, rootParam, out constant))
                 return false;
 
-            var memberSide = ReferenceEquals(eq.Left, constant.Expression) ? eq.Right : eq.Left;
+            var memberSide = ExpressionEquals(eq.Left, constant.Expression) ? eq.Right : eq.Left;
             if (!TryGetNavThenMemberAccess(memberSide, rootParam, out navMember, out targetMember))
                 return false;
 
@@ -188,13 +188,13 @@ internal static class Db2NavigationQueryTranslator
 
         if (expression is MethodCallExpression { Method.DeclaringType: { } dt } call && dt == typeof(string))
         {
-            if (call.Arguments.Count != 1 || call.Arguments[0] is not ConstantExpression { Value: string s })
+            if (call.Arguments.Count != 1 || !TryGetString(call.Arguments[0], rootParam, out var constant))
                 return false;
 
             if (!TryGetNavThenMemberAccess(call.Object, rootParam, out navMember, out targetMember))
                 return false;
 
-            needle = s;
+            needle = constant.Value;
             matchKind = call.Method.Name switch
             {
                 nameof(string.Contains) => Db2NavigationStringMatchKind.Contains,
@@ -207,18 +207,6 @@ internal static class Db2NavigationQueryTranslator
         }
 
         return false;
-
-        static bool TryGetStringConstant(Expression expr, out (string Value, ConstantExpression Expression) constant)
-        {
-            if (expr is ConstantExpression { Value: string s1 } c)
-            {
-                constant = (s1, c);
-                return true;
-            }
-
-            constant = default;
-            return false;
-        }
 
         static bool TryGetNavThenMemberAccess(
             Expression? expr,
@@ -249,6 +237,98 @@ internal static class Db2NavigationQueryTranslator
             nav = navMemberExpr.Member;
             related = relatedExpr.Member;
             return true;
+        }
+
+        static bool TryGetString(Expression expr, ParameterExpression root, out (string Value, Expression Expression) constant)
+        {
+            expr = expr is UnaryExpression { NodeType: ExpressionType.Convert or ExpressionType.ConvertChecked } u ? u.Operand : expr;
+
+            if (expr is ConstantExpression { Value: string s1 })
+            {
+                constant = (s1, expr);
+                return true;
+            }
+
+            if (ContainsParameter(expr, root))
+            {
+                constant = default;
+                return false;
+            }
+
+            try
+            {
+                var lambda = Expression.Lambda<Func<string?>>(Expression.Convert(expr, typeof(string)));
+                var value = lambda.Compile().Invoke();
+                if (value is null)
+                {
+                    constant = default;
+                    return false;
+                }
+
+                constant = (value, expr);
+                return true;
+            }
+            catch
+            {
+                constant = default;
+                return false;
+            }
+        }
+
+        static bool ContainsParameter(Expression expr, ParameterExpression parameter)
+        {
+            var found = false;
+
+            void Visit(Expression? e)
+            {
+                if (found || e is null)
+                    return;
+
+                e = e is UnaryExpression { NodeType: ExpressionType.Convert or ExpressionType.ConvertChecked } u ? u.Operand : e;
+
+                if (ReferenceEquals(e, parameter))
+                {
+                    found = true;
+                    return;
+                }
+
+                switch (e)
+                {
+                    case MemberExpression me:
+                        Visit(me.Expression);
+                        return;
+                    case MethodCallExpression mc:
+                        Visit(mc.Object);
+                        foreach (var a in mc.Arguments)
+                            Visit(a);
+                        return;
+                    case BinaryExpression b:
+                        Visit(b.Left);
+                        Visit(b.Right);
+                        return;
+                    case ConditionalExpression c:
+                        Visit(c.Test);
+                        Visit(c.IfTrue);
+                        Visit(c.IfFalse);
+                        return;
+                    case NewExpression n:
+                        foreach (var a in n.Arguments)
+                            Visit(a);
+                        return;
+                    default:
+                        return;
+                }
+            }
+
+            Visit(expr);
+            return found;
+        }
+
+        static bool ExpressionEquals(Expression a, Expression b)
+        {
+            a = a is UnaryExpression { NodeType: ExpressionType.Convert or ExpressionType.ConvertChecked } ua ? ua.Operand : a;
+            b = b is UnaryExpression { NodeType: ExpressionType.Convert or ExpressionType.ConvertChecked } ub ? ub.Operand : b;
+            return ReferenceEquals(a, b);
         }
     }
 }

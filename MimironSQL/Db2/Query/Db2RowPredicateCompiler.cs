@@ -120,7 +120,7 @@ internal static class Db2RowPredicateCompiler
                     if (accessor.Field.IsVirtual)
                         throw new NotSupportedException($"Virtual field '{accessor.Field.Name}' cannot be materialized as a string.");
 
-                    var isDenseOptimizable = !file.Header.Flags.HasFlag(Db2.Db2Flags.Sparse) && !accessor.Field.IsVirtual;
+                    var isDenseOptimizable = !file.Header.Flags.HasFlag(Db2Flags.Sparse) && !accessor.Field.IsVirtual;
                     if (isDenseOptimizable)
                     {
                         var kind = methodName switch

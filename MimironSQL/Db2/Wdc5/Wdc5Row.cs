@@ -186,7 +186,7 @@ internal readonly struct Wdc5Row
             ref readonly var fieldMeta = ref _file.FieldMeta[fieldIndex];
             ref readonly var columnMeta = ref _file.ColumnMeta[fieldIndex];
 
-            if (columnMeta.CompressionType == CompressionType.PalletArray && columnMeta.Pallet.Cardinality != 1)
+            if (columnMeta is { CompressionType: CompressionType.Pallet, Pallet.Cardinality: not 1 })
             {
                 value = string.Empty;
                 return false;

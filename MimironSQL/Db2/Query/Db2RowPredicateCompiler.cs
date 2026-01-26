@@ -9,8 +9,18 @@ namespace MimironSQL.Db2.Query;
 internal static class Db2RowPredicateCompiler
 {
     public static bool TryCompile<TEntity>(Wdc5File file, Db2TableSchema schema, Expression<Func<TEntity, bool>> predicate, out Func<Wdc5Row, bool> rowPredicate)
+        => TryCompile(file, schema, predicate, out rowPredicate, out _);
+
+    public static bool TryCompile<TEntity>(
+        Wdc5File file,
+        Db2TableSchema schema,
+        Expression<Func<TEntity, bool>> predicate,
+        out Func<Wdc5Row, bool> rowPredicate,
+        out Db2SourceRequirements requirements)
     {
         var fieldsByName = schema.Fields.ToDictionary(f => f.Name, StringComparer.OrdinalIgnoreCase);
+
+        requirements = new Db2SourceRequirements(schema, typeof(TEntity));
 
         var entityParam = predicate.Parameters[0];
         var rowParam = Expression.Parameter(typeof(Wdc5Row), "row");
@@ -32,7 +42,7 @@ internal static class Db2RowPredicateCompiler
 
         try
         {
-            var rewriter = new PredicateRewriter(entityParam, rowParam, GetAccessor, file);
+            var rewriter = new PredicateRewriter(entityParam, rowParam, GetAccessor, file, requirements);
             var rewrittenBody = rewriter.Visit(predicate.Body);
             if (rewrittenBody is null)
             {
@@ -54,7 +64,8 @@ internal static class Db2RowPredicateCompiler
         ParameterExpression entityParam,
         ParameterExpression rowParam,
         Func<string, Db2FieldAccessor> getAccessor,
-        Wdc5File file) : ExpressionVisitor
+        Wdc5File file,
+        Db2SourceRequirements requirements) : ExpressionVisitor
     {
         protected override Expression VisitParameter(ParameterExpression node)
         {
@@ -69,6 +80,9 @@ internal static class Db2RowPredicateCompiler
             if (node.Expression == entityParam)
             {
                 var accessor = getAccessor(node.Member.Name);
+                requirements.RequireField(accessor.Field, node.Type == typeof(string) ? Db2RequiredColumnKind.String : Db2RequiredColumnKind.Scalar);
+                if (node.Type == typeof(string) && accessor.Field.IsVirtual)
+                    throw new NotSupportedException($"Virtual field '{accessor.Field.Name}' cannot be materialized as a string.");
                 return BuildReadExpression(accessor, node.Type);
             }
 
@@ -80,6 +94,9 @@ internal static class Db2RowPredicateCompiler
             if (node.NodeType == ExpressionType.Convert && node.Operand is MemberExpression m && m.Expression == entityParam)
             {
                 var accessor = getAccessor(m.Member.Name);
+                requirements.RequireField(accessor.Field, m.Type == typeof(string) ? Db2RequiredColumnKind.String : Db2RequiredColumnKind.Scalar);
+                if (m.Type == typeof(string) && accessor.Field.IsVirtual)
+                    throw new NotSupportedException($"Virtual field '{accessor.Field.Name}' cannot be materialized as a string.");
                 var read = BuildReadExpression(accessor, m.Type);
                 return Expression.Convert(read, node.Type);
             }
@@ -98,6 +115,10 @@ internal static class Db2RowPredicateCompiler
                         throw new NotSupportedException("Only constant string needles are supported for string predicates.");
 
                     var accessor = getAccessor(m.Member.Name);
+                    requirements.RequireField(accessor.Field, Db2RequiredColumnKind.String);
+
+                    if (accessor.Field.IsVirtual)
+                        throw new NotSupportedException($"Virtual field '{accessor.Field.Name}' cannot be materialized as a string.");
 
                     var isDenseOptimizable = !file.Header.Flags.HasFlag(Db2.Db2Flags.Sparse) && !accessor.Field.IsVirtual;
                     if (isDenseOptimizable)

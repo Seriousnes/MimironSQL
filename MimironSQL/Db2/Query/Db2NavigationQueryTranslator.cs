@@ -33,11 +33,22 @@ internal static class Db2NavigationQueryTranslator
         var root = model.GetEntityType(typeof(TEntity));
         var target = model.GetEntityType(navigation.TargetClrType);
 
+        var join = new Db2NavigationJoinPlan(root, navigation, target);
+
+        var rootReq = new Db2SourceRequirements(root.Schema, root.ClrType);
+        rootReq.RequireMember(join.RootKeyMember, Db2RequiredColumnKind.JoinKey);
+
+        var targetReq = new Db2SourceRequirements(target.Schema, target.ClrType);
+        targetReq.RequireMember(join.TargetKeyMember, Db2RequiredColumnKind.JoinKey);
+        targetReq.RequireMember(targetMember, Db2RequiredColumnKind.String);
+
         plan = new Db2NavigationStringPredicatePlan(
-            Join: new Db2NavigationJoinPlan(root, navigation, target),
+            Join: join,
             TargetStringMember: targetMember,
             MatchKind: matchKind,
-            Needle: needle);
+            Needle: needle,
+            RootRequirements: rootReq,
+            TargetRequirements: targetReq);
 
         return true;
     }
@@ -80,7 +91,16 @@ internal static class Db2NavigationQueryTranslator
                             Navigation: navigation,
                             Target: model.GetEntityType(navigation.TargetClrType));
 
-                        accesses.Add(new Db2NavigationMemberAccessPlan(join, member.Member));
+                        var rootReq = new Db2SourceRequirements(join.Root.Schema, join.Root.ClrType);
+                        rootReq.RequireMember(join.RootKeyMember, Db2RequiredColumnKind.JoinKey);
+
+                        var targetReq = new Db2SourceRequirements(join.Target.Schema, join.Target.ClrType);
+                        targetReq.RequireMember(join.TargetKeyMember, Db2RequiredColumnKind.JoinKey);
+
+                        var targetMemberType = GetMemberType(member.Member);
+                        targetReq.RequireMember(member.Member, targetMemberType == typeof(string) ? Db2RequiredColumnKind.String : Db2RequiredColumnKind.Scalar);
+
+                        accesses.Add(new Db2NavigationMemberAccessPlan(join, member.Member, rootReq, targetReq));
                         return;
                     }
 
@@ -123,6 +143,14 @@ internal static class Db2NavigationQueryTranslator
 
         return accesses;
     }
+
+    private static Type GetMemberType(MemberInfo member)
+        => member switch
+        {
+            PropertyInfo p => p.PropertyType,
+            FieldInfo f => f.FieldType,
+            _ => throw new InvalidOperationException($"Unexpected member type: {member.GetType().FullName}"),
+        };
 
     private static Expression UnwrapConvert(Expression expression)
         => expression is UnaryExpression { NodeType: ExpressionType.Convert or ExpressionType.ConvertChecked } u

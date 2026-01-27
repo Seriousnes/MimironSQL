@@ -80,9 +80,11 @@ internal static class Db2BatchedNavigationProjector
 
             if (keys is { Count: not 0 })
             {
-                foreach (var row in relatedFile.EnumerateRows()
-                    .Where(row => keys.Contains(row.Id)))
+                foreach (var row in relatedFile.EnumerateRows())
                 {
+                    if (!keys.Contains(row.Id))
+                        continue;
+
                     var values = new object?[readers.Length];
                     for (var i = 0; i < readers.Length; i++)
                         values[i] = readers[i](row);

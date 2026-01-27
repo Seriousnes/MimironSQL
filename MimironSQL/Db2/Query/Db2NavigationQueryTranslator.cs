@@ -84,38 +84,38 @@ internal static class Db2NavigationQueryTranslator
             switch (expr)
             {
                 case MemberExpression { Member: PropertyInfo or FieldInfo } member:
-                {
-                    // 1-hop: x.Nav.Member
-                    if (UnwrapConvert(member.Expression) is MemberExpression { Member: PropertyInfo or FieldInfo } nav && nav.Expression == rootParam)
                     {
-                        if (!model.TryGetReferenceNavigation(typeof(TEntity), nav.Member, out var navigation))
+                        // 1-hop: x.Nav.Member
+                        if (UnwrapConvert(member.Expression) is MemberExpression { Member: PropertyInfo or FieldInfo } nav && nav.Expression == rootParam)
                         {
-                            throw new NotSupportedException(
-                                $"Navigation '{typeof(TEntity).FullName}.{nav.Member.Name}' is not configured. Configure it in OnModelCreating, or ensure schema FK conventions can apply.");
+                            if (!model.TryGetReferenceNavigation(typeof(TEntity), nav.Member, out var navigation))
+                            {
+                                throw new NotSupportedException(
+                                    $"Navigation '{typeof(TEntity).FullName}.{nav.Member.Name}' is not configured. Configure it in OnModelCreating, or ensure schema FK conventions can apply.");
+                            }
+
+                            var join = new Db2NavigationJoinPlan(
+                                Root: model.GetEntityType(typeof(TEntity)),
+                                Navigation: navigation,
+                                Target: model.GetEntityType(navigation.TargetClrType));
+
+                            var rootReq = new Db2SourceRequirements(join.Root.Schema, join.Root.ClrType);
+                            rootReq.RequireMember(join.RootKeyMember, Db2RequiredColumnKind.JoinKey);
+
+                            var targetReq = new Db2SourceRequirements(join.Target.Schema, join.Target.ClrType);
+                            targetReq.RequireMember(join.TargetKeyMember, Db2RequiredColumnKind.JoinKey);
+
+                            var targetMemberType = GetMemberType(member.Member);
+                            targetReq.RequireMember(member.Member, targetMemberType == typeof(string) ? Db2RequiredColumnKind.String : Db2RequiredColumnKind.Scalar);
+
+                            accesses.Add(new Db2NavigationMemberAccessPlan(join, member.Member, rootReq, targetReq));
+                            return;
                         }
 
-                        var join = new Db2NavigationJoinPlan(
-                            Root: model.GetEntityType(typeof(TEntity)),
-                            Navigation: navigation,
-                            Target: model.GetEntityType(navigation.TargetClrType));
-
-                        var rootReq = new Db2SourceRequirements(join.Root.Schema, join.Root.ClrType);
-                        rootReq.RequireMember(join.RootKeyMember, Db2RequiredColumnKind.JoinKey);
-
-                        var targetReq = new Db2SourceRequirements(join.Target.Schema, join.Target.ClrType);
-                        targetReq.RequireMember(join.TargetKeyMember, Db2RequiredColumnKind.JoinKey);
-
-                        var targetMemberType = GetMemberType(member.Member);
-                        targetReq.RequireMember(member.Member, targetMemberType == typeof(string) ? Db2RequiredColumnKind.String : Db2RequiredColumnKind.Scalar);
-
-                        accesses.Add(new Db2NavigationMemberAccessPlan(join, member.Member, rootReq, targetReq));
+                        // direct member access is not a navigation (unless used as x.Nav itself, which we don’t support)
+                        Visit(member.Expression);
                         return;
                     }
-
-                    // direct member access is not a navigation (unless used as x.Nav itself, which we don’t support)
-                    Visit(member.Expression);
-                    return;
-                }
                 case MethodCallExpression call:
                     Visit(call.Object);
                     foreach (var a in call.Arguments)

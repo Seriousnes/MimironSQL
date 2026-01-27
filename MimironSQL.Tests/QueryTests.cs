@@ -386,7 +386,7 @@ public class QueryTests
         byQuery.ShouldBeEquivalentTo(expected);
     }
 
-    [Fact]    
+    [Fact]
     public void Test_Tazavesh_map_query()
     {
         var testDataDir = TestDataPaths.GetTestDataDirectory();

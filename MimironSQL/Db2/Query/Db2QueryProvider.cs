@@ -481,7 +481,7 @@ internal sealed class Db2QueryProvider<TEntity>(
 
     private IEnumerable<TEntity> ApplyInclude(IEnumerable<TEntity> source, LambdaExpression navigation)
     {
-        var plan = IncludePlan.Create(navigation, _model, _tableResolver);
+        var plan = new IncludePlan(navigation, _model, _tableResolver);
 
         var entitiesWithKeys = new List<(TEntity Entity, int Key)>();
         HashSet<int> keys = [];
@@ -504,12 +504,13 @@ internal sealed class Db2QueryProvider<TEntity>(
         }
     }
 
-    private sealed class IncludePlan(
-        Func<TEntity, int> keyGetter,
-        Action<TEntity, object?> navigationSetter,
-        Func<HashSet<int>, Dictionary<int, object?>> loadEntities)
+    private sealed class IncludePlan
     {
-        public static IncludePlan Create(
+        private readonly Func<TEntity, int> keyGetter;
+        private readonly Action<TEntity, object?> navigationSetter;
+        private readonly Func<HashSet<int>, Dictionary<int, object?>> loadEntities;
+
+        public IncludePlan(
             LambdaExpression navigation,
             Db2Model model,
             Func<string, (Wdc5File File, Db2TableSchema Schema)> tableResolver)
@@ -537,22 +538,21 @@ internal sealed class Db2QueryProvider<TEntity>(
             if (!model.TryGetReferenceNavigation(typeof(TEntity), navMember, out var modelNav))
                 throw new NotSupportedException($"Include navigation '{typeof(TEntity).FullName}.{navName}' is not configured. Configure the navigation in OnModelCreating, or ensure schema FK conventions can apply.");
 
-            var navigationSetter = CreateNavigationSetter(navMember, navType);
+            navigationSetter = CreateNavigationSetter(navMember, navType);
 
             if (!IsReadable(modelNav.SourceKeyMember))
                 throw new NotSupportedException($"Navigation key member '{modelNav.SourceKeyMember.Name}' must be readable.");
 
             var targetEntityType = model.GetEntityType(modelNav.TargetClrType);
-            var loadByKey = CreateEntitiesLoader(navType, targetEntityType.TableName, tableResolver);
+            loadEntities = CreateEntitiesLoader(navType, targetEntityType.TableName, tableResolver);
 
-            var keyGetter = CreateIntGetter(modelNav.SourceKeyMember);
+            keyGetter = CreateIntGetter(modelNav.SourceKeyMember);
 
-            return modelNav.Kind switch
+            if (modelNav.Kind != Db2ReferenceNavigationKind.ForeignKeyToPrimaryKey &&
+                modelNav.Kind != Db2ReferenceNavigationKind.SharedPrimaryKeyOneToOne)
             {
-                Db2ReferenceNavigationKind.ForeignKeyToPrimaryKey => new IncludePlan(keyGetter, navigationSetter, loadByKey),
-                Db2ReferenceNavigationKind.SharedPrimaryKeyOneToOne => new IncludePlan(keyGetter, navigationSetter, loadByKey),
-                _ => throw new NotSupportedException($"Include navigation '{typeof(TEntity).FullName}.{navName}' has unsupported kind '{modelNav.Kind}'."),
-            };
+                throw new NotSupportedException($"Include navigation '{typeof(TEntity).FullName}.{navName}' has unsupported kind '{modelNav.Kind}'.");
+            }
         }
 
         public int Key(TEntity entity) => keyGetter(entity);
@@ -612,9 +612,11 @@ internal sealed class Db2QueryProvider<TEntity>(
                     if (keys is { Count: 0 })
                         return relatedByKey;
 
-                    foreach (var row in file.EnumerateRows()
-                        .Where(row => keys.Contains(row.Id)))
+                    foreach (var row in file.EnumerateRows())
                     {
+                        if (!keys.Contains(row.Id))
+                            continue;
+
                         relatedByKey[row.Id] = materializeRow(row);
                     }
 

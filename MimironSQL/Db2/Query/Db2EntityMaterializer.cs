@@ -70,7 +70,7 @@ internal sealed class Db2EntityMaterializer<TEntity>
                 if (!TryCreateArrayGetter(field, elementType, out var getter))
                     continue;
 
-                if (TryCreateSetter(member, memberType, out var setter))
+                if (TryCreateSetter(member, memberType, out var value) && value is { } setter)
                     memberBindings.Add(new Binding(getter, setter));
 
                 continue;
@@ -79,7 +79,7 @@ internal sealed class Db2EntityMaterializer<TEntity>
             if (!TryCreateScalarGetter(field, memberType, out var scalarGetter))
                 continue;
 
-            if (TryCreateSetter(member, memberType, out var scalarSetter))
+            if (TryCreateSetter(member, memberType, out var scalarValue) && scalarValue is { } scalarSetter)
                 memberBindings.Add(new Binding(scalarGetter, scalarSetter));
         }
 
@@ -114,7 +114,7 @@ internal sealed class Db2EntityMaterializer<TEntity>
         return true;
     }
 
-    private static bool TryCreateSetter(MemberInfo member, Type memberType, out Action<TEntity, object?> setter)
+    private static bool TryCreateSetter(MemberInfo member, Type memberType, out Action<TEntity, object?>? setter)
     {
         var entity = Expression.Parameter(typeof(TEntity), "entity");
         var value = Expression.Parameter(typeof(object), "value");
@@ -124,7 +124,7 @@ internal sealed class Db2EntityMaterializer<TEntity>
         {
             if (!p.CanWrite)
             {
-                setter = (_, _) => { };
+                setter = null;
                 return false;
             }
 
@@ -136,7 +136,7 @@ internal sealed class Db2EntityMaterializer<TEntity>
         }
         else
         {
-            setter = (_, _) => { };
+            setter = null;
             return false;
         }
 

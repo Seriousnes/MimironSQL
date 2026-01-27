@@ -88,6 +88,51 @@ internal static class Db2NavigationQueryCompiler
                 return true;
             }
 
+            // Cross-navigation: scalar + scalar on different navigations
+            if (Db2NavigationQueryTranslator.TryTranslateScalarPredicate(model, left, out var leftScalarCross) &&
+                Db2NavigationQueryTranslator.TryTranslateScalarPredicate(model, right, out var rightScalarCross) &&
+                leftScalarCross.Join.Navigation.NavigationMember != rightScalarCross.Join.Navigation.NavigationMember)
+            {
+                var leftIds = FindMatchingIdsScalar(tableResolver, leftScalarCross);
+                var rightIds = FindMatchingIdsScalar(tableResolver, rightScalarCross);
+
+                var leftNav = CompileNavigationSemiJoin(leftScalarCross.Join, leftIds);
+                var rightNav = CompileNavigationSemiJoin(rightScalarCross.Join, rightIds);
+
+                rowPredicate = row => leftNav(row) && rightNav(row);
+                return true;
+            }
+
+            // Cross-navigation: string + scalar on different navigations  
+            if (Db2NavigationQueryTranslator.TryTranslateStringPredicate(model, left, out var leftStringCross) &&
+                Db2NavigationQueryTranslator.TryTranslateScalarPredicate(model, right, out var rightScalarCross2) &&
+                leftStringCross.Join.Navigation.NavigationMember != rightScalarCross2.Join.Navigation.NavigationMember)
+            {
+                var leftIds = FindMatchingIds(tableResolver, leftStringCross);
+                var rightIds = FindMatchingIdsScalar(tableResolver, rightScalarCross2);
+
+                var leftNav = CompileNavigationSemiJoin(leftStringCross.Join, leftIds);
+                var rightNav = CompileNavigationSemiJoin(rightScalarCross2.Join, rightIds);
+
+                rowPredicate = row => leftNav(row) && rightNav(row);
+                return true;
+            }
+
+            // Cross-navigation: scalar + string on different navigations
+            if (Db2NavigationQueryTranslator.TryTranslateScalarPredicate(model, left, out var leftScalarCross3) &&
+                Db2NavigationQueryTranslator.TryTranslateStringPredicate(model, right, out var rightStringCross) &&
+                leftScalarCross3.Join.Navigation.NavigationMember != rightStringCross.Join.Navigation.NavigationMember)
+            {
+                var leftIds = FindMatchingIdsScalar(tableResolver, leftScalarCross3);
+                var rightIds = FindMatchingIds(tableResolver, rightStringCross);
+
+                var leftNav = CompileNavigationSemiJoin(leftScalarCross3.Join, leftIds);
+                var rightNav = CompileNavigationSemiJoin(rightStringCross.Join, rightIds);
+
+                rowPredicate = row => leftNav(row) && rightNav(row);
+                return true;
+            }
+
             if (Db2NavigationQueryTranslator.TryTranslateStringPredicate(model, left, out var leftPlan) &&
                 Db2NavigationQueryTranslator.TryTranslateStringPredicate(model, right, out var rightPlan) &&
                 leftPlan.Join.Navigation.NavigationMember == rightPlan.Join.Navigation.NavigationMember)
@@ -333,6 +378,7 @@ internal static class Db2NavigationQueryCompiler
             TypeCode.UInt64 => Db2RowValue.Read<ulong>(row, accessor),
             TypeCode.Single => Db2RowValue.Read<float>(row, accessor),
             TypeCode.Double => Db2RowValue.Read<double>(row, accessor),
+            TypeCode.Decimal => Db2RowValue.Read<decimal>(row, accessor),
             TypeCode.Boolean => Db2RowValue.Read<bool>(row, accessor),
             _ => type.IsEnum ? Db2RowValue.Read<int>(row, accessor) : null,
         };
@@ -355,6 +401,16 @@ internal static class Db2NavigationQueryCompiler
             TypeCode.Decimal => ((decimal)a).CompareTo((decimal)b),
             TypeCode.Boolean => ((bool)a).CompareTo((bool)b),
             _ => type.IsEnum ? Comparer<int>.Default.Compare(Convert.ToInt32(a), Convert.ToInt32(b)) : 0,
+        };
+    }
+
+    private static Func<Wdc5Row, bool> CompileNavigationSemiJoin(Db2NavigationJoinPlan join, HashSet<int> matchingIds)
+    {
+        return join.Kind switch
+        {
+            Db2ReferenceNavigationKind.ForeignKeyToPrimaryKey => CompileForeignKeySemiJoin(join.RootKeyFieldSchema, matchingIds),
+            Db2ReferenceNavigationKind.SharedPrimaryKeyOneToOne => row => row is { Id: not 0 } && matchingIds.Contains(row.Id),
+            _ => _ => false,
         };
     }
 

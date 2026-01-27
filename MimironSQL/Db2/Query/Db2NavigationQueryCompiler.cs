@@ -400,7 +400,9 @@ internal static class Db2NavigationQueryCompiler
             TypeCode.Double => ((double)a).CompareTo((double)b),
             TypeCode.Decimal => ((decimal)a).CompareTo((decimal)b),
             TypeCode.Boolean => ((bool)a).CompareTo((bool)b),
-            _ => type.IsEnum ? Comparer<int>.Default.Compare(Convert.ToInt32(a), Convert.ToInt32(b)) : 0,
+            _ => type.IsEnum
+                ? Comparer<int>.Default.Compare(Convert.ToInt32(a), Convert.ToInt32(b))
+                : throw new NotSupportedException($"Comparison not supported for type '{type.FullName}'."),
         };
     }
 

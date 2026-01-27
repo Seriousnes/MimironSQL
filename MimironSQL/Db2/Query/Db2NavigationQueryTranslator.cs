@@ -462,9 +462,10 @@ internal static class Db2NavigationQueryTranslator
             ExpressionType.LessThanOrEqual => Db2ScalarComparisonKind.LessThanOrEqual,
             ExpressionType.GreaterThan => Db2ScalarComparisonKind.GreaterThan,
             ExpressionType.GreaterThanOrEqual => Db2ScalarComparisonKind.GreaterThanOrEqual,
-            _ => (Db2ScalarComparisonKind)(-1),
+            _ => (Db2ScalarComparisonKind)(-1), // Sentinel value for unsupported operators
         };
 
+        // Check if the operator is supported
         if ((int)comparisonKind == -1)
             return false;
 

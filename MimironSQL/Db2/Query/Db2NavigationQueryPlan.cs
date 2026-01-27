@@ -1,6 +1,7 @@
 using System.Reflection;
 
 using MimironSQL.Db2.Model;
+using MimironSQL.Db2.Schema;
 
 namespace MimironSQL.Db2.Query;
 
@@ -32,6 +33,20 @@ internal sealed record Db2NavigationJoinPlan(
         Db2ReferenceNavigationKind.SharedPrimaryKeyOneToOne => Target.PrimaryKeyMember,
         _ => throw new NotSupportedException($"Unsupported navigation kind '{Navigation.Kind}'."),
     };
+
+    public Db2FieldSchema RootKeyFieldSchema => Navigation.Kind switch
+    {
+        Db2ReferenceNavigationKind.ForeignKeyToPrimaryKey => Navigation.SourceKeyFieldSchema,
+        Db2ReferenceNavigationKind.SharedPrimaryKeyOneToOne => Root.PrimaryKeyFieldSchema,
+        _ => throw new NotSupportedException($"Unsupported navigation kind '{Navigation.Kind}'."),
+    };
+
+    public Db2FieldSchema TargetKeyFieldSchema => Navigation.Kind switch
+    {
+        Db2ReferenceNavigationKind.ForeignKeyToPrimaryKey => Navigation.TargetKeyFieldSchema,
+        Db2ReferenceNavigationKind.SharedPrimaryKeyOneToOne => Target.PrimaryKeyFieldSchema,
+        _ => throw new NotSupportedException($"Unsupported navigation kind '{Navigation.Kind}'."),
+    };
 }
 
 internal sealed record Db2NavigationMemberAccessPlan(
@@ -46,4 +61,25 @@ internal sealed record Db2NavigationStringPredicatePlan(
     Db2NavigationStringMatchKind MatchKind,
     string Needle,
     Db2SourceRequirements RootRequirements,
-    Db2SourceRequirements TargetRequirements);
+    Db2SourceRequirements TargetRequirements)
+{
+    public Db2FieldSchema TargetStringFieldSchema
+    {
+        get
+        {
+            if (!Join.Target.Schema.TryGetField(TargetStringMember.Name, out var fieldSchema))
+            {
+                var caseInsensitiveMatch = Join.Target.Schema.Fields.FirstOrDefault(f =>
+                    string.Equals(f.Name, TargetStringMember.Name, StringComparison.OrdinalIgnoreCase));
+                if (caseInsensitiveMatch.Name is not null)
+                    return caseInsensitiveMatch;
+
+                throw new NotSupportedException(
+                    $"Field '{TargetStringMember.Name}' not found in schema for table '{Join.Target.TableName}'. " +
+                    $"This should have been validated during model build.");
+            }
+
+            return fieldSchema;
+        }
+    }
+};

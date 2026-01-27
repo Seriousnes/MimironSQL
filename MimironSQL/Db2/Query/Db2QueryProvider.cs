@@ -111,6 +111,20 @@ internal sealed class Db2QueryProvider<TEntity>(
                 if (TryExecuteEnumerablePruned(preEntityWhere, stopAfter, selectOp.Selector, postOps, out var pruned))
                     return (IEnumerable<TElement>)pruned;
             }
+
+            var canAttemptNavigationPrune =
+                selectOp.Selector is { Parameters.Count: 1 } &&
+                selectOp.Selector.Parameters[0].Type == typeof(TEntity) &&
+                selectOp.Selector.ReturnType == typeof(TElement) &&
+                SelectorUsesNavigation(selectOp.Selector) &&
+                postOps.All(op => op is not Db2WhereOperation && op is not Db2IncludeOperation) &&
+                postOps.Count(op => op is Db2SelectOperation) <= 1;
+
+            if (canAttemptNavigationPrune)
+            {
+                if (TryExecuteNavigationProjectionPruned(preEntityWhere, stopAfter, selectOp.Selector, postOps, out var navPruned))
+                    return (IEnumerable<TElement>)navPruned;
+            }
         }
 
         IEnumerable<TEntity> baseEntities = EnumerateEntities(preEntityWhere, stopAfter);
@@ -261,6 +275,70 @@ internal sealed class Db2QueryProvider<TEntity>(
         return true;
     }
 
+    private bool TryExecuteNavigationProjectionPruned(
+        IList<Expression<Func<TEntity, bool>>> preEntityWhere,
+        int? stopAfter,
+        LambdaExpression selector,
+        List<Db2QueryOperation> postOps,
+        out IEnumerable result)
+    {
+        result = Array.Empty<object>();
+
+        if (selector.Parameters is not { Count: 1 })
+            return false;
+
+        var navAccesses = Db2NavigationQueryTranslator.GetNavigationAccesses<TEntity>(_model, selector);
+        if (navAccesses is not { Count: not 0 })
+            return false;
+
+        var rowPredicates = new List<Func<Wdc5Row, bool>>();
+        var rootRequirements = new Db2SourceRequirements(schema, typeof(TEntity));
+
+        foreach (var predicate in preEntityWhere)
+        {
+            if (!Db2RowPredicateCompiler.TryCompile(file, schema, predicate, out var rowPredicate, out var predicateRequirements))
+                return false;
+
+            rootRequirements.Columns.UnionWith(predicateRequirements.Columns);
+            rowPredicates.Add(rowPredicate);
+        }
+
+        foreach (var access in navAccesses)
+        {
+            rootRequirements.Columns.UnionWith(access.RootRequirements.Columns);
+        }
+
+        if (rootRequirements.Columns.Any(c => c is { Kind: Db2RequiredColumnKind.String, Field.IsVirtual: true }))
+            return false;
+
+        var selectorReturnType = selector.ReturnType;
+        var projectMethod = typeof(Db2QueryProvider<TEntity>).GetMethod(nameof(EnumerateNavigationProjected), BindingFlags.Instance | BindingFlags.NonPublic)!;
+        var projectGeneric = projectMethod.MakeGenericMethod(selectorReturnType);
+        var projected = (IEnumerable)projectGeneric.Invoke(this, [rowPredicates, stopAfter, navAccesses, selector])!;
+
+        IEnumerable current = projected;
+        var currentElementType = selectorReturnType;
+
+        foreach (var op in postOps)
+        {
+            switch (op)
+            {
+                case Db2SelectOperation:
+                    continue;
+                case Db2IncludeOperation:
+                    return false;
+                case Db2TakeOperation take:
+                    current = ApplyTake(current, currentElementType, take.Count);
+                    break;
+                default:
+                    return false;
+            }
+        }
+
+        result = current;
+        return true;
+    }
+
     private (Delegate Projector, Db2SourceRequirements Requirements)? TryCreateProjector<TProjected>(LambdaExpression selector)
     {
         if (selector is not Expression<Func<TEntity, TProjected>> typed)
@@ -300,6 +378,48 @@ internal sealed class Db2QueryProvider<TEntity>(
             if (take.HasValue && yielded >= take.Value)
                 yield break;
         }
+    }
+
+    private IEnumerable<TProjected> EnumerateNavigationProjected<TProjected>(
+        List<Func<Wdc5Row, bool>> rowPredicates,
+        int? take,
+        IReadOnlyList<Db2NavigationMemberAccessPlan> navAccesses,
+        LambdaExpression selector)
+    {
+        IEnumerable<Wdc5Row> FilteredRows()
+        {
+            var yielded = 0;
+            foreach (var row in file.EnumerateRows())
+            {
+                var ok = true;
+                foreach (var p in rowPredicates)
+                {
+                    if (!p(row))
+                    {
+                        ok = false;
+                        break;
+                    }
+                }
+
+                if (!ok)
+                    continue;
+
+                yield return row;
+
+                yielded++;
+                if (take.HasValue && yielded >= take.Value)
+                    yield break;
+            }
+        }
+
+        return Db2NavigationRowProjector.ProjectFromRows<TProjected>(
+            FilteredRows(),
+            schema,
+            _model,
+            _tableResolver,
+            [.. navAccesses],
+            selector,
+            take);
     }
 
     private TResult ExecuteScalar<TResult>(Expression expression)

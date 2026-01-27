@@ -2,6 +2,7 @@ using System.Linq.Expressions;
 using System.Reflection;
 
 using MimironSQL.Db2.Model;
+using MimironSQL.Extensions;
 
 namespace MimironSQL.Db2.Query;
 
@@ -22,7 +23,7 @@ internal static class Db2NavigationQueryTranslator
 
         var rootParam = predicate.Parameters[0];
 
-        var body = UnwrapConvert(predicate.Body);
+        var body = predicate.Body.UnwrapConvert()!;
 
         if (!TryParseNavigationStringPredicate(body, rootParam, out var navMember, out var targetMember, out var matchKind, out var needle))
             return false;
@@ -75,7 +76,7 @@ internal static class Db2NavigationQueryTranslator
             return false;
 
         var rootParam = predicate.Parameters[0];
-        var body = UnwrapConvert(predicate.Body);
+        var body = predicate.Body.UnwrapConvert()!;
 
         if (!TryParseNavigationScalarPredicate(body, rootParam, out var navMember, out var targetMember, out var comparisonKind, out var comparisonValue, out var scalarType))
             return false;
@@ -128,7 +129,7 @@ internal static class Db2NavigationQueryTranslator
             return false;
 
         var rootParam = predicate.Parameters[0];
-        var body = UnwrapConvert(predicate.Body);
+        var body = predicate.Body.UnwrapConvert()!;
 
         if (!TryParseNavigationNullCheck(body, rootParam, out var navMember, out var isNotNull))
             return false;
@@ -173,14 +174,14 @@ internal static class Db2NavigationQueryTranslator
             if (expr is null)
                 return;
 
-            expr = UnwrapConvert(expr);
+            expr = expr.UnwrapConvert();
 
             switch (expr)
             {
                 case MemberExpression { Member: PropertyInfo or FieldInfo } member:
                     {
                         // 1-hop: x.Nav.Member
-                        if (UnwrapConvert(member.Expression) is MemberExpression { Member: PropertyInfo or FieldInfo } nav && nav.Expression == rootParam)
+                        if (member.Expression.UnwrapConvert() is MemberExpression { Member: PropertyInfo or FieldInfo } nav && nav.Expression == rootParam)
                         {
                             if (!model.TryGetReferenceNavigation(typeof(TEntity), nav.Member, out var navigation))
                             {
@@ -199,7 +200,7 @@ internal static class Db2NavigationQueryTranslator
                             var targetReq = new Db2SourceRequirements(join.Target.Schema, join.Target.ClrType);
                             targetReq.RequireMember(join.TargetKeyMember, Db2RequiredColumnKind.JoinKey);
 
-                            var targetMemberType = GetMemberType(member.Member);
+                            var targetMemberType = member.Member.GetMemberType();
                             targetReq.RequireMember(member.Member, targetMemberType == typeof(string) ? Db2RequiredColumnKind.String : Db2RequiredColumnKind.Scalar);
 
                             accesses.Add(new Db2NavigationMemberAccessPlan(join, member.Member, rootReq, targetReq));
@@ -246,19 +247,6 @@ internal static class Db2NavigationQueryTranslator
         return accesses;
     }
 
-    private static Type GetMemberType(MemberInfo member)
-        => member switch
-        {
-            PropertyInfo p => p.PropertyType,
-            FieldInfo f => f.FieldType,
-            _ => throw new InvalidOperationException($"Unexpected member type: {member.GetType().FullName}"),
-        };
-
-    private static Expression UnwrapConvert(Expression expression)
-        => expression is UnaryExpression { NodeType: ExpressionType.Convert or ExpressionType.ConvertChecked } u
-            ? u.Operand
-            : expression;
-
     private static bool TryParseNavigationStringPredicate(
         Expression expression,
         ParameterExpression rootParam,
@@ -272,7 +260,7 @@ internal static class Db2NavigationQueryTranslator
         matchKind = default;
         needle = string.Empty;
 
-        expression = UnwrapConvert(expression);
+        expression = expression.UnwrapConvert()!;
 
         if (expression is BinaryExpression { NodeType: ExpressionType.Equal } eq)
         {
@@ -322,13 +310,13 @@ internal static class Db2NavigationQueryTranslator
             if (expr is null)
                 return false;
 
-            expr = expr is UnaryExpression { NodeType: ExpressionType.Convert or ExpressionType.ConvertChecked } u2 ? u2.Operand : expr;
+            expr = expr.UnwrapConvert();
 
             if (expr is not MemberExpression { Member: PropertyInfo or FieldInfo } relatedExpr)
                 return false;
 
             var navExpr = relatedExpr.Expression;
-            navExpr = navExpr is UnaryExpression { NodeType: ExpressionType.Convert or ExpressionType.ConvertChecked } u3 ? u3.Operand : navExpr;
+            navExpr = navExpr.UnwrapConvert();
 
             if (navExpr is not MemberExpression { Member: PropertyInfo or FieldInfo } navMemberExpr)
                 return false;
@@ -343,7 +331,7 @@ internal static class Db2NavigationQueryTranslator
 
         static bool TryGetString(Expression expr, ParameterExpression root, out (string Value, Expression Expression) constant)
         {
-            expr = expr is UnaryExpression { NodeType: ExpressionType.Convert or ExpressionType.ConvertChecked } u ? u.Operand : expr;
+            expr = expr.UnwrapConvert()!;
 
             if (expr is ConstantExpression { Value: string s1 })
             {
@@ -351,7 +339,7 @@ internal static class Db2NavigationQueryTranslator
                 return true;
             }
 
-            if (ContainsParameter(expr, root))
+            if (expr.ContainsParameter(root))
             {
                 constant = default;
                 return false;
@@ -377,59 +365,10 @@ internal static class Db2NavigationQueryTranslator
             }
         }
 
-        static bool ContainsParameter(Expression expr, ParameterExpression parameter)
-        {
-            var found = false;
-
-            void Visit(Expression? e)
-            {
-                if (found || e is null)
-                    return;
-
-                e = e is UnaryExpression { NodeType: ExpressionType.Convert or ExpressionType.ConvertChecked } u ? u.Operand : e;
-
-                if (ReferenceEquals(e, parameter))
-                {
-                    found = true;
-                    return;
-                }
-
-                switch (e)
-                {
-                    case MemberExpression me:
-                        Visit(me.Expression);
-                        return;
-                    case MethodCallExpression mc:
-                        Visit(mc.Object);
-                        foreach (var a in mc.Arguments)
-                            Visit(a);
-                        return;
-                    case BinaryExpression b:
-                        Visit(b.Left);
-                        Visit(b.Right);
-                        return;
-                    case ConditionalExpression c:
-                        Visit(c.Test);
-                        Visit(c.IfTrue);
-                        Visit(c.IfFalse);
-                        return;
-                    case NewExpression n:
-                        foreach (var a in n.Arguments)
-                            Visit(a);
-                        return;
-                    default:
-                        return;
-                }
-            }
-
-            Visit(expr);
-            return found;
-        }
-
         static bool ExpressionEquals(Expression a, Expression b)
         {
-            a = a is UnaryExpression { NodeType: ExpressionType.Convert or ExpressionType.ConvertChecked } ua ? ua.Operand : a;
-            b = b is UnaryExpression { NodeType: ExpressionType.Convert or ExpressionType.ConvertChecked } ub ? ub.Operand : b;
+            a = a.UnwrapConvert()!;
+            b = b.UnwrapConvert()!;
             return ReferenceEquals(a, b);
         }
     }
@@ -449,7 +388,7 @@ internal static class Db2NavigationQueryTranslator
         comparisonValue = null!;
         scalarType = null!;
 
-        expression = UnwrapConvert(expression);
+        expression = expression.UnwrapConvert()!;
 
         if (expression is not BinaryExpression bin)
             return false;
@@ -503,13 +442,13 @@ internal static class Db2NavigationQueryTranslator
             if (expr is null)
                 return false;
 
-            expr = UnwrapConvert(expr);
+            expr = expr.UnwrapConvert();
 
             if (expr is not MemberExpression { Member: PropertyInfo or FieldInfo } relatedExpr)
                 return false;
 
             var navExpr = relatedExpr.Expression;
-            navExpr = UnwrapConvert(navExpr);
+            navExpr = navExpr.UnwrapConvert();
 
             if (navExpr is not MemberExpression { Member: PropertyInfo or FieldInfo } navMemberExpr)
                 return false;
@@ -524,16 +463,16 @@ internal static class Db2NavigationQueryTranslator
 
         static bool TryGetScalarValue(Expression expr, ParameterExpression root, out object value, out Type type)
         {
-            expr = UnwrapConvert(expr);
+            expr = expr.UnwrapConvert()!;
             type = expr.Type;
 
             if (expr is ConstantExpression { Value: not null } constant)
             {
                 value = constant.Value;
-                return IsScalarType(type);
+                return type.IsScalarType();
             }
 
-            if (ContainsParameter(expr, root))
+            if (expr.ContainsParameter(root))
             {
                 value = null!;
                 return false;
@@ -543,18 +482,13 @@ internal static class Db2NavigationQueryTranslator
             {
                 var lambda = Expression.Lambda<Func<object>>(Expression.Convert(expr, typeof(object)));
                 value = lambda.Compile().Invoke();
-                return value is not null && IsScalarType(type);
+                return value is not null && type.IsScalarType();
             }
             catch
             {
                 value = null!;
                 return false;
             }
-        }
-
-        static bool IsScalarType(Type type)
-        {
-            return type.IsPrimitive || type == typeof(decimal) || type.IsEnum;
         }
 
         static Db2ScalarComparisonKind FlipComparison(Db2ScalarComparisonKind kind)
@@ -569,54 +503,6 @@ internal static class Db2NavigationQueryTranslator
             };
         }
 
-        static bool ContainsParameter(Expression expr, ParameterExpression parameter)
-        {
-            var found = false;
-
-            void Visit(Expression? e)
-            {
-                if (found || e is null)
-                    return;
-
-                e = UnwrapConvert(e);
-
-                if (ReferenceEquals(e, parameter))
-                {
-                    found = true;
-                    return;
-                }
-
-                switch (e)
-                {
-                    case MemberExpression me:
-                        Visit(me.Expression);
-                        return;
-                    case MethodCallExpression mc:
-                        Visit(mc.Object);
-                        foreach (var a in mc.Arguments)
-                            Visit(a);
-                        return;
-                    case BinaryExpression b:
-                        Visit(b.Left);
-                        Visit(b.Right);
-                        return;
-                    case ConditionalExpression c:
-                        Visit(c.Test);
-                        Visit(c.IfTrue);
-                        Visit(c.IfFalse);
-                        return;
-                    case NewExpression n:
-                        foreach (var a in n.Arguments)
-                            Visit(a);
-                        return;
-                    default:
-                        return;
-                }
-            }
-
-            Visit(expr);
-            return found;
-        }
     }
 
     private static bool TryParseNavigationNullCheck(
@@ -628,7 +514,7 @@ internal static class Db2NavigationQueryTranslator
         navMember = null!;
         isNotNull = false;
 
-        expression = UnwrapConvert(expression);
+        expression = expression.UnwrapConvert()!;
 
         if (expression is not BinaryExpression bin)
             return false;
@@ -651,7 +537,7 @@ internal static class Db2NavigationQueryTranslator
 
         static bool IsNullConstant(Expression expr)
         {
-            expr = UnwrapConvert(expr);
+            expr = expr.UnwrapConvert()!;
             return expr is ConstantExpression { Value: null };
         }
 
@@ -662,7 +548,7 @@ internal static class Db2NavigationQueryTranslator
             if (expr is null)
                 return false;
 
-            expr = UnwrapConvert(expr);
+            expr = expr.UnwrapConvert();
 
             if (expr is not MemberExpression { Member: PropertyInfo or FieldInfo } navExpr)
                 return false;

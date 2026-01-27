@@ -14,6 +14,43 @@ public sealed class Db2ModelBuilder
             ? new Db2EntityTypeBuilder<T>(this, metadata)
             : throw new InvalidOperationException("Unable to register entity type.");
 
+    public Db2ModelBuilder ApplyConfiguration<T>(IDb2EntityTypeConfiguration<T> configuration)
+    {
+        ArgumentNullException.ThrowIfNull(configuration);
+
+        var builder = Entity<T>();
+        configuration.Configure(builder);
+        return this;
+    }
+
+    public Db2ModelBuilder ApplyConfigurationsFromAssembly(Assembly assembly)
+    {
+        ArgumentNullException.ThrowIfNull(assembly);
+
+        var configInterfaceType = typeof(IDb2EntityTypeConfiguration<>);
+        var configurations = assembly.GetTypes()
+            .Where(t => !t.IsAbstract && !t.IsGenericTypeDefinition)
+            .Select(t => (Type: t, Interface: t.GetInterfaces()
+                .FirstOrDefault(i => i.IsGenericType && i.GetGenericTypeDefinition() == configInterfaceType)))
+            .Where(x => x.Interface is not null)
+            .Select(x => (x.Type, EntityType: x.Interface!.GetGenericArguments()[0]))
+            .ToList();
+
+        foreach (var (configType, entityType) in configurations)
+        {
+            if (Activator.CreateInstance(configType) is not { } config)
+                continue;
+
+            var applyMethod = typeof(Db2ModelBuilder)
+                .GetMethod(nameof(ApplyConfiguration))!
+                .MakeGenericMethod(entityType);
+
+            applyMethod.Invoke(this, [config]);
+        }
+
+        return this;
+    }
+
     internal Db2EntityTypeMetadata Entity(Type clrType)
     {
         if (_entityTypes.TryGetValue(clrType, out var existing))

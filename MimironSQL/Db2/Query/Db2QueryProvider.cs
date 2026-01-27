@@ -611,11 +611,9 @@ internal sealed class Db2QueryProvider<TEntity>(
                     if (keys is { Count: 0 })
                         return relatedByKey;
 
-                    foreach (var row in file.EnumerateRows())
+                    foreach (var row in file.EnumerateRows()
+                        .Where(row => keys.Contains(row.Id)))
                     {
-                        if (!keys.Contains(row.Id))
-                            continue;
-
                         relatedByKey[row.Id] = materializeRow(row);
                     }
 

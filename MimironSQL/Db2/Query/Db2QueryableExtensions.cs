@@ -1,9 +1,13 @@
 using System.Linq.Expressions;
+using System.Reflection;
 
 namespace MimironSQL.Db2.Query;
 
 public static class Db2QueryableExtensions
 {
+    private static readonly MethodInfo IncludeMethodInfo = 
+        typeof(Db2QueryableExtensions).GetMethod(nameof(Include))!;
+
     public static IQueryable<TEntity> Include<TEntity, TProperty>(
         this IQueryable<TEntity> source,
         Expression<Func<TEntity, TProperty>> navigationPropertyPath)
@@ -11,8 +15,7 @@ public static class Db2QueryableExtensions
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(navigationPropertyPath);
 
-        var method = ((MethodCallExpression)((Expression<Func<IQueryable<TEntity>>>)(
-            () => Include(source, navigationPropertyPath))).Body).Method;
+        var method = IncludeMethodInfo.MakeGenericMethod(typeof(TEntity), typeof(TProperty));
 
         return source.Provider.CreateQuery<TEntity>(
             Expression.Call(

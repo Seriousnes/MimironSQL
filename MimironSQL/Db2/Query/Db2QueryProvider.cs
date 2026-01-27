@@ -69,7 +69,7 @@ internal sealed class Db2QueryProvider<TEntity>(
         var preEntityWhere = ops
             .Take(selectIndex)
             .OfType<Db2WhereOperation>()
-            .Where(op => op.Predicate.Parameters.Count == 1 && op.Predicate.Parameters[0].Type == typeof(TEntity))
+            .Where(op => op is { Predicate.Parameters.Count: 1 } && op.Predicate.Parameters[0].Type == typeof(TEntity))
             .Select(op => (Expression<Func<TEntity, bool>>)op.Predicate);
 
         var selectOp = selectIndex < ops.Count ? ops[selectIndex] as Db2SelectOperation : null;
@@ -89,7 +89,7 @@ internal sealed class Db2QueryProvider<TEntity>(
             if (op == preTake)
                 continue;
 
-            if (i < selectIndex && op is Db2WhereOperation w && w.Predicate.Parameters.Count == 1 && w.Predicate.Parameters[0].Type == typeof(TEntity))
+            if (i < selectIndex && op is Db2WhereOperation w && w is { Predicate.Parameters.Count: 1 } && w.Predicate.Parameters[0].Type == typeof(TEntity))
                 continue;
 
             postOps.Add(op);
@@ -98,7 +98,7 @@ internal sealed class Db2QueryProvider<TEntity>(
         if (selectOp is not null)
         {
             var canAttemptPrune =
-                selectOp.Selector.Parameters.Count == 1 &&
+                selectOp.Selector is { Parameters.Count: 1 } &&
                 selectOp.Selector.Parameters[0].Type == typeof(TEntity) &&
                 selectOp.Selector.ReturnType == typeof(TElement) &&
                 !SelectorUsesNavigation(selectOp.Selector) &&
@@ -129,7 +129,7 @@ internal sealed class Db2QueryProvider<TEntity>(
                     if (currentElementType == typeof(TEntity))
                     {
                         var navAccesses = Db2NavigationQueryTranslator.GetNavigationAccesses<TEntity>(_model, select.Selector);
-                        if (navAccesses.Count != 0 && select.Selector is Expression<Func<TEntity, TElement>> typedSelector)
+                        if (navAccesses is { Count: not 0 } && select.Selector is Expression<Func<TEntity, TElement>> typedSelector)
                         {
                             int? take = null;
                             if (opIndex + 1 < postOps.Count && postOps[opIndex + 1] is Db2TakeOperation nextTake)
@@ -206,7 +206,7 @@ internal sealed class Db2QueryProvider<TEntity>(
     {
         result = Array.Empty<object>();
 
-        if (selector is not Expression<Func<TEntity, TEntity>> && selector.Parameters.Count != 1)
+        if (selector is not Expression<Func<TEntity, TEntity>> && selector.Parameters is not { Count: 1 })
             return false;
 
         var rowPredicates = new List<Func<Wdc5Row, bool>>();
@@ -230,7 +230,7 @@ internal sealed class Db2QueryProvider<TEntity>(
 
         // Pruning is only safe when we can satisfy the projection/predicate from row-level reads.
         // Virtual strings cannot be materialized from WDC5 rows.
-        if (requirements.Columns.Any(c => c.Kind == Db2RequiredColumnKind.String && c.Field.IsVirtual))
+        if (requirements.Columns.Any(c => c is { Kind: Db2RequiredColumnKind.String, Field.IsVirtual: true }))
             return false;
 
         var enumerateMethod = typeof(Db2QueryProvider<TEntity>).GetMethod(nameof(EnumerateProjected), BindingFlags.Instance | BindingFlags.NonPublic)!;
@@ -309,7 +309,7 @@ internal sealed class Db2QueryProvider<TEntity>(
 
         var enumerable = Execute(expressionWithFinalStripped: pipeline.ExpressionWithoutFinalOperator, sequenceElementType);
 
-        if (pipeline.FinalOperator == Db2FinalOperator.All)
+        if (pipeline is { FinalOperator: Db2FinalOperator.All })
         {
             if (pipeline.FinalPredicate is null)
                 throw new NotSupportedException("Queryable.All requires a predicate for this provider.");
@@ -318,7 +318,7 @@ internal sealed class Db2QueryProvider<TEntity>(
 
             var all = typeof(Enumerable)
                 .GetMethods(BindingFlags.Public | BindingFlags.Static)
-                .Single(m => m.Name == nameof(Enumerable.All) && m.GetParameters().Length == 2)
+                .Single(m => m.Name == nameof(Enumerable.All) && m.GetParameters() is { Length: 2 })
                 .MakeGenericMethod(sequenceElementType);
 
             return (TResult)all.Invoke(null, [enumerable, typedPredicate])!;
@@ -337,7 +337,7 @@ internal sealed class Db2QueryProvider<TEntity>(
 
         var scalar = typeof(Enumerable)
             .GetMethods(BindingFlags.Public | BindingFlags.Static)
-            .Single(m => m.Name == methodName && m.GetParameters().Length == 1)
+            .Single(m => m.Name == methodName && m.GetParameters() is { Length: 1 })
             .MakeGenericMethod(sequenceElementType);
 
         return (TResult)scalar.Invoke(null, [enumerable])!;
@@ -415,9 +415,9 @@ internal sealed class Db2QueryProvider<TEntity>(
             .GetMethods(BindingFlags.Public | BindingFlags.Static)
             .Single(m =>
                 m.Name == nameof(Enumerable.Where) &&
-                m.GetParameters().Length == 2 &&
+                m.GetParameters() is { Length: 2 } &&
                 m.GetParameters()[1].ParameterType.IsGenericType &&
-                m.GetParameters()[1].ParameterType.GetGenericArguments().Length == 2)
+                m.GetParameters()[1].ParameterType.GetGenericArguments() is { Length: 2 })
             .MakeGenericMethod(sourceElementType);
 
         return (IEnumerable)where.Invoke(null, [source, typedPredicate])!;
@@ -432,9 +432,9 @@ internal sealed class Db2QueryProvider<TEntity>(
             .GetMethods(BindingFlags.Public | BindingFlags.Static)
             .Single(m =>
                 m.Name == nameof(Enumerable.Select) &&
-                m.GetParameters().Length == 2 &&
+                m.GetParameters() is { Length: 2 } &&
                 m.GetParameters()[1].ParameterType.IsGenericType &&
-                m.GetParameters()[1].ParameterType.GetGenericArguments().Length == 2)
+                m.GetParameters()[1].ParameterType.GetGenericArguments() is { Length: 2 })
             .MakeGenericMethod(sourceElementType, resultType);
 
         return (IEnumerable)select.Invoke(null, [source, typedSelector])!;
@@ -446,7 +446,7 @@ internal sealed class Db2QueryProvider<TEntity>(
             .GetMethods(BindingFlags.Public | BindingFlags.Static)
             .Single(m =>
                 m.Name == nameof(Enumerable.Take) &&
-                m.GetParameters().Length == 2 &&
+                m.GetParameters() is { Length: 2 } &&
                 m.GetParameters()[1].ParameterType == typeof(int))
             .MakeGenericMethod(sourceElementType);
 
@@ -513,7 +513,7 @@ internal sealed class Db2QueryProvider<TEntity>(
             Db2Model model,
             Func<string, (Wdc5File File, Db2TableSchema Schema)> tableResolver)
         {
-            if (navigation.Parameters.Count != 1 || navigation.Parameters[0].Type != typeof(TEntity))
+            if (navigation.Parameters is not { Count: 1 } || navigation.Parameters[0].Type != typeof(TEntity))
                 throw new NotSupportedException("Include navigation must be a lambda with a single parameter matching the entity type.");
 
             var body = navigation.Body;
@@ -608,7 +608,7 @@ internal sealed class Db2QueryProvider<TEntity>(
                 {
                     Dictionary<int, object?> relatedByKey = new(capacity: keys.Count);
 
-                    if (keys.Count == 0)
+                    if (keys is { Count: 0 })
                         return relatedByKey;
 
                     foreach (var row in file.EnumerateRows())

@@ -23,7 +23,7 @@ internal static class DbdColumnParser
             name = name[..^1];
             isVerified = false;
         }
-        if (name.Length == 0)
+        if (name is { Length: 0 })
         {
             column = default;
             return false;
@@ -62,7 +62,7 @@ internal static class DbdColumnParser
             return null;
 
         var table = inner[..idx].Trim();
-        return table.Length == 0 ? null : table;
+        return table is { Length: 0 } ? null : table;
     }
 
     private static Db2ValueType MapTypeToken(string token)

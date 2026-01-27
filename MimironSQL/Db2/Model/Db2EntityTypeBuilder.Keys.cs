@@ -9,7 +9,7 @@ public sealed partial class Db2EntityTypeBuilder<T>
     {
         ArgumentNullException.ThrowIfNull(key);
 
-        if (key.Parameters.Count != 1)
+        if (key.Parameters is not { Count: 1 })
             throw new NotSupportedException("Key selector must have exactly one parameter.");
 
         var body = key.Body;

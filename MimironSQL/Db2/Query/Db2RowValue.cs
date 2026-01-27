@@ -22,7 +22,7 @@ internal static class Db2RowValue
         {
             var value = field.IsVirtual
                 ? GetVirtualNumeric(row, field)
-                : field.ValueType == Db2ValueType.Single
+                : field is { ValueType: Db2ValueType.Single }
                     ? row.GetScalar<float>(field.ColumnStartIndex)
                     : Convert.ToSingle(ReadNumericRaw(row, field));
 

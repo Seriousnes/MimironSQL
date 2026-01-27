@@ -43,11 +43,11 @@ internal sealed class Wdc5File
         stream.Position = 0;
         using var reader = new BinaryReader(stream, Encoding.UTF8, leaveOpen: true);
 
-        if (reader.BaseStream.Length < HeaderSize)
+        if (reader.BaseStream.Length is < HeaderSize)
             throw new InvalidDataException("DB2 file is too small to be valid.");
 
         var magic = reader.ReadUInt32();
-        if (magic != Wdc5Magic)
+        if (magic is not Wdc5Magic)
         {
             Span<byte> headerBytes = stackalloc byte[4];
             Unsafe.WriteUnaligned(ref headerBytes[0], magic);
@@ -151,7 +151,7 @@ internal sealed class Wdc5File
         var commonData = new Dictionary<int, Value32>[columnMeta.Length];
         for (var i = 0; i < columnMeta.Length; i++)
         {
-            if (columnMeta[i].CompressionType == CompressionType.Common)
+            if (columnMeta[i] is { CompressionType: CompressionType.Common })
             {
                 var count = checked((int)columnMeta[i].AdditionalDataSize / 8);
                 var dict = new Dictionary<int, Value32>(count);
@@ -183,7 +183,7 @@ internal sealed class Wdc5File
                 reader.BaseStream.Position = section.FileOffset;
 
                 ReadOnlyMemory<byte> tactKey = ReadOnlyMemory<byte>.Empty;
-                if (section.TactKeyLookup != 0 && Options.TactKeyProvider is not null)
+                if (section is { TactKeyLookup: not 0 } && Options.TactKeyProvider is not null)
                     _ = Options.TactKeyProvider.TryGetKey(section.TactKeyLookup, out tactKey);
 
                 byte[] recordsData;
@@ -208,7 +208,7 @@ internal sealed class Wdc5File
                         throw new InvalidDataException("WDC5 sparse section parsing desynced: expected OffsetRecordsEndOffset.");
                 }
 
-                var isEncrypted = section.TactKeyLookup != 0;
+                var isEncrypted = section is { TactKeyLookup: not 0 };
                 var shouldSkipEncryptedSection = false;
                 if (isEncrypted)
                 {
@@ -236,12 +236,12 @@ internal sealed class Wdc5File
 
                 // index data
                 var indexData = ReadInt32Array(reader, section.IndexDataSize / 4);
-                if (indexData.Length > 0 && indexData.All(x => x == 0))
+                if (indexData is { Length: > 0 } && indexData.All(x => x == 0))
                     indexData = [.. Enumerable.Range(minIndex + previousRecordCount, section.NumRecords)];
 
                 // copy table
                 var copyData = new Dictionary<int, int>();
-                if (section.CopyTableCount > 0)
+                if (section is { CopyTableCount: > 0 })
                 {
                     for (var i = 0; i < section.CopyTableCount; i++)
                     {
@@ -254,21 +254,21 @@ internal sealed class Wdc5File
 
                 // offset map / sparse entries
                 SparseEntry[] sparseEntries = [];
-                if (section.OffsetMapIDCount > 0)
+                if (section is { OffsetMapIDCount: > 0 })
                     sparseEntries = ReadStructArray<SparseEntry>(reader, section.OffsetMapIDCount);
 
                 // secondary key sparse index data (not fully surfaced yet)
-                if (section.OffsetMapIDCount > 0 && flags.HasFlag(Db2Flags.SecondaryKey))
+                if (section is { OffsetMapIDCount: > 0 } && flags.HasFlag(Db2Flags.SecondaryKey))
                 {
                     var sparseIndexData = ReadInt32Array(reader, section.OffsetMapIDCount);
-                    if (section.IndexDataSize > 0 && indexData.Length != sparseIndexData.Length)
+                    if (section is { IndexDataSize: > 0 } && indexData.Length != sparseIndexData.Length)
                         throw new InvalidDataException("WDC5 sparse index data length mismatch.");
                     indexData = sparseIndexData;
                 }
 
                 // parent lookup data (parsed only enough to advance stream)
                 var parentLookupEntries = new Dictionary<int, int>();
-                if (section.ParentLookupDataSize > 0)
+                if (section is { ParentLookupDataSize: > 0 })
                 {
                     var numRecords = reader.ReadInt32();
                     _ = reader.ReadInt32(); // minId
@@ -283,10 +283,10 @@ internal sealed class Wdc5File
                 }
 
                 // if OffsetMap exists but we didn't read sparse index earlier, WDC5 can have it here too
-                if (section.OffsetMapIDCount > 0 && !flags.HasFlag(Db2Flags.SecondaryKey))
+                if (section is { OffsetMapIDCount: > 0 } && !flags.HasFlag(Db2Flags.SecondaryKey))
                 {
                     var sparseIndexData = ReadInt32Array(reader, section.OffsetMapIDCount);
-                    if (section.IndexDataSize > 0 && indexData.Length != sparseIndexData.Length)
+                    if (section is { IndexDataSize: > 0 } && indexData.Length != sparseIndexData.Length)
                         throw new InvalidDataException("WDC5 sparse index data length mismatch.");
                     indexData = sparseIndexData;
                 }
@@ -336,7 +336,7 @@ internal sealed class Wdc5File
         DenseStringTableBytes = [.. denseStringTableBytes];
         RecordsBlobSizeBytes = recordsBlobSizeBytes;
 
-        if (recordsCount > 0 && parsedSections.Count == 0)
+        if (recordsCount > 0 && parsedSections is { Count: 0 })
             throw new NotSupportedException("All WDC5 sections are encrypted or unreadable (missing TACT keys or placeholder section data).");
     }
 
@@ -350,7 +350,7 @@ internal sealed class Wdc5File
             {
                 var reader = CreateReaderAtRowStart(section, rowIndex);
                 var id = GetVirtualId(section, rowIndex, reader);
-                var referenceKey = Header.Flags.HasFlag(Db2Flags.SecondaryKey) && section.IndexData.Length != 0
+                var referenceKey = Header.Flags.HasFlag(Db2Flags.SecondaryKey) && section.IndexData is { Length: not 0 }
                     ? section.IndexData[rowIndex]
                     : rowIndex;
 
@@ -381,7 +381,7 @@ internal sealed class Wdc5File
         var section = ParsedSections[location.SectionIndex];
         var reader = CreateReaderAtRowStart(section, location.RowIndexInSection);
 
-        var referenceKey = Header.Flags.HasFlag(Db2Flags.SecondaryKey) && section.IndexData.Length != 0
+        var referenceKey = Header.Flags.HasFlag(Db2Flags.SecondaryKey) && section.IndexData is { Length: not 0 }
             ? section.IndexData[location.RowIndexInSection]
             : location.RowIndexInSection;
 
@@ -451,13 +451,14 @@ internal sealed class Wdc5File
             return reader;
         }
 
-        if (section.SparseRecordStartBits.Length == 0)
+        if (section.SparseRecordStartBits is { Length: 0 })
             throw new InvalidDataException("Sparse WDC5 section missing SparseRecordStartBits.");
 
         var startBits = section.SparseRecordStartBits[rowIndex];
         var startBytes = startBits >> 3;
         var sizeBytes = (int)section.SparseEntries[rowIndex].Size;
-        if ((uint)startBytes > (uint)section.RecordsData.Length || (uint)(startBytes + sizeBytes) > (uint)section.RecordsData.Length)
+        var endExclusive = (long)startBytes + sizeBytes;
+        if (startBytes < 0 || endExclusive < 0 || endExclusive > section.RecordsData.Length)
             throw new InvalidDataException("Sparse WDC5 row points outside section record data.");
 
         reader.PositionBits = startBits;
@@ -467,7 +468,7 @@ internal sealed class Wdc5File
     private int GetVirtualId(Wdc5Section section, int rowIndex, BitReader readerAtStart)
     {
         // A) Prefer IndexData when present.
-        if (section.IndexData.Length != 0)
+        if (section.IndexData is { Length: not 0 })
             return section.IndexData[rowIndex];
 
         // Fallback: decode the physical ID field from record bits.
@@ -482,7 +483,7 @@ internal sealed class Wdc5File
             var palletData = PalletData[i];
             var commonData = CommonData[i];
 
-            if (columnMeta.CompressionType == CompressionType.Common)
+            if (columnMeta is { CompressionType: CompressionType.Common })
                 throw new NotSupportedException("Decoding ID from record bits is not supported for Common-compressed ID fields.");
 
             if (i == Header.IdFieldIndex)

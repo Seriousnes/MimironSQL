@@ -17,7 +17,7 @@ internal static class Db2NavigationQueryTranslator
 
         plan = null!;
 
-        if (predicate.Parameters.Count != 1 || predicate.Parameters[0].Type != typeof(TEntity))
+        if (predicate.Parameters is not { Count: 1 } || predicate.Parameters[0].Type != typeof(TEntity))
             return false;
 
         var rootParam = predicate.Parameters[0];
@@ -60,7 +60,7 @@ internal static class Db2NavigationQueryTranslator
         ArgumentNullException.ThrowIfNull(model);
         ArgumentNullException.ThrowIfNull(lambda);
 
-        if (lambda.Parameters.Count != 1 || lambda.Parameters[0].Type != typeof(TEntity))
+        if (lambda.Parameters is not { Count: 1 } || lambda.Parameters[0].Type != typeof(TEntity))
             return [];
 
         var rootParam = lambda.Parameters[0];
@@ -188,7 +188,7 @@ internal static class Db2NavigationQueryTranslator
 
         if (expression is MethodCallExpression { Method.DeclaringType: { } dt } call && dt == typeof(string))
         {
-            if (call.Arguments.Count != 1 || !TryGetString(call.Arguments[0], rootParam, out var constant))
+            if (call.Arguments is not { Count: 1 } || !TryGetString(call.Arguments[0], rootParam, out var constant))
                 return false;
 
             if (!TryGetNavThenMemberAccess(call.Object, rootParam, out navMember, out targetMember))

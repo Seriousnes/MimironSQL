@@ -61,7 +61,7 @@ internal sealed record Db2QueryPipeline(
                 finalElementType = m0.Method.ReturnType;
                 expressionWithoutFinal = m0.Arguments[0];
 
-                if (m0.Arguments.Count == 2)
+                if (m0.Arguments is { Count: 2 })
                 {
                     finalPredicate = UnquoteLambda(m0.Arguments[1]);
 

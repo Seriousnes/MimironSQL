@@ -91,7 +91,7 @@ internal static class Db2RowPredicateCompiler
 
         protected override Expression VisitUnary(UnaryExpression node)
         {
-            if (node.NodeType == ExpressionType.Convert && node.Operand is MemberExpression m && m.Expression == entityParam)
+            if (node is { NodeType: ExpressionType.Convert } && node.Operand is MemberExpression m && m.Expression == entityParam)
             {
                 var accessor = getAccessor(m.Member.Name);
                 requirements.RequireField(accessor.Field, m.Type == typeof(string) ? Db2RequiredColumnKind.String : Db2RequiredColumnKind.Scalar);
@@ -111,7 +111,7 @@ internal static class Db2RowPredicateCompiler
                 var methodName = node.Method.Name;
                 if (methodName is nameof(string.Contains) or nameof(string.StartsWith) or nameof(string.EndsWith))
                 {
-                    if (node.Arguments.Count != 1 || node.Arguments[0] is not ConstantExpression { Value: string needle })
+                    if (node.Arguments is not { Count: 1 } || node.Arguments[0] is not ConstantExpression { Value: string needle })
                         throw new NotSupportedException("Only constant string needles are supported for string predicates.");
 
                     var accessor = getAccessor(m.Member.Name);

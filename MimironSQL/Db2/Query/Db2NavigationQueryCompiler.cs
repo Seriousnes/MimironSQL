@@ -42,7 +42,7 @@ internal static class Db2NavigationQueryCompiler
                 rowPredicate = leftPlan.Join.Kind switch
                 {
                     Db2ReferenceNavigationKind.ForeignKeyToPrimaryKey => CompileForeignKeySemiJoin(rootSchema, leftPlan.Join.Navigation.SourceKeyMember, leftIds),
-                    Db2ReferenceNavigationKind.SharedPrimaryKeyOneToOne => row => row.Id != 0 && leftIds.Contains(row.Id),
+                    Db2ReferenceNavigationKind.SharedPrimaryKeyOneToOne => row => row is { Id: not 0 } && leftIds.Contains(row.Id),
                     _ => _ => false,
                 };
 
@@ -56,7 +56,7 @@ internal static class Db2NavigationQueryCompiler
                 var nav = navPlanLeft.Join.Kind switch
                 {
                     Db2ReferenceNavigationKind.ForeignKeyToPrimaryKey => CompileForeignKeySemiJoin(rootSchema, navPlanLeft.Join.Navigation.SourceKeyMember, ids),
-                    Db2ReferenceNavigationKind.SharedPrimaryKeyOneToOne => row => row.Id != 0 && ids.Contains(row.Id),
+                    Db2ReferenceNavigationKind.SharedPrimaryKeyOneToOne => row => row is { Id: not 0 } && ids.Contains(row.Id),
                     _ => _ => false,
                 };
 
@@ -71,7 +71,7 @@ internal static class Db2NavigationQueryCompiler
                 var nav = navPlanRight.Join.Kind switch
                 {
                     Db2ReferenceNavigationKind.ForeignKeyToPrimaryKey => CompileForeignKeySemiJoin(rootSchema, navPlanRight.Join.Navigation.SourceKeyMember, ids),
-                    Db2ReferenceNavigationKind.SharedPrimaryKeyOneToOne => row => row.Id != 0 && ids.Contains(row.Id),
+                    Db2ReferenceNavigationKind.SharedPrimaryKeyOneToOne => row => row is { Id: not 0 } && ids.Contains(row.Id),
                     _ => _ => false,
                 };
 
@@ -88,7 +88,7 @@ internal static class Db2NavigationQueryCompiler
         rowPredicate = plan.Join.Kind switch
         {
             Db2ReferenceNavigationKind.ForeignKeyToPrimaryKey => CompileForeignKeySemiJoin(rootSchema, plan.Join.Navigation.SourceKeyMember, matchingIds),
-            Db2ReferenceNavigationKind.SharedPrimaryKeyOneToOne => row => row.Id != 0 && matchingIds.Contains(row.Id),
+            Db2ReferenceNavigationKind.SharedPrimaryKeyOneToOne => row => row is { Id: not 0 } && matchingIds.Contains(row.Id),
             _ => _ => false,
         };
 

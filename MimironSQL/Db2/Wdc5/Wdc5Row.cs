@@ -60,7 +60,7 @@ internal readonly struct Wdc5Row
             ref readonly var fieldMeta = ref _file.FieldMeta[fieldIndex];
             ref readonly var columnMeta = ref _file.ColumnMeta[fieldIndex];
 
-            if (columnMeta.CompressionType == CompressionType.PalletArray && columnMeta.Pallet.Cardinality != 1)
+            if (columnMeta is { CompressionType: CompressionType.PalletArray, Pallet.Cardinality: not 1 })
             {
                 stringTableIndex = -1;
                 return false;
@@ -84,7 +84,7 @@ internal readonly struct Wdc5Row
             }
 
             var sectionEndExclusive = (long)_section.StringTableBaseOffset + _section.Header.StringTableSize;
-            if (idx >= sectionEndExclusive || idx > int.MaxValue)
+            if (idx >= sectionEndExclusive || idx is > int.MaxValue)
             {
                 stringTableIndex = -1;
                 return false;
@@ -219,7 +219,7 @@ internal readonly struct Wdc5Row
             }
 
             var sectionEndExclusive = _section.StringTableBaseOffset + _section.Header.StringTableSize;
-            if (stringIndex >= sectionEndExclusive || stringIndex > int.MaxValue)
+            if (stringIndex >= sectionEndExclusive || stringIndex is > int.MaxValue)
             {
                 value = string.Empty;
                 return false;
@@ -271,7 +271,7 @@ internal readonly struct Wdc5Row
                 SkipSparseField(ref localReader, i, recordBytes, rowEndExclusive);
 
             var fieldStart = localReader.OffsetBytes + (localReader.PositionBits >> 3);
-            if ((uint)fieldStart < (uint)rowEndExclusive && TryReadNullTerminatedUtf8(recordBytes, startIndex: fieldStart, endExclusive: rowEndExclusive, out value))
+            if (fieldStart >= 0 && fieldStart < rowEndExclusive && TryReadNullTerminatedUtf8(recordBytes, startIndex: fieldStart, endExclusive: rowEndExclusive, out value))
                 return true;
 
             value = null;
@@ -288,7 +288,7 @@ internal readonly struct Wdc5Row
         ref readonly var fieldMeta = ref _file.FieldMeta[fieldIndex];
         ref readonly var columnMeta = ref _file.ColumnMeta[fieldIndex];
 
-        if (columnMeta.CompressionType == CompressionType.None)
+        if (columnMeta is { CompressionType: CompressionType.None })
         {
             var bitSize = 32 - fieldMeta.Bits;
             if (bitSize <= 0)
@@ -321,7 +321,7 @@ internal readonly struct Wdc5Row
 
     private static bool TryReadNullTerminatedUtf8(ReadOnlySpan<byte> bytes, int startIndex, int endExclusive, out string value)
     {
-        if ((uint)startIndex >= (uint)bytes.Length || (uint)endExclusive > (uint)bytes.Length || startIndex >= endExclusive)
+        if (startIndex < 0 || startIndex >= bytes.Length || endExclusive < 0 || endExclusive > bytes.Length || startIndex >= endExclusive)
         {
             value = string.Empty;
             return false;
@@ -435,7 +435,8 @@ internal readonly struct Wdc5Row
         if (rowSizeBytes < 0)
             throw new InvalidDataException("Row size is negative.");
 
-        if ((uint)rowStartInSection > (uint)_section.RecordsData.Length || (uint)(rowStartInSection + rowSizeBytes) > (uint)_section.RecordsData.Length)
+        var rowEndExclusive = (long)rowStartInSection + rowSizeBytes;
+        if (rowStartInSection < 0 || rowEndExclusive < 0 || rowEndExclusive > _section.RecordsData.Length)
             throw new InvalidDataException("Encrypted row points outside section record data.");
 
         var buffer = ArrayPool<byte>.Shared.Rent(rowSizeBytes + 8);
@@ -443,7 +444,7 @@ internal readonly struct Wdc5Row
         _section.RecordsData.AsSpan(rowStartInSection, rowSizeBytes).CopyTo(dst);
         Array.Clear(buffer, rowSizeBytes, 8);
 
-        var nonceId = _file.Options.EncryptedRowNonceStrategy == Wdc5EncryptedRowNonceStrategy.SourceId ? SourceId : Id;
+        var nonceId = _file.Options is { EncryptedRowNonceStrategy: Wdc5EncryptedRowNonceStrategy.SourceId } ? SourceId : Id;
         Span<byte> nonce = stackalloc byte[8];
         BinaryPrimitives.WriteUInt64LittleEndian(nonce, unchecked((ulong)nonceId));
 

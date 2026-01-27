@@ -78,7 +78,7 @@ internal static class Db2BatchedNavigationProjector
             var keys = keysByNavigation[navMember];
             Dictionary<int, object?[]> valuesByKey = new(capacity: Math.Min(keys.Count, relatedFile.Header.RecordsCount));
 
-            if (keys.Count != 0)
+            if (keys is { Count: not 0 })
             {
                 foreach (var row in relatedFile.EnumerateRows())
                 {

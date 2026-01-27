@@ -11,7 +11,7 @@ public sealed class Db2TableSchema(string tableName, uint layoutHash, int physic
 
     public bool TryGetField(string name, out Db2FieldSchema field)
     {
-        if (_fieldsByName.Count == 0)
+        if (_fieldsByName is { Count: 0 })
         {
             foreach (var f in Fields)
                 _fieldsByName.TryAdd(f.Name, f);

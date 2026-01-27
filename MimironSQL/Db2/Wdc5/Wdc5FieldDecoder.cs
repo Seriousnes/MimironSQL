@@ -43,7 +43,7 @@ internal static class Wdc5FieldDecoder
                 {
                     var palletIndex = reader.ReadUInt32(columnMeta.Pallet.BitWidth);
 
-                    if (columnMeta.Pallet.Cardinality == 1)
+                    if (columnMeta is { Pallet.Cardinality: 1 })
                         return palletData[palletIndex].GetValue<T>();
 
                     return default;

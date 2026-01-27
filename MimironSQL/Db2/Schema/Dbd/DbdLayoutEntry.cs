@@ -17,7 +17,7 @@ internal static class DbdLayoutEntryParser
     public static bool TryParse(string line, IReadOnlyDictionary<string, DbdColumn> columnsByName, out DbdLayoutEntry entry)
     {
         var text = line.Trim();
-        if (text.Length == 0)
+        if (text is { Length: 0 })
         {
             entry = default;
             return false;
@@ -27,7 +27,7 @@ internal static class DbdLayoutEntryParser
         var isId = false;
         var isRelation = false;
 
-        if (text[0] == '$')
+        if (text[0] is '$')
         {
             var second = text.IndexOf('$', 1);
             if (second > 1)
@@ -90,7 +90,7 @@ internal static class DbdLayoutEntryParser
             }
         }
 
-        if (name.Length == 0)
+        if (name is { Length: 0 })
         {
             entry = default;
             return false;

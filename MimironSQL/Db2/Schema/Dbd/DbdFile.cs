@@ -24,7 +24,7 @@ internal sealed class DbdFile(Dictionary<string, DbdColumn> columnsByName, List<
                 continue;
 
             var line = StripComment(rawLine).Trim();
-            if (line.Length == 0)
+            if (line is { Length: 0 })
                 continue;
 
             if (line.Equals("COLUMNS", StringComparison.Ordinal))
@@ -75,7 +75,7 @@ internal sealed class DbdFile(Dictionary<string, DbdColumn> columnsByName, List<
                 continue;
             }
 
-            if (activeBuilds.Count != 0)
+            if (activeBuilds is { Count: not 0 })
             {
                 if (DbdLayoutEntryParser.TryParse(line, columnsByName, out var entry))
                 {

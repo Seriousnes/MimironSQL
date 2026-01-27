@@ -18,15 +18,15 @@ public sealed class Wdc5Section
     public SparseEntry[] SparseEntries { get; init; } = [];
     public int[] SparseRecordStartBits { get; init; } = [];
 
-    public bool IsEncrypted => Header.TactKeyLookup != 0;
+    public bool IsEncrypted => Header is { TactKeyLookup: not 0 };
     public bool IsDecryptable => IsEncrypted && !TactKey.IsEmpty;
     public int NumRecords => Header.NumRecords;
-    public bool HasIndexData => Header.IndexDataSize > 0;
-    public bool HasParentLookupData => Header.ParentLookupDataSize > 0;
+    public bool HasIndexData => Header is { IndexDataSize: > 0 };
+    public bool HasParentLookupData => Header is { ParentLookupDataSize: > 0 };
 
     public static int[] BuildSparseRecordStartBits(SparseEntry[] entries, int sectionFileOffset, int recordDataSizeBytes)
     {
-        if (entries.Length == 0)
+        if (entries is { Length: 0 })
             return [];
 
         if (recordDataSizeBytes < 0)
@@ -37,7 +37,7 @@ public sealed class Wdc5Section
         var hasAnyNonZeroOffset = false;
         for (var i = 0; i < entries.Length; i++)
         {
-            if (entries[i].Offset != 0)
+            if (entries[i] is { Offset: not 0 })
             {
                 hasAnyNonZeroOffset = true;
                 break;

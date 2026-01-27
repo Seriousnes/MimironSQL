@@ -17,7 +17,7 @@ internal static class Db2DenseStringScanner
             return [];
 
         var needleBytes = Encoding.UTF8.GetBytes(needle);
-        if (needleBytes.Length == 0)
+        if (needleBytes is { Length: 0 })
             return [];
 
         HashSet<int> starts = [];

@@ -24,7 +24,7 @@ public sealed class Db2ReferenceNavigationBuilder<TSource, TTarget>(Db2ModelBuil
 
         static MemberInfo GetMember(LambdaExpression expression)
         {
-            if (expression.Parameters.Count != 1)
+            if (expression.Parameters is not { Count: 1 })
                 throw new NotSupportedException("Key selector must have exactly one parameter.");
 
             var body = expression.Body;
@@ -60,7 +60,7 @@ public sealed class Db2ReferenceNavigationBuilder<TSource, TTarget>(Db2ModelBuil
 
         static MemberInfo GetMember(LambdaExpression expression)
         {
-            if (expression.Parameters.Count != 1)
+            if (expression.Parameters is not { Count: 1 })
                 throw new NotSupportedException("FK selector must have exactly one parameter.");
 
             var body = expression.Body;

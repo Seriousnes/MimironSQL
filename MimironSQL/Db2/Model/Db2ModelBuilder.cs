@@ -80,7 +80,7 @@ public sealed class Db2ModelBuilder
                 if (existing.OverridesSchema)
                     continue;
 
-                if (existing.Kind != Db2ReferenceNavigationKind.ForeignKeyToPrimaryKey)
+                if (existing is not { Kind: Db2ReferenceNavigationKind.ForeignKeyToPrimaryKey })
                     throw new NotSupportedException($"Navigation '{clrType.FullName}.{navName}' conflicts with schema FK '{f.Name}'. Use OverridesSchema() on the model configuration to override schema resolution.");
 
                 if (existing.SourceKeyMember is not null && existing.SourceKeyMember != fkMember)

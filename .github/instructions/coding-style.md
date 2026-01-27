@@ -24,3 +24,33 @@ Rationale: we already avoid static factory-like constructors; `static` “load/b
 - Avoid overly defensive guards for clearly-invalid inputs/configuration (e.g., null options, null/empty/incorrect file paths, malformed input files).
 - Assume configuration/data is correct; if it’s not, let exceptions naturally surface from the BCL/APIs (e.g., `File.ReadAllLines`, `ulong.Parse`, `Convert.FromHexString`).
 - Avoid catch/rethrow wrappers that “validate” or rewrite parsing errors; they tend to obscure the original exception.
+
+## Pattern Matching (Hard)
+
+Goal: keep pattern matching usage consistent and readable.
+
+### Do
+
+- Prefer **property patterns** when a *property/member is being compared to a constant*.
+  - Examples (OK):
+    - `bytes is { Length: 0 }`
+    - `bytes is { Length: < 4 }`
+    - `activeBuilds is { Count: not 0 }`
+    - `section is { TactKeyLookup: not 0 }`
+    - `columnMeta is { Pallet.Cardinality: 1 }`
+
+### Don’t
+
+- Do not rewrite non-property comparisons into constant/relational patterns.
+  - Examples (Bad → keep operators):
+    - `x is 0` / `x is not 0` → prefer `x == 0` / `x != 0`
+    - `x is < 0` / `x is >= 0` → prefer `x < 0` / `x >= 0`
+
+- Do not use nested property patterns.
+  - Examples:
+    - OK: `columnMeta is { Pallet.Cardinality: 1 }`
+    - Bad: `columnMeta is { Pallet: { Cardinality: 1 } }`
+
+- Do not use `typeof(...)` inside property patterns (C# limitation; triggers CS9135).
+  - Example (Bad): `node is { Method.DeclaringType: typeof(string) }`
+  - Prefer: `node.Method.DeclaringType == typeof(string)`

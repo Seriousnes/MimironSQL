@@ -23,8 +23,14 @@ internal static class Wdc5RowReadTracker
         {
             if (Interlocked.Exchange(ref _disposed, 1) == 0)
             {
-                _state.Value = null;
-                Interlocked.Decrement(ref _activeScopes);
+                try
+                {
+                    _state.Value = null;
+                }
+                finally
+                {
+                    Interlocked.Decrement(ref _activeScopes);
+                }
             }
         }
     }
@@ -32,7 +38,7 @@ internal static class Wdc5RowReadTracker
     private static readonly AsyncLocal<State?> _state = new();
     private static int _activeScopes;
 
-    public static bool IsEnabled => _activeScopes > 0;
+    public static bool IsEnabled => Volatile.Read(ref _activeScopes) > 0;
 
     public static IDisposable Start(int fieldsCount)
     {

@@ -17,10 +17,15 @@ internal static class Wdc5RowReadTracker
 
     private sealed class Scope : IDisposable
     {
+        private int _disposed;
+
         public void Dispose()
         {
-            _state.Value = null;
-            Interlocked.Decrement(ref _activeScopes);
+            if (Interlocked.Exchange(ref _disposed, 1) == 0)
+            {
+                _state.Value = null;
+                Interlocked.Decrement(ref _activeScopes);
+            }
         }
     }
 
@@ -31,8 +36,9 @@ internal static class Wdc5RowReadTracker
 
     public static IDisposable Start(int fieldsCount)
     {
+        var state = new State(fieldsCount);
+        _state.Value = state;
         Interlocked.Increment(ref _activeScopes);
-        _state.Value = new State(fieldsCount);
         return new Scope();
     }
 

@@ -38,14 +38,24 @@ public sealed class Db2ModelBuilder
 
         foreach (var (configType, entityType) in configurations)
         {
-            if (Activator.CreateInstance(configType) is not { } config)
-                continue;
+            try
+            {
+                if (Activator.CreateInstance(configType) is not { } config)
+                    continue;
 
-            var applyMethod = typeof(Db2ModelBuilder)
-                .GetMethod(nameof(ApplyConfiguration))!
-                .MakeGenericMethod(entityType);
+                var applyMethod = typeof(Db2ModelBuilder)
+                    .GetMethod(nameof(ApplyConfiguration))!
+                    .MakeGenericMethod(entityType);
 
-            applyMethod.Invoke(this, [config]);
+                applyMethod.Invoke(this, [config]);
+            }
+            catch (Exception ex) when (ex is MissingMethodException or TargetInvocationException)
+            {
+                throw new InvalidOperationException(
+                    $"Unable to instantiate configuration type '{configType.FullName}'. " +
+                    $"Ensure the configuration class has a public parameterless constructor.",
+                    ex);
+            }
         }
 
         return this;

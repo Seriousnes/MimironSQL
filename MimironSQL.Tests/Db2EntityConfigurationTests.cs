@@ -48,19 +48,30 @@ public sealed class Db2EntityConfigurationTests
     }
 
     [Fact]
-    public void ApplyConfigurationsFromAssembly_applies_configurations_from_assembly()
+    public void ApplyConfigurationsFromAssembly_throws_on_configuration_without_parameterless_constructor()
     {
         var testDataDir = TestDataPaths.GetTestDataDirectory();
         var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
 
-        var context = new RealAssemblyScanTestContext(dbdProvider, db2Provider);
+        var ex = Should.Throw<InvalidOperationException>(() =>
+            _ = new NoParameterlessConstructorTestContext(dbdProvider, db2Provider));
 
-        var mapEntity = context.Model.GetEntityType(typeof(Map));
-        mapEntity.TableName.ShouldBe("Map");
+        ex.Message.ShouldContain("Unable to instantiate configuration type");
+        ex.Message.ShouldContain("parameterless constructor");
+    }
 
-        var spellEntity = context.Model.GetEntityType(typeof(Spell));
-        spellEntity.TableName.ShouldBe("Spell");
+    [Fact]
+    public void ApplyConfigurationsFromAssembly_throws_on_configuration_configure_exception()
+    {
+        var testDataDir = TestDataPaths.GetTestDataDirectory();
+        var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
+        var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
+
+        var ex = Should.Throw<InvalidOperationException>(() =>
+            _ = new ConfigureThrowsTestContext(dbdProvider, db2Provider));
+
+        ex.Message.ShouldContain("Unable to instantiate configuration type");
     }
 
     [Fact]
@@ -240,26 +251,21 @@ internal sealed class ConflictTestContext(IDbdProvider dbdProvider, IDb2StreamPr
             .WithSharedPrimaryKey(m => m.ParentMapID, pm => pm.Id);
 }
 
-internal sealed class MultipleConfigurationTestContext(IDbdProvider dbdProvider, IDb2StreamProvider db2StreamProvider)
+internal sealed class NoParameterlessConstructorTestContext(IDbdProvider dbdProvider, IDb2StreamProvider db2StreamProvider)
     : Db2Context(dbdProvider, db2StreamProvider)
 {
     public Db2Table<Map> Maps { get; init; } = null!;
-    public Db2Table<Spell> Spells { get; init; } = null!;
 
     protected override void OnModelCreating(Db2ModelBuilder modelBuilder)
-    {
-        modelBuilder.ApplyConfiguration(new MapConfiguration());
-        modelBuilder.ApplyConfiguration(new SpellConfiguration());
-    }
+        => modelBuilder.ApplyConfigurationsFromAssembly(typeof(ErrorTestConfigurations.ConfigWithoutParameterlessConstructor).Assembly);
 }
 
-internal sealed class RealAssemblyScanTestContext(IDbdProvider dbdProvider, IDb2StreamProvider db2StreamProvider)
+internal sealed class ConfigureThrowsTestContext(IDbdProvider dbdProvider, IDb2StreamProvider db2StreamProvider)
     : Db2Context(dbdProvider, db2StreamProvider)
 {
     public Db2Table<Map> Maps { get; init; } = null!;
-    public Db2Table<Spell> Spells { get; init; } = null!;
 
     protected override void OnModelCreating(Db2ModelBuilder modelBuilder)
-        => modelBuilder.ApplyConfigurationsFromAssembly(typeof(AssemblyScanConfigurations.MapForScanConfiguration).Assembly);
+        => modelBuilder.ApplyConfigurationsFromAssembly(typeof(ErrorTestConfigurations.ConfigurationThatThrows).Assembly);
 }
 

@@ -28,7 +28,18 @@ public sealed class Db2ModelBuilder
         ArgumentNullException.ThrowIfNull(assembly);
 
         var configInterfaceType = typeof(IDb2EntityTypeConfiguration<>);
-        var configurations = assembly.GetTypes()
+
+        Type[] types;
+        try
+        {
+            types = assembly.GetTypes();
+        }
+        catch (ReflectionTypeLoadException ex)
+        {
+            types = ex.Types.Where(t => t is not null).Cast<Type>().ToArray();
+        }
+
+        var configurations = types
             .Where(t => !t.IsAbstract && !t.IsGenericTypeDefinition)
             .Select(t => (Type: t, Interface: t.GetInterfaces()
                 .FirstOrDefault(i => i.IsGenericType && i.GetGenericTypeDefinition() == configInterfaceType)))
@@ -43,10 +54,14 @@ public sealed class Db2ModelBuilder
                 if (Activator.CreateInstance(configType) is not { } config)
                     continue;
 
-                var applyMethod = typeof(Db2ModelBuilder)
-                    .GetMethod(nameof(ApplyConfiguration))!
-                    .MakeGenericMethod(entityType);
+                var applyMethodDefinition = typeof(Db2ModelBuilder).GetMethod(nameof(ApplyConfiguration));
+                if (applyMethodDefinition is null)
+                {
+                    throw new InvalidOperationException(
+                        $"Unable to locate '{nameof(ApplyConfiguration)}' on '{typeof(Db2ModelBuilder).FullName}'.");
+                }
 
+                var applyMethod = applyMethodDefinition.MakeGenericMethod(entityType);
                 applyMethod.Invoke(this, [config]);
             }
             catch (Exception ex) when (ex is MissingMethodException or TargetInvocationException)

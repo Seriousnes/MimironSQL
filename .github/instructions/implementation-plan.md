@@ -7,6 +7,7 @@ Supporting docs:
 - DB2/WDC5 format notes: `./db2-format.md`
 - Query engine notes (translation/execution): `./query-engine-notes.md`
 - Architecture overview (if/when maintained): `./architecture.md`
+- **Phase 6 design (collection navigations, multi-hop, SQL-text layer):** `./phase-6-design.md`
 
 ## Target User Experience
 
@@ -143,9 +144,23 @@ Notes:
 
 ### 6) Optional / Later
 
-- Collection navigations (1-to-many)
-- Nested navigations (multi-hop)
-- SQL-text layer (only if required)
+**Status:** Design/Planning (blocked by Phases 3–5)
+
+See detailed design document: `./phase-6-design.md`
+
+High-level scope:
+- Collection navigations (1-to-many): `Include(x => x.Collection)`, `Any/All/Count` predicates
+- Nested navigations (multi-hop): chained navigation access (e.g., `x.Nav1.Nav2.Field`)
+- SQL-text layer (optional): text-based query interface if required for tooling/compatibility
+
+Implementation order:
+1. Collection navigations (highest value)
+2. Multi-hop navigations (2-hop → 3+ hops)
+3. SQL-text layer (only if justified by demand)
+
+Prerequisites:
+- All Phases 1–5 must be complete and stable
+- Issues #8, #9, #10 must be resolved
 
 ## Concrete Implementation Breakdown (Jan 2026)
 

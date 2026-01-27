@@ -600,18 +600,15 @@ internal sealed class Db2QueryProvider<TEntity>(
             string referencedTableName,
             Func<string, (Wdc5File File, Db2TableSchema Schema)> tableResolver)
         {
-            try
+            var (file, schema) = tableResolver(referencedTableName);
+            var materializeRow = CreateRowMaterializer(entityType, schema);
+
+            return keys =>
             {
-                var (file, schema) = tableResolver(referencedTableName);
-                var materializeRow = CreateRowMaterializer(entityType, schema);
+                Dictionary<int, object?> relatedByKey = new(capacity: Math.Min(keys.Count, file.Header.RecordsCount));
 
-                return keys =>
+                if (keys is { Count: not 0 })
                 {
-                    Dictionary<int, object?> relatedByKey = new(capacity: keys.Count);
-
-                    if (keys is { Count: 0 })
-                        return relatedByKey;
-
                     foreach (var row in file.EnumerateRows())
                     {
                         if (!keys.Contains(row.Id))
@@ -619,14 +616,10 @@ internal sealed class Db2QueryProvider<TEntity>(
 
                         relatedByKey[row.Id] = materializeRow(row);
                     }
+                }
 
-                    return relatedByKey;
-                };
-            }
-            catch
-            {
-                return _ => [];
-            }
+                return relatedByKey;
+            };
         }
 
         private static Func<Wdc5Row, object?> CreateRowMaterializer(Type entityType, Db2TableSchema schema)

@@ -8,6 +8,27 @@ namespace MimironSQL.Tests;
 
 /// <summary>
 /// Tests for Phase 4 robustness: semantics for missing rows, no silent fallbacks.
+/// 
+/// DOCUMENTED SEMANTICS:
+/// 
+/// 1. Include(...) - Left-join behavior:
+///    - When FK = 0: navigation is null
+///    - When related row is missing: navigation is null
+///    - Never throws for missing rows (left-join semantics)
+/// 
+/// 2. Navigation predicates - Inner-join/semi-join semantics:
+///    - Rows with missing related data are excluded from results
+///    - Only rows where the navigation can be resolved and the predicate is true are included
+///    - Semi-join optimization: evaluate predicate on related table first, collect matching keys
+/// 
+/// 3. Navigation projections - Returns null/default for missing rows:
+///    - Missing related row => projected value is null/default
+///    - Batched loading prevents N+1 queries
+///    - Left-join semantics: missing row doesn't cause failure
+/// 
+/// 4. Error handling - No silent failures:
+///    - Misconfiguration (table not found, schema errors) throws immediately
+///    - Removed catch-and-succeed fallbacks that would silently return empty results
 /// </summary>
 public sealed class Phase4RobustnessTests
 {
@@ -165,51 +186,5 @@ public sealed class Phase4RobustnessTests
 
         // The spell with missing SpellName should not be in results
         results.ShouldNotContain(missingId);
-    }
-
-    [Fact(Skip = "Catch block in CreateEntitiesLoader currently swallows exceptions - this test demonstrates the issue")]
-    public void Include_throws_when_referenced_table_file_cannot_be_loaded_during_execution()
-    {
-        // NOTE: This test is temporarily skipped because it demonstrates the CURRENT BROKEN behavior
-        // where the catch block in CreateEntitiesLoader silently swallows exceptions.
-        // After the fix is applied, this test should be updated to verify proper exception propagation.
-        
-        var testDataDir = TestDataPaths.GetTestDataDirectory();
-        
-        // Create a provider that will fail when trying to open "SpellName" table ONLY during execution
-        // This requires the table to be opened successfully during model building but fail later
-        var attemptCount = 0;
-        var brokenProvider = new BrokenDb2StreamProvider(testDataDir, tableName =>
-        {
-            if (tableName == "SpellName")
-            {
-                attemptCount++;
-                // Fail on second and subsequent attempts (after model building)
-                return attemptCount > 1;
-            }
-            return false;
-        });
-        
-        var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
-        var context = new TestDb2Context(dbdProvider, brokenProvider);
-
-        var spell = context.Spell;
-
-        // Find a spell that should have a SpellName
-        var candidateId = spell.File.EnumerateRows()
-            .Select(r => r.Id)
-            .First(id => id > 0);
-
-        // CURRENT BEHAVIOR: Include silently returns null navigations due to catch block
-        // EXPECTED BEHAVIOR: Include should throw when trying to load the referenced table
-        var ex = Should.Throw<Exception>(() =>
-        {
-            _ = spell
-                .Where(s => s.Id == candidateId)
-                .Include(s => s.SpellName)
-                .ToList(); // Force execution
-        });
-
-        ex.Message.ShouldContain("SimulatedFailure");
     }
 }

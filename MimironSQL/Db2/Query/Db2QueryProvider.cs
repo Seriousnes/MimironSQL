@@ -70,7 +70,8 @@ internal sealed class Db2QueryProvider<TEntity>(
             .Take(selectIndex)
             .OfType<Db2WhereOperation>()
             .Where(op => op is { Predicate.Parameters.Count: 1 } && op.Predicate.Parameters[0].Type == typeof(TEntity))
-            .Select(op => (Expression<Func<TEntity, bool>>)op.Predicate);
+            .Select(op => (Expression<Func<TEntity, bool>>)op.Predicate)
+            .ToList();
 
         var selectOp = selectIndex < ops.Count ? ops[selectIndex] as Db2SelectOperation : null;
 
@@ -107,12 +108,12 @@ internal sealed class Db2QueryProvider<TEntity>(
 
             if (canAttemptPrune)
             {
-                if (TryExecuteEnumerablePruned([.. preEntityWhere], stopAfter, selectOp.Selector, postOps, out var pruned))
+                if (TryExecuteEnumerablePruned(preEntityWhere, stopAfter, selectOp.Selector, postOps, out var pruned))
                     return (IEnumerable<TElement>)pruned;
             }
         }
 
-        IEnumerable<TEntity> baseEntities = EnumerateEntities([.. preEntityWhere], stopAfter);
+        IEnumerable<TEntity> baseEntities = EnumerateEntities(preEntityWhere, stopAfter);
 
         IEnumerable current = baseEntities;
         var currentElementType = typeof(TEntity);
@@ -198,7 +199,7 @@ internal sealed class Db2QueryProvider<TEntity>(
     }
 
     private bool TryExecuteEnumerablePruned(
-        Expression<Func<TEntity, bool>>[] preEntityWhere,
+        IList<Expression<Func<TEntity, bool>>> preEntityWhere,
         int? stopAfter,
         LambdaExpression selector,
         List<Db2QueryOperation> postOps,
@@ -350,7 +351,7 @@ internal sealed class Db2QueryProvider<TEntity>(
         return generic.Invoke(this, [expressionWithFinalStripped])!;
     }
 
-    private IEnumerable<TEntity> EnumerateEntities(Expression<Func<TEntity, bool>>[] predicates, int? take)
+    private IEnumerable<TEntity> EnumerateEntities(IList<Expression<Func<TEntity, bool>>> predicates, int? take)
     {
         var rowPredicates = new List<Func<Wdc5Row, bool>>();
         var entityPredicates = new List<Func<TEntity, bool>>();

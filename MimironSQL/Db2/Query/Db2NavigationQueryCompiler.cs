@@ -166,6 +166,21 @@ internal static class Db2NavigationQueryCompiler
                 return true;
             }
 
+            if (Db2NavigationQueryTranslator.TryTranslateScalarPredicate(model, left, out var scalarPlanLeft) &&
+                Db2RowPredicateCompiler.TryCompile(rootFile, rootSchema, right, out var rightRowPredicate2))
+            {
+                var ids = FindMatchingIdsScalar(tableResolver, scalarPlanLeft);
+                var nav = scalarPlanLeft.Join.Kind switch
+                {
+                    Db2ReferenceNavigationKind.ForeignKeyToPrimaryKey => CompileForeignKeySemiJoin(scalarPlanLeft.Join.RootKeyFieldSchema, ids),
+                    Db2ReferenceNavigationKind.SharedPrimaryKeyOneToOne => row => row is { Id: not 0 } && ids.Contains(row.Id),
+                    _ => _ => false,
+                };
+
+                rowPredicate = row => nav(row) && rightRowPredicate2(row);
+                return true;
+            }
+
             if (Db2NavigationQueryTranslator.TryTranslateStringPredicate(model, right, out var navPlanRight) &&
                 Db2RowPredicateCompiler.TryCompile(rootFile, rootSchema, left, out var leftRowPredicate))
             {
@@ -178,6 +193,21 @@ internal static class Db2NavigationQueryCompiler
                 };
 
                 rowPredicate = row => leftRowPredicate(row) && nav(row);
+                return true;
+            }
+
+            if (Db2NavigationQueryTranslator.TryTranslateScalarPredicate(model, right, out var scalarPlanRight) &&
+                Db2RowPredicateCompiler.TryCompile(rootFile, rootSchema, left, out var leftRowPredicate2))
+            {
+                var ids = FindMatchingIdsScalar(tableResolver, scalarPlanRight);
+                var nav = scalarPlanRight.Join.Kind switch
+                {
+                    Db2ReferenceNavigationKind.ForeignKeyToPrimaryKey => CompileForeignKeySemiJoin(scalarPlanRight.Join.RootKeyFieldSchema, ids),
+                    Db2ReferenceNavigationKind.SharedPrimaryKeyOneToOne => row => row is { Id: not 0 } && ids.Contains(row.Id),
+                    _ => _ => false,
+                };
+
+                rowPredicate = row => leftRowPredicate2(row) && nav(row);
                 return true;
             }
         }

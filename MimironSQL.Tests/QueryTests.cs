@@ -407,7 +407,7 @@ public class QueryTests
         // Map ID = 2441 is used for two MapChallengeMode entries (Tazavesh, So'leah's Gambit (ID=392), and Tazavesh, Streets of Wonder (ID=391))        
 
         var results = context.MapChallengeMode
-            .Where(x => x.Map!.MapName_lang == "Tazavesh, the Veiled Market")
+            .Where(x => x.Map.MapName_lang == "Tazavesh, the Veiled Market")
             .ToList();
 
         results.Count.ShouldBe(2);
@@ -423,7 +423,7 @@ public class QueryTests
         var context = new TestDb2Context(dbdProvider, db2Provider);
 
         var results = context.MapChallengeMode
-            .Where(x => x.Map!.MapName_lang.Contains("Tazavesh"))
+            .Where(x => x.Map.MapName_lang.Contains("Tazavesh"))
             .ToList();
 
         results.Count.ShouldBeGreaterThanOrEqualTo(1);
@@ -441,7 +441,7 @@ public class QueryTests
         var needle = "Tazavesh";
 
         var results = context.MapChallengeMode
-            .Where(x => x.Map!.MapName_lang.Contains(needle))
+            .Where(x => x.Map.MapName_lang.Contains(needle))
             .ToList();
 
         results.Count.ShouldBeGreaterThanOrEqualTo(1);
@@ -457,7 +457,7 @@ public class QueryTests
         var context = new TestDb2Context(dbdProvider, db2Provider);
 
         var results = context.MapChallengeMode
-            .Where(x => x.Map!.MapName_lang.Contains("Tazavesh") && x.Map!.MapName_lang.Contains("Veiled"))
+            .Where(x => x.Map.MapName_lang.Contains("Tazavesh") && x.Map.MapName_lang.Contains("Veiled"))
             .ToList();
 
         results.Count.ShouldBe(2);
@@ -474,7 +474,7 @@ public class QueryTests
 
         var names = context.MapChallengeMode
             .Where(x => x.MapID == 2441)
-            .Select(x => x.Map!.MapName_lang);
+            .Select(x => x.Map.MapName_lang);
 
         names.Count().ShouldBe(2);
         names.All(n => n == "Tazavesh, the Veiled Market").ShouldBeTrue();
@@ -495,7 +495,7 @@ public class QueryTests
         {
             names = context.Spell
                 .Where(s => s.Id > 0)
-                .Select(s => (string?)s.SpellName!.Name_lang)
+                .Select(s => (string?)s.SpellName.Name_lang)
                 .Take(50)
                 .ToList();
 
@@ -606,7 +606,7 @@ public class QueryTests
 
         // Now test the navigation predicate
         var results = context.MapChallengeMode
-            .Where(x => x.Map!.Id == targetMapId)
+            .Where(x => x.Map.Id == targetMapId)
             .ToList();
 
         results.Count.ShouldBeGreaterThanOrEqualTo(1);
@@ -623,7 +623,7 @@ public class QueryTests
 
         var excludeMapId = 2441;
         var results = context.MapChallengeMode
-            .Where(x => x.Map!.Id != excludeMapId)
+            .Where(x => x.Map.Id != excludeMapId)
             .Take(10)
             .ToList();
 
@@ -641,7 +641,7 @@ public class QueryTests
 
         var threshold = 2000;
         var results = context.MapChallengeMode
-            .Where(x => x.Map!.Id > threshold)
+            .Where(x => x.Map.Id > threshold)
             .Take(10)
             .ToList();
 
@@ -659,7 +659,7 @@ public class QueryTests
 
         var threshold = 3000;
         var results = context.MapChallengeMode
-            .Where(x => x.Map!.Id <= threshold)
+            .Where(x => x.Map.Id <= threshold)
             .Take(10)
             .ToList();
 
@@ -704,11 +704,75 @@ public class QueryTests
         withNull.Count.ShouldBeGreaterThan(0);
 
         var withScalar = context.MapChallengeMode
-            .Where(x => x.Map!.Id == targetMapId)
+            .Where(x => x.Map.Id == targetMapId)
             .ToList();
 
         withScalar.Count.ShouldBeGreaterThanOrEqualTo(1);
         withScalar.All(x => x.MapID == targetMapId).ShouldBeTrue();
+    }
+
+    [Fact]
+    public void Navigation_scalar_predicate_does_not_throw_when_navigation_is_missing_and_behaves_like_inner_join()
+    {
+        var testDataDir = TestDataPaths.GetTestDataDirectory();
+        var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
+        var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
+        var context = new TestDb2Context(dbdProvider, db2Provider);
+
+        var map = context.Map;
+        var allMapIds = map.File.EnumerateRows().Select(r => r.Id).ToHashSet();
+
+        // Ensure the fixture has at least one missing parent navigation (ParentMapID == 0).
+        map.Where(m => m.ParentMapID == 0).Take(1).Any().ShouldBeTrue("Fixture should contain at least one Map row with ParentMapID == 0");
+
+        List<Map> results = [];
+        Should.NotThrow(() =>
+            results = map
+                .Where(m => m.ParentMap.Id > 0 && m.Directory.Contains("o"))
+                .Take(50)
+                .ToList());
+
+        results.All(r => r.ParentMapID != 0 && allMapIds.Contains(r.ParentMapID)).ShouldBeTrue();
+    }
+
+    [Fact]
+    public void Navigation_null_check_is_null_returns_missing_navigations()
+    {
+        var testDataDir = TestDataPaths.GetTestDataDirectory();
+        var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
+        var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
+        var context = new TestDb2Context(dbdProvider, db2Provider);
+
+        var map = context.Map;
+        var allMapIds = map.File.EnumerateRows().Select(r => r.Id).ToHashSet();
+
+        var results = map
+            .Where(m => m.ParentMap == null)
+            .Take(50)
+            .ToList();
+
+        results.Count.ShouldBeGreaterThan(0);
+        results.All(r => r.ParentMapID == 0 || !allMapIds.Contains(r.ParentMapID)).ShouldBeTrue();
+    }
+
+    [Fact]
+    public void Navigation_null_check_is_not_null_filters_to_existing_navigations()
+    {
+        var testDataDir = TestDataPaths.GetTestDataDirectory();
+        var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
+        var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
+        var context = new TestDb2Context(dbdProvider, db2Provider);
+
+        var map = context.Map;
+        var allMapIds = map.File.EnumerateRows().Select(r => r.Id).ToHashSet();
+
+        var results = map
+            .Where(m => m.ParentMap != null)
+            .Take(50)
+            .ToList();
+
+        results.Count.ShouldBeGreaterThan(0);
+        results.All(r => r.ParentMapID != 0 && allMapIds.Contains(r.ParentMapID)).ShouldBeTrue();
     }
 
 }

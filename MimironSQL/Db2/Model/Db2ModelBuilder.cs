@@ -168,21 +168,12 @@ public sealed class Db2ModelBuilder
     private static Db2FieldSchema ResolveFieldSchema(Db2TableSchema schema, MemberInfo member, string context)
     {
         var memberName = member.Name;
-        if (!schema.TryGetField(memberName, out var fieldSchema))
+        if (!schema.TryGetFieldCaseInsensitive(memberName, out var fieldSchema))
         {
-            // Try case-insensitive match as a fallback (common for Id/ID)
-            var caseInsensitiveMatch = schema.Fields.FirstOrDefault(f => string.Equals(f.Name, memberName, StringComparison.OrdinalIgnoreCase));
-            if (!string.IsNullOrEmpty(caseInsensitiveMatch.Name))
-            {
-                fieldSchema = caseInsensitiveMatch;
-            }
-            else
-            {
-                throw new NotSupportedException(
-                    $"Field '{memberName}' not found in schema for table '{schema.TableName}'. " +
-                    $"This field is required for {context}. " +
-                    $"Ensure the member name matches a field in the .dbd definition.");
-            }
+            throw new NotSupportedException(
+                $"Field '{memberName}' not found in schema for table '{schema.TableName}'. " +
+                $"This field is required for {context}. " +
+                $"Ensure the member name matches a field in the .dbd definition.");
         }
 
         return fieldSchema;

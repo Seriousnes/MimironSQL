@@ -21,6 +21,7 @@ public sealed class Db2ModelValidationTests
 
         ex.Message.ShouldContain("Field 'NonExistentKey' not found in schema");
         ex.Message.ShouldContain("primary key member");
+        ex.Message.ShouldContain("EntityWithNonExistentPkField");
     }
 
     [Fact]
@@ -35,6 +36,7 @@ public sealed class Db2ModelValidationTests
 
         ex.Message.ShouldContain("Field 'NonExistentForeignKey' not found in schema");
         ex.Message.ShouldContain("source key member");
+        ex.Message.ShouldContain("EntityWithNonExistentFkField");
     }
 
     [Fact]
@@ -44,14 +46,12 @@ public sealed class Db2ModelValidationTests
         var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
 
-        // This test validates that when a target key is explicitly configured to a non-existent field,
-        // model build fails with a clear error during validation
         var ex = Should.Throw<NotSupportedException>(() =>
             _ = new MissingTargetPkFieldInSchemaTestContext(dbdProvider, db2Provider));
 
-        ex.Message.ShouldContain("Field");
-        ex.Message.ShouldContain("not found in schema");
+        ex.Message.ShouldContain("Field 'FakeTargetKey' not found in schema");
         ex.Message.ShouldContain("target key member");
+        ex.Message.ShouldContain("EntityWithValidFk");
     }
 
     [Fact]
@@ -99,6 +99,26 @@ public sealed class Db2ModelValidationTests
 
         nav.SourceKeyFieldSchema.Name.ShouldBe("ParentMapID", StringComparer.OrdinalIgnoreCase);
         nav.TargetKeyFieldSchema.Name.ShouldBe("ID", StringComparer.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void HasPrincipalKey_configures_navigation_with_custom_target_key()
+    {
+        var testDataDir = TestDataPaths.GetTestDataDirectory();
+        var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
+        var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
+        var context = new HasPrincipalKeySuccessTestContext(dbdProvider, db2Provider);
+
+        // Verify the navigation was configured successfully
+        context.Model.TryGetReferenceNavigation(
+            typeof(EntityWithCustomPrincipalKey),
+            typeof(EntityWithCustomPrincipalKey).GetProperty(nameof(EntityWithCustomPrincipalKey.Target))!,
+            out var nav).ShouldBeTrue();
+
+        // Verify it uses the custom principal key field (Id from Map)
+        nav.SourceKeyFieldSchema.Name.ShouldBe("ParentMapID", StringComparer.OrdinalIgnoreCase);
+        nav.TargetKeyFieldSchema.Name.ShouldBe("ID", StringComparer.OrdinalIgnoreCase);
+        nav.TargetKeyFieldSchema.IsId.ShouldBeTrue();
     }
 }
 
@@ -172,4 +192,31 @@ internal sealed class MapTargetWithFakeKey
     public int Id { get; init; }
     public int FakeTargetKey { get; init; }
     public string Directory { get; init; } = string.Empty;
+}
+
+internal sealed class HasPrincipalKeySuccessTestContext(IDbdProvider dbdProvider, IDb2StreamProvider db2StreamProvider)
+    : Db2Context(dbdProvider, db2StreamProvider)
+{
+    public Db2Table<EntityWithCustomPrincipalKey> Test { get; init; } = null!;
+
+    protected override void OnModelCreating(Db2ModelBuilder modelBuilder)
+    {
+        modelBuilder
+            .Entity<Map>()
+            .ToTable("Map");
+
+        modelBuilder
+            .Entity<EntityWithCustomPrincipalKey>()
+            .ToTable("Map")
+            .HasOne(x => x.Target)
+            .WithForeignKey(x => x.ParentMapID)
+            .HasPrincipalKey(x => x.Id);
+    }
+}
+
+internal sealed class EntityWithCustomPrincipalKey
+{
+    public int Id { get; init; }
+    public int ParentMapID { get; init; }
+    public Map? Target { get; init; }
 }

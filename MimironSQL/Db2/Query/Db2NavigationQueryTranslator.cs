@@ -42,9 +42,17 @@ internal static class Db2NavigationQueryTranslator
         targetReq.RequireMember(join.TargetKeyMember, Db2RequiredColumnKind.JoinKey);
         targetReq.RequireMember(targetMember, Db2RequiredColumnKind.String);
 
+        if (!target.Schema.TryGetFieldCaseInsensitive(targetMember.Name, out var targetStringFieldSchema))
+        {
+            throw new NotSupportedException(
+                $"Field '{targetMember.Name}' not found in schema for table '{target.TableName}'. " +
+                $"This field is required for navigation string predicate on '{typeof(TEntity).FullName}.{navMember.Name}'.");
+        }
+
         plan = new Db2NavigationStringPredicatePlan(
             Join: join,
             TargetStringMember: targetMember,
+            TargetStringFieldSchema: targetStringFieldSchema,
             MatchKind: matchKind,
             Needle: needle,
             RootRequirements: rootReq,

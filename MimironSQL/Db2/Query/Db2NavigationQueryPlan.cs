@@ -1,6 +1,7 @@
 using System.Reflection;
 
 using MimironSQL.Db2.Model;
+using MimironSQL.Db2.Schema;
 
 namespace MimironSQL.Db2.Query;
 
@@ -32,6 +33,20 @@ internal sealed record Db2NavigationJoinPlan(
         Db2ReferenceNavigationKind.SharedPrimaryKeyOneToOne => Target.PrimaryKeyMember,
         _ => throw new NotSupportedException($"Unsupported navigation kind '{Navigation.Kind}'."),
     };
+
+    public Db2FieldSchema RootKeyFieldSchema => Navigation.Kind switch
+    {
+        Db2ReferenceNavigationKind.ForeignKeyToPrimaryKey => Navigation.SourceKeyFieldSchema,
+        Db2ReferenceNavigationKind.SharedPrimaryKeyOneToOne => Root.PrimaryKeyFieldSchema,
+        _ => throw new NotSupportedException($"Unsupported navigation kind '{Navigation.Kind}'."),
+    };
+
+    public Db2FieldSchema TargetKeyFieldSchema => Navigation.Kind switch
+    {
+        Db2ReferenceNavigationKind.ForeignKeyToPrimaryKey => Navigation.TargetKeyFieldSchema,
+        Db2ReferenceNavigationKind.SharedPrimaryKeyOneToOne => Target.PrimaryKeyFieldSchema,
+        _ => throw new NotSupportedException($"Unsupported navigation kind '{Navigation.Kind}'."),
+    };
 }
 
 internal sealed record Db2NavigationMemberAccessPlan(
@@ -43,6 +58,7 @@ internal sealed record Db2NavigationMemberAccessPlan(
 internal sealed record Db2NavigationStringPredicatePlan(
     Db2NavigationJoinPlan Join,
     MemberInfo TargetStringMember,
+    Db2FieldSchema TargetStringFieldSchema,
     Db2NavigationStringMatchKind MatchKind,
     string Needle,
     Db2SourceRequirements RootRequirements,

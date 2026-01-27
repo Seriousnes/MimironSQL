@@ -76,4 +76,33 @@ public sealed class Db2ReferenceNavigationBuilder<TSource, TTarget>(Db2ModelBuil
             return member.Member;
         }
     }
+
+    public Db2ReferenceNavigationBuilder<TSource, TTarget> HasPrincipalKey<TKey>(
+        Expression<Func<TTarget, TKey>> principalKey)
+    {
+        ArgumentNullException.ThrowIfNull(principalKey);
+
+        _metadata.TargetKeyMember = GetMember(principalKey);
+
+        _modelBuilder.Entity(typeof(TTarget));
+        return this;
+
+        static MemberInfo GetMember(LambdaExpression expression)
+        {
+            if (expression.Parameters is not { Count: 1 })
+                throw new NotSupportedException("Principal key selector must have exactly one parameter.");
+
+            var body = expression.Body;
+            if (body is UnaryExpression { NodeType: ExpressionType.Convert or ExpressionType.ConvertChecked } u)
+                body = u.Operand;
+
+            if (body is not MemberExpression { Member: PropertyInfo or FieldInfo } member)
+                throw new NotSupportedException("Principal key selector only supports simple member access (e.g., x => x.Id). ");
+
+            if (member.Expression != expression.Parameters[0])
+                throw new NotSupportedException("Principal key selector only supports direct member access on the root entity parameter.");
+
+            return member.Member;
+        }
+    }
 }

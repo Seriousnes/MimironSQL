@@ -19,4 +19,22 @@ public sealed class Db2TableSchema(string tableName, uint layoutHash, int physic
 
         return _fieldsByName.TryGetValue(name, out field);
     }
+
+    public bool TryGetFieldCaseInsensitive(string name, out Db2FieldSchema field)
+    {
+        if (TryGetField(name, out field))
+            return true;
+
+        // Fallback to case-insensitive search (common for Id/ID).
+        // FirstOrDefault on struct returns default(Db2FieldSchema) with empty Name when no match is found.
+        var caseInsensitiveMatch = Fields.FirstOrDefault(f => string.Equals(f.Name, name, StringComparison.OrdinalIgnoreCase));
+        if (!caseInsensitiveMatch.Equals(default(Db2FieldSchema)))
+        {
+            field = caseInsensitiveMatch;
+            return true;
+        }
+
+        field = default;
+        return false;
+    }
 }

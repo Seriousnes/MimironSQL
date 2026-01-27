@@ -121,7 +121,9 @@ public sealed class Db2ModelBuilder
             var schema = schemaResolver(tableName);
 
             var pkMember = ResolvePrimaryKeyMember(m);
-            built.Add(clrType, new Db2EntityType(clrType, tableName, schema, pkMember));
+            var pkFieldSchema = ResolveFieldSchema(schema, pkMember, $"primary key member '{pkMember.Name}' of entity '{clrType.FullName}'");
+
+            built.Add(clrType, new Db2EntityType(clrType, tableName, schema, pkMember, pkFieldSchema));
 
             foreach (var nav in m.Navigations)
             {
@@ -140,6 +142,13 @@ public sealed class Db2ModelBuilder
                 if (kind == Db2ReferenceNavigationKind.ForeignKeyToPrimaryKey && nav.TargetKeyMember is null)
                     throw new NotSupportedException($"FK navigation '{nav.NavigationMember.Name}' on '{clrType.FullName}' must resolve a target primary key.");
 
+                var targetMetadata = Entity(nav.TargetClrType);
+                var targetTableName = targetMetadata.TableName ?? nav.TargetClrType.Name;
+                var targetSchema = schemaResolver(targetTableName);
+
+                var sourceKeyFieldSchema = ResolveFieldSchema(schema, nav.SourceKeyMember!, $"source key member '{nav.SourceKeyMember!.Name}' in navigation '{clrType.FullName}.{nav.NavigationMember.Name}'");
+                var targetKeyFieldSchema = ResolveFieldSchema(targetSchema, nav.TargetKeyMember!, $"target key member '{nav.TargetKeyMember!.Name}' in navigation '{clrType.FullName}.{nav.NavigationMember.Name}'");
+
                 navigations[(clrType, nav.NavigationMember)] = new Db2ReferenceNavigation(
                     sourceClrType: clrType,
                     navigationMember: nav.NavigationMember,
@@ -147,11 +156,27 @@ public sealed class Db2ModelBuilder
                     kind: kind,
                     sourceKeyMember: nav.SourceKeyMember!,
                     targetKeyMember: nav.TargetKeyMember!,
+                    sourceKeyFieldSchema: sourceKeyFieldSchema,
+                    targetKeyFieldSchema: targetKeyFieldSchema,
                     overridesSchema: nav.OverridesSchema);
             }
         }
 
         return new Db2Model(built, navigations);
+    }
+
+    private static Db2FieldSchema ResolveFieldSchema(Db2TableSchema schema, MemberInfo member, string context)
+    {
+        var memberName = member.Name;
+        if (!schema.TryGetFieldCaseInsensitive(memberName, out var fieldSchema))
+        {
+            throw new NotSupportedException(
+                $"Field '{memberName}' not found in schema for table '{schema.TableName}'. " +
+                $"This field is required for {context}. " +
+                $"Ensure the member name matches a field in the .dbd definition.");
+        }
+
+        return fieldSchema;
     }
 
     private static MemberInfo ResolvePrimaryKeyMember(Db2EntityTypeMetadata metadata)

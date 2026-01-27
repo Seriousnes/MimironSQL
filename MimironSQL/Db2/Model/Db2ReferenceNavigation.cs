@@ -1,5 +1,7 @@
 using System.Reflection;
 
+using MimironSQL.Db2.Schema;
+
 namespace MimironSQL.Db2.Model;
 
 public sealed class Db2ReferenceNavigation(
@@ -9,6 +11,8 @@ public sealed class Db2ReferenceNavigation(
     Db2ReferenceNavigationKind kind,
     MemberInfo sourceKeyMember,
     MemberInfo targetKeyMember,
+    Db2FieldSchema sourceKeyFieldSchema,
+    Db2FieldSchema targetKeyFieldSchema,
     bool overridesSchema)
 {
     public Type SourceClrType { get; } = sourceClrType;
@@ -18,5 +22,7 @@ public sealed class Db2ReferenceNavigation(
 
     public MemberInfo SourceKeyMember { get; } = sourceKeyMember;
     public MemberInfo TargetKeyMember { get; } = targetKeyMember;
+    public Db2FieldSchema SourceKeyFieldSchema { get; } = sourceKeyFieldSchema;
+    public Db2FieldSchema TargetKeyFieldSchema { get; } = targetKeyFieldSchema;
     public bool OverridesSchema { get; } = overridesSchema;
 }

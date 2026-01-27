@@ -36,7 +36,7 @@ public sealed class Db2ModelBuilder
         }
         catch (ReflectionTypeLoadException ex)
         {
-            types = ex.Types.Where(t => t is not null).Cast<Type>().ToArray();
+            types = ex.Types.OfType<Type>().ToArray();
         }
 
         var configurations = types

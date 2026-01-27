@@ -42,9 +42,8 @@ internal static class Wdc5RowReadTracker
 
     public static IDisposable Start(int fieldsCount)
     {
-        var state = new State(fieldsCount);
-        _state.Value = state;
         Interlocked.Increment(ref _activeScopes);
+        _state.Value = new State(fieldsCount);
         return new Scope();
     }
 

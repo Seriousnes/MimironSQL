@@ -89,10 +89,10 @@ public sealed class Db2ModelBuilder
     internal void ApplyTablePropertyConventions(Type contextType)
     {
         foreach (var p in contextType.GetProperties(BindingFlags.Instance | BindingFlags.Public)
-            .Where(p => p.PropertyType is { IsGenericType: true } && p.PropertyType.GetGenericTypeDefinition() == typeof(Db2Table<>)))
+            .Where(p => p.PropertyType is { IsGenericType: true } && p.PropertyType.GetGenericTypeDefinition() == typeof(Db2Table<>))
+            .Select(p => (Property: p, EntityType: p.PropertyType.GetGenericArguments()[0])))
         {
-            var entityType = p.PropertyType.GetGenericArguments()[0];
-            Entity(entityType);
+            Entity(p.EntityType);
         }
     }
 

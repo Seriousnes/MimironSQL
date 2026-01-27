@@ -54,9 +54,10 @@ internal static class Db2BatchedNavigationProjector
             var target = model.GetEntityType(join.Navigation.TargetClrType);
             var (relatedFile, relatedSchema) = tableResolver(target.TableName);
 
-            MemberInfo[] distinctTargetMembers = [.. navAccesses
+            var distinctTargetMembers = navAccesses
                 .Select(a => a.TargetMember)
-                .Distinct()];
+                .Distinct()
+                .ToArray();
 
             var memberIndexes = new Dictionary<MemberInfo, int>();
             for (var i = 0; i < distinctTargetMembers.Length; i++)

@@ -186,7 +186,7 @@ internal readonly struct Wdc5Row
             ref readonly var fieldMeta = ref _file.FieldMeta[fieldIndex];
             ref readonly var columnMeta = ref _file.ColumnMeta[fieldIndex];
 
-            if (columnMeta is { CompressionType: CompressionType.Pallet, Pallet.Cardinality: not 1 })
+            if (columnMeta is { CompressionType: CompressionType.PalletArray, Pallet.Cardinality: not 1 })
             {
                 value = string.Empty;
                 return false;
@@ -315,6 +315,9 @@ internal readonly struct Wdc5Row
 
     public bool TryGetString(int fieldIndex, out string value)
     {
+        if ((uint)fieldIndex >= (uint)_file.Header.FieldsCount)
+            throw new ArgumentOutOfRangeException(nameof(fieldIndex));
+
         Wdc5RowReadTracker.OnString(fieldIndex);
         return TryGetDenseString(fieldIndex, out value) || TryGetInlineString(fieldIndex, out value);
     }

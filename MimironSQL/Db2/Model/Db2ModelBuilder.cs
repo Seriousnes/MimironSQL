@@ -37,14 +37,9 @@ public sealed class Db2ModelBuilder
             var tableName = entityMetadata.TableName ?? clrType.Name;
             var schema = schemaResolver(tableName);
 
-            foreach (var f in schema.Fields)
+            foreach (var f in schema.Fields
+                .Where(f => f.ReferencedTableName is not null && f.Name.EndsWith("ID", StringComparison.OrdinalIgnoreCase)))
             {
-                if (f.ReferencedTableName is null)
-                    continue;
-
-                if (!f.Name.EndsWith("ID", StringComparison.OrdinalIgnoreCase))
-                    continue;
-
                 var navName = f.Name[..^2];
 
                 var navMember = FindMember(clrType, navName);
@@ -93,16 +88,11 @@ public sealed class Db2ModelBuilder
 
     internal void ApplyTablePropertyConventions(Type contextType)
     {
-        foreach (var p in contextType.GetProperties(BindingFlags.Instance | BindingFlags.Public))
+        foreach (var p in contextType.GetProperties(BindingFlags.Instance | BindingFlags.Public)
+            .Where(p => p.PropertyType is { IsGenericType: true } && p.PropertyType.GetGenericTypeDefinition() == typeof(Db2Table<>))
+            .Select(p => (Property: p, EntityType: p.PropertyType.GetGenericArguments()[0])))
         {
-            if (p.PropertyType is not { IsGenericType: true } pt)
-                continue;
-
-            if (pt.GetGenericTypeDefinition() != typeof(Db2Table<>))
-                continue;
-
-            var entityType = pt.GetGenericArguments()[0];
-            Entity(entityType);
+            Entity(p.EntityType);
         }
     }
 

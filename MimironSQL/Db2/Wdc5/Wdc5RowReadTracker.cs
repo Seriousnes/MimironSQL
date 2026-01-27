@@ -17,13 +17,32 @@ internal static class Wdc5RowReadTracker
 
     private sealed class Scope : IDisposable
     {
-        public void Dispose() => _state.Value = null;
+        private int _disposed;
+
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref _disposed, 1) == 0)
+            {
+                try
+                {
+                    _state.Value = null;
+                }
+                finally
+                {
+                    Interlocked.Decrement(ref _activeScopes);
+                }
+            }
+        }
     }
 
     private static readonly AsyncLocal<State?> _state = new();
+    private static int _activeScopes;
+
+    public static bool IsEnabled => Volatile.Read(ref _activeScopes) > 0;
 
     public static IDisposable Start(int fieldsCount)
     {
+        Interlocked.Increment(ref _activeScopes);
         _state.Value = new State(fieldsCount);
         return new Scope();
     }
@@ -38,6 +57,9 @@ internal static class Wdc5RowReadTracker
 
     internal static void OnScalar(int fieldIndex)
     {
+        if (!IsEnabled)
+            return;
+
         var state = _state.Value;
         if (state is not null)
             state.ScalarReads[fieldIndex]++;
@@ -45,6 +67,9 @@ internal static class Wdc5RowReadTracker
 
     internal static void OnArray(int fieldIndex)
     {
+        if (!IsEnabled)
+            return;
+
         var state = _state.Value;
         if (state is not null)
             state.ArrayReads[fieldIndex]++;
@@ -52,6 +77,9 @@ internal static class Wdc5RowReadTracker
 
     internal static void OnString(int fieldIndex)
     {
+        if (!IsEnabled)
+            return;
+
         var state = _state.Value;
         if (state is not null)
             state.StringReads[fieldIndex]++;

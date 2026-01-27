@@ -161,10 +161,10 @@ internal static class Db2NavigationQueryCompiler
             return matchingIds;
         }
 
-        foreach (var relatedRow in relatedFile.EnumerateRows())
+        foreach (var relatedRow in relatedFile.EnumerateRows()
+            .Where(relatedRow => relatedRow.TryGetString(relatedFieldIndex, out var s) && s == plan.Needle))
         {
-            if (relatedRow.TryGetString(relatedFieldIndex, out var s) && s == plan.Needle)
-                matchingIds.Add(relatedRow.Id);
+            matchingIds.Add(relatedRow.Id);
         }
 
         return matchingIds;

@@ -6,7 +6,7 @@ namespace MimironSQL.Db2.Query;
 public static class Db2QueryableExtensions
 {
     private static readonly MethodInfo IncludeMethodInfo = 
-        typeof(Db2QueryableExtensions).GetMethod(nameof(Include))!;
+        typeof(Db2QueryableExtensions).GetMethod(nameof(Include), BindingFlags.Public | BindingFlags.Static)!;
 
     public static IQueryable<TEntity> Include<TEntity, TProperty>(
         this IQueryable<TEntity> source,

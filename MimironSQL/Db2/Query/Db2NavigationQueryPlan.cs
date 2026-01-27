@@ -58,28 +58,8 @@ internal sealed record Db2NavigationMemberAccessPlan(
 internal sealed record Db2NavigationStringPredicatePlan(
     Db2NavigationJoinPlan Join,
     MemberInfo TargetStringMember,
+    Db2FieldSchema TargetStringFieldSchema,
     Db2NavigationStringMatchKind MatchKind,
     string Needle,
     Db2SourceRequirements RootRequirements,
-    Db2SourceRequirements TargetRequirements)
-{
-    public Db2FieldSchema TargetStringFieldSchema
-    {
-        get
-        {
-            if (!Join.Target.Schema.TryGetField(TargetStringMember.Name, out var fieldSchema))
-            {
-                var caseInsensitiveMatch = Join.Target.Schema.Fields.FirstOrDefault(f =>
-                    string.Equals(f.Name, TargetStringMember.Name, StringComparison.OrdinalIgnoreCase));
-                if (caseInsensitiveMatch.Name is not null)
-                    return caseInsensitiveMatch;
-
-                throw new NotSupportedException(
-                    $"Field '{TargetStringMember.Name}' not found in schema for table '{Join.Target.TableName}'. " +
-                    $"This should have been validated during model build.");
-            }
-
-            return fieldSchema;
-        }
-    }
-};
+    Db2SourceRequirements TargetRequirements);

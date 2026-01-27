@@ -173,7 +173,7 @@ internal static class Db2NavigationQueryCompiler
     private static Func<Wdc5Row, bool> CompileForeignKeySemiJoin(Db2FieldSchema fkFieldSchema, HashSet<int> ids)
     {
         if (fkFieldSchema.IsVirtual)
-            throw new NotSupportedException($"Virtual foreign key fields are not supported for navigation predicates.");
+            throw new NotSupportedException($"Virtual foreign key field '{fkFieldSchema.Name}' is not supported for navigation predicates.");
 
         var rootFkIndex = fkFieldSchema.ColumnStartIndex;
         return row =>

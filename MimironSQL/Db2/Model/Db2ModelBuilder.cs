@@ -172,7 +172,7 @@ public sealed class Db2ModelBuilder
         {
             // Try case-insensitive match as a fallback (common for Id/ID)
             var caseInsensitiveMatch = schema.Fields.FirstOrDefault(f => string.Equals(f.Name, memberName, StringComparison.OrdinalIgnoreCase));
-            if (caseInsensitiveMatch.Name is not null)
+            if (!string.IsNullOrEmpty(caseInsensitiveMatch.Name))
             {
                 fieldSchema = caseInsensitiveMatch;
             }

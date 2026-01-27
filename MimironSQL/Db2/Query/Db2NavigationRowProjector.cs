@@ -245,8 +245,21 @@ internal static class Db2NavigationRowProjector
                             $"Access navigation members explicitly (e.g., x.{node.Member.Name}.SomeField).");
                     }
 
-                    if (!rootSchema.TryGetField(node.Member.Name, out var field))
-                        throw new NotSupportedException($"Field '{node.Member.Name}' was not found in schema '{rootSchema.TableName}'.");
+                    Db2FieldSchema field;
+                    if (!rootSchema.TryGetField(node.Member.Name, out field!))
+                    {
+                        // Try to find Id field if member name is "Id"
+                        if (node.Member.Name.Equals("Id", StringComparison.OrdinalIgnoreCase))
+                        {
+                            field = rootSchema.Fields.FirstOrDefault(f => f.IsId);
+                            if (string.IsNullOrWhiteSpace(field.Name))
+                                throw new NotSupportedException($"Id field was not found in schema '{rootSchema.TableName}'.");
+                        }
+                        else
+                        {
+                            throw new NotSupportedException($"Field '{node.Member.Name}' was not found in schema '{rootSchema.TableName}'.");
+                        }
+                    }
 
                     var accessor = new Db2FieldAccessor(field);
                     return BuildReadExpression(accessor, node.Type);

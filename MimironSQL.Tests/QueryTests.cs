@@ -694,21 +694,13 @@ public class QueryTests
 
         var targetMapId = 2441;
 
-        // For now, test that both predicates work independently
-        // Full combination support requires more AND handler logic
-        var withNull = context.MapChallengeMode
-            .Where(x => x.Map != null)
-            .Take(10)
+        // Test the combined predicate directly
+        var results = context.MapChallengeMode
+            .Where(x => x.Map != null && x.Map.Id == targetMapId)
             .ToList();
 
-        withNull.Count.ShouldBeGreaterThan(0);
-
-        var withScalar = context.MapChallengeMode
-            .Where(x => x.Map.Id == targetMapId)
-            .ToList();
-
-        withScalar.Count.ShouldBeGreaterThanOrEqualTo(1);
-        withScalar.All(x => x.MapID == targetMapId).ShouldBeTrue();
+        results.Count.ShouldBeGreaterThanOrEqualTo(1);
+        results.All(x => x.MapID == targetMapId).ShouldBeTrue();
     }
 
     [Fact]
@@ -773,6 +765,41 @@ public class QueryTests
 
         results.Count.ShouldBeGreaterThan(0);
         results.All(r => r.ParentMapID != 0 && allMapIds.Contains(r.ParentMapID)).ShouldBeTrue();
+    }
+
+    [Fact]
+    public void Phase3_supports_scalar_range_predicate_with_intersection()
+    {
+        var testDataDir = TestDataPaths.GetTestDataDirectory();
+        var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
+        var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
+        var context = new TestDb2Context(dbdProvider, db2Provider);
+
+        var minId = 2000;
+        var maxId = 3000;
+
+        var results = context.MapChallengeMode
+            .Where(x => x.Map!.Id > minId && x.Map!.Id <= maxId)
+            .ToList();
+
+        results.Count.ShouldBeGreaterThan(0);
+        results.All(x => x.MapID > minId && x.MapID <= maxId).ShouldBeTrue();
+    }
+
+    [Fact]
+    public void Phase3_supports_string_and_scalar_predicate_intersection_on_same_navigation()
+    {
+        var testDataDir = TestDataPaths.GetTestDataDirectory();
+        var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
+        var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
+        var context = new TestDb2Context(dbdProvider, db2Provider);
+
+        var results = context.MapChallengeMode
+            .Where(x => x.Map!.MapName_lang.Contains("Tazavesh") && x.Map!.Id == 2441)
+            .ToList();
+
+        results.Count.ShouldBeGreaterThanOrEqualTo(1);
+        results.All(x => x.MapID == 2441).ShouldBeTrue();
     }
 
 }

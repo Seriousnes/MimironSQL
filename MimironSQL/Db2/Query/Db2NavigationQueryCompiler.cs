@@ -69,6 +69,44 @@ internal static class Db2NavigationQueryCompiler
                 return true;
             }
 
+            // String + scalar predicates on same navigation (intersection)
+            if (Db2NavigationQueryTranslator.TryTranslateStringPredicate(model, left, out var leftStringScalar) &&
+                Db2NavigationQueryTranslator.TryTranslateScalarPredicate(model, right, out var rightScalarString) &&
+                leftStringScalar.Join.Navigation.NavigationMember == rightScalarString.Join.Navigation.NavigationMember)
+            {
+                var leftIds = FindMatchingIds(tableResolver, leftStringScalar);
+                var rightIds = FindMatchingIdsScalar(tableResolver, rightScalarString);
+                leftIds.IntersectWith(rightIds);
+
+                rowPredicate = leftStringScalar.Join.Kind switch
+                {
+                    Db2ReferenceNavigationKind.ForeignKeyToPrimaryKey => CompileForeignKeySemiJoin(leftStringScalar.Join.RootKeyFieldSchema, leftIds),
+                    Db2ReferenceNavigationKind.SharedPrimaryKeyOneToOne => row => row is { Id: not 0 } && leftIds.Contains(row.Id),
+                    _ => _ => false,
+                };
+
+                return true;
+            }
+
+            // Scalar + string predicates on same navigation (intersection)
+            if (Db2NavigationQueryTranslator.TryTranslateScalarPredicate(model, left, out var leftScalarString2) &&
+                Db2NavigationQueryTranslator.TryTranslateStringPredicate(model, right, out var rightStringScalar2) &&
+                leftScalarString2.Join.Navigation.NavigationMember == rightStringScalar2.Join.Navigation.NavigationMember)
+            {
+                var leftIds = FindMatchingIdsScalar(tableResolver, leftScalarString2);
+                var rightIds = FindMatchingIds(tableResolver, rightStringScalar2);
+                leftIds.IntersectWith(rightIds);
+
+                rowPredicate = leftScalarString2.Join.Kind switch
+                {
+                    Db2ReferenceNavigationKind.ForeignKeyToPrimaryKey => CompileForeignKeySemiJoin(leftScalarString2.Join.RootKeyFieldSchema, leftIds),
+                    Db2ReferenceNavigationKind.SharedPrimaryKeyOneToOne => row => row is { Id: not 0 } && leftIds.Contains(row.Id),
+                    _ => _ => false,
+                };
+
+                return true;
+            }
+
             // Two scalar predicates on same navigation
             if (Db2NavigationQueryTranslator.TryTranslateScalarPredicate(model, left, out var leftScalarPlan) &&
                 Db2NavigationQueryTranslator.TryTranslateScalarPredicate(model, right, out var rightScalarPlan) &&
@@ -349,10 +387,9 @@ internal static class Db2NavigationQueryCompiler
         var accessor = new Db2FieldAccessor(relatedField);
         HashSet<int> matchingIds = [];
 
-        foreach (var relatedRow in relatedFile.EnumerateRows())
+        foreach (var relatedRow in relatedFile.EnumerateRows().Where(r => EvaluateScalarComparison(r, accessor, plan.ComparisonKind, plan.ComparisonValue, plan.ScalarType)))
         {
-            if (EvaluateScalarComparison(relatedRow, accessor, plan.ComparisonKind, plan.ComparisonValue, plan.ScalarType))
-                matchingIds.Add(relatedRow.Id);
+            matchingIds.Add(relatedRow.Id);
         }
 
         return matchingIds;
@@ -365,10 +402,9 @@ internal static class Db2NavigationQueryCompiler
         var (relatedFile, _) = tableResolver(plan.Join.Target.TableName);
         HashSet<int> existingIds = [];
 
-        foreach (var relatedRow in relatedFile.EnumerateRows())
+        foreach (var relatedRow in relatedFile.EnumerateRows().Where(r => r.Id != 0))
         {
-            if (relatedRow.Id != 0)
-                existingIds.Add(relatedRow.Id);
+            existingIds.Add(relatedRow.Id);
         }
 
         return existingIds;
@@ -408,7 +444,6 @@ internal static class Db2NavigationQueryCompiler
             TypeCode.UInt64 => Db2RowValue.Read<ulong>(row, accessor),
             TypeCode.Single => Db2RowValue.Read<float>(row, accessor),
             TypeCode.Double => Db2RowValue.Read<double>(row, accessor),
-            TypeCode.Decimal => Db2RowValue.Read<decimal>(row, accessor),
             TypeCode.Boolean => Db2RowValue.Read<bool>(row, accessor),
             _ => type.IsEnum ? Db2RowValue.Read<int>(row, accessor) : null,
         };
@@ -428,7 +463,6 @@ internal static class Db2NavigationQueryCompiler
             TypeCode.UInt64 => ((ulong)a).CompareTo((ulong)b),
             TypeCode.Single => ((float)a).CompareTo((float)b),
             TypeCode.Double => ((double)a).CompareTo((double)b),
-            TypeCode.Decimal => ((decimal)a).CompareTo((decimal)b),
             TypeCode.Boolean => ((bool)a).CompareTo((bool)b),
             _ => type.IsEnum
                 ? Comparer<int>.Default.Compare(Convert.ToInt32(a), Convert.ToInt32(b))

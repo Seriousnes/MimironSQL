@@ -214,7 +214,7 @@ Semantics are enforced by tests in `Phase4RobustnessTests.cs`:
 2. `Include_throws_when_referenced_table_does_not_exist` ✅
 3. `Include_throws_when_table_file_cannot_be_opened` ✅
 
-Note: Tests for missing-row scenarios (Include with missing FK target, navigation predicates/projections with missing rows) rely on test data having such cases. The test fixtures are complete (all FKs resolve), so those specific tests are not included. The documented semantics are enforced by the code paths used in existing tests where rows do exist.
+Note: Tests for missing-row scenarios (Include with missing FK target, navigation predicates/projections with missing rows) would require test data containing such cases. The test fixtures are complete (all FKs resolve), so those specific tests are not included. The documented semantics are enforced by the code paths used in existing tests where rows do exist.
 
 Plus existing Phase 4 tests in `QueryTests.cs`:
 
@@ -222,6 +222,8 @@ Plus existing Phase 4 tests in `QueryTests.cs`:
 - `Phase4_include_populates_shared_primary_key_navigation_when_row_exists` ✅
 - `Phase4_include_is_batched_for_schema_fk_navigation_and_avoids_row_by_id_n_plus_one` ✅
 - `Phase4_include_is_batched_for_shared_primary_key_navigation_and_avoids_row_by_id_n_plus_one` ✅
+- `Phase4_include_throws_on_schema_fk_and_model_navigation_conflict_without_override` ✅
+- `Phase4_include_allows_model_navigation_to_override_schema_fk_when_configured` ✅
 
 ---
 

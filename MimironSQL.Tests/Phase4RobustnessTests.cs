@@ -67,11 +67,8 @@ public sealed class Phase4RobustnessTests
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
 
         // Creating a context with a navigation to a non-existent table should throw during model building
-        var ex = Should.Throw<Exception>(() =>
+        Should.Throw<Exception>(() =>
             _ = new MisconfiguredNavigationTestDb2Context(dbdProvider, db2Provider));
-
-        // Should fail during model building with proper exception, not silently
-        ex.ShouldNotBeNull();
     }
 
     [Fact]

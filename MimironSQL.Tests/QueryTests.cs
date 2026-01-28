@@ -40,8 +40,10 @@ public class QueryTests
         var map = context.Map;
         map.Schema.TryGetField("Directory", out var directoryField).ShouldBeTrue();
 
-        var sample = map.File.EnumerateRows()
-            .Take(Math.Min(200, map.File.Header.RecordsCount))
+        var mapFile = context.GetOrOpenTableRaw(map.TableName).File;
+
+        var sample = mapFile.EnumerateRows()
+            .Take(Math.Min(200, mapFile.Header.RecordsCount))
             .Select(r => r.TryGetString(directoryField.ColumnStartIndex, out var s) ? s : string.Empty)
             .FirstOrDefault(s => !string.IsNullOrWhiteSpace(s));
 
@@ -237,7 +239,8 @@ public class QueryTests
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
         var context = new TestDb2Context(dbdProvider, db2Provider);
 
-        var file = context.Spell.File;
+        var spell = context.Spell;
+        var file = context.GetOrOpenTableRaw(spell.TableName).File;
 
         var missing = int.MaxValue;
         for (var i = 0; i < 1_000 && file.TryGetRowById(missing, out _); i++)
@@ -276,9 +279,11 @@ public class QueryTests
         var map = context.Map;
         var parentMapIdField = map.Schema.Fields.First(f => f.Name.Equals("ParentMapID", StringComparison.OrdinalIgnoreCase));
 
-        var candidate = map.File.EnumerateRows()
+        var mapFile = context.GetOrOpenTableRaw(map.TableName).File;
+
+        var candidate = mapFile.EnumerateRows()
             .Select(r => (Id: r.Id, ParentId: Convert.ToInt32(r.GetScalar<long>(parentMapIdField.ColumnStartIndex))))
-            .FirstOrDefault(x => x.ParentId > 0 && map.File.TryGetRowById(x.ParentId, out _));
+            .FirstOrDefault(x => x.ParentId > 0 && mapFile.TryGetRowById(x.ParentId, out _));
 
         candidate.ParentId.ShouldBeGreaterThan(0);
 
@@ -303,9 +308,12 @@ public class QueryTests
         var spell = context.Spell;
         var spellName = context.SpellName;
 
-        var candidateId = spell.File.EnumerateRows()
+        var spellFile = context.GetOrOpenTableRaw(spell.TableName).File;
+        var spellNameFile = context.GetOrOpenTableRaw(spellName.TableName).File;
+
+        var candidateId = spellFile.EnumerateRows()
             .Select(r => r.Id)
-            .FirstOrDefault(id => id > 0 && spellName.File.TryGetRowById(id, out _));
+            .FirstOrDefault(id => id > 0 && spellNameFile.TryGetRowById(id, out _));
 
         candidateId.ShouldBeGreaterThan(0);
 
@@ -342,9 +350,11 @@ public class QueryTests
         var map = context.Map;
         var parentMapIdField = map.Schema.Fields.First(f => f.Name.Equals("ParentMapID", StringComparison.OrdinalIgnoreCase));
 
-        var candidate = map.File.EnumerateRows()
+        var mapFile = context.GetOrOpenTableRaw(map.TableName).File;
+
+        var candidate = mapFile.EnumerateRows()
             .Select(r => (Id: r.Id, ParentId: Convert.ToInt32(r.GetScalar<long>(parentMapIdField.ColumnStartIndex))))
-            .FirstOrDefault(x => x.ParentId > 0 && map.File.TryGetRowById(x.ParentId, out _));
+            .FirstOrDefault(x => x.ParentId > 0 && mapFile.TryGetRowById(x.ParentId, out _));
 
         candidate.ParentId.ShouldBeGreaterThan(0);
 
@@ -509,9 +519,11 @@ public class QueryTests
         var map = context.Map;
         var parentMapIdField = map.Schema.Fields.First(f => f.Name.Equals("ParentMapID", StringComparison.OrdinalIgnoreCase));
 
-        var allIds = map.File.EnumerateRows().Select(r => r.Id).ToHashSet();
+        var mapFile = context.GetOrOpenTableRaw(map.TableName).File;
 
-        var candidate = map.File.EnumerateRows()
+        var allIds = mapFile.EnumerateRows().Select(r => r.Id).ToHashSet();
+
+        var candidate = mapFile.EnumerateRows()
             .Select(r => (Id: r.Id, ParentId: Convert.ToInt32(r.GetScalar<long>(parentMapIdField.ColumnStartIndex))))
             .FirstOrDefault(x => x.ParentId > 0 && allIds.Contains(x.ParentId));
 
@@ -548,8 +560,11 @@ public class QueryTests
         var spell = context.Spell;
         var spellName = context.SpellName;
 
-        var spellNameIds = spellName.File.EnumerateRows().Select(r => r.Id).ToHashSet();
-        var candidateId = spell.File.EnumerateRows().Select(r => r.Id).FirstOrDefault(id => id > 0 && spellNameIds.Contains(id));
+        var spellFile = context.GetOrOpenTableRaw(spell.TableName).File;
+        var spellNameFile = context.GetOrOpenTableRaw(spellName.TableName).File;
+
+        var spellNameIds = spellNameFile.EnumerateRows().Select(r => r.Id).ToHashSet();
+        var candidateId = spellFile.EnumerateRows().Select(r => r.Id).FirstOrDefault(id => id > 0 && spellNameIds.Contains(id));
 
         candidateId.ShouldBeGreaterThan(0);
 

@@ -29,10 +29,11 @@ internal sealed class Db2ContextQueryProvider(Db2Context context) : IQueryProvid
     {
         ArgumentNullException.ThrowIfNull(expression);
 
-        var table = GetRootTable(expression);
-        var entityType = table.EntityType;
+        var (entityType, tableName) = GetRootTable(expression);
 
-        var provider = CreatePerTableProvider(entityType, table.File, table.Schema, _context.Model, _context.GetOrOpenTableRaw);
+        var (file, schema) = _context.GetOrOpenTableRaw(tableName);
+
+        var provider = CreatePerTableProvider(entityType, file, schema, _context.Model, _context.GetOrOpenTableRaw);
         return provider.Execute(expression);
     }
 
@@ -50,14 +51,27 @@ internal sealed class Db2ContextQueryProvider(Db2Context context) : IQueryProvid
         return (IQueryProvider)Activator.CreateInstance(providerType, file, schema, model, tableResolver)!;
     }
 
-    private static IDb2Table GetRootTable(Expression expression)
+    private static (Type EntityType, string TableName) GetRootTable(Expression expression)
     {
         var current = expression;
         while (current is MethodCallExpression m)
             current = m.Arguments[0];
 
-        if (current is ConstantExpression { Value: IDb2Table table })
-            return table;
+        if (current is ConstantExpression { Value: { } value })
+        {
+            var valueType = value.GetType();
+            if (valueType is { IsGenericType: true } && valueType.GetGenericTypeDefinition() == typeof(Db2Table<>))
+            {
+                var entityType = valueType.GetGenericArguments()[0];
+
+                var tableNameProperty = valueType.GetProperty("TableName", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public);
+                var tableName = (string?)tableNameProperty?.GetValue(value);
+                if (tableName is null)
+                    throw new NotSupportedException("Unable to locate the root Db2Table for this query.");
+
+                return (entityType, tableName);
+            }
+        }
 
         throw new NotSupportedException("Unable to locate the root Db2Table for this query.");
     }

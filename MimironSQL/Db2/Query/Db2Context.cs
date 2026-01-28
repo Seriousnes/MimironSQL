@@ -92,7 +92,7 @@ public abstract class Db2Context
     private Db2Table<T> OpenTableGeneric<T>(string tableName)
     {
         var (file, schema) = GetOrOpenTableRaw(tableName);
-        return new Db2Table<T>(file, schema, _queryProvider);
+        return new Db2Table<T>(tableName, schema, _queryProvider, name => GetOrOpenTableRaw(name).File);
     }
 
     protected Db2Table<T> Table<T>(string? tableName = null)

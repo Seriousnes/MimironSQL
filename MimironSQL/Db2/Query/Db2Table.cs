@@ -7,28 +7,26 @@ using System.Numerics;
 
 namespace MimironSQL.Db2.Query;
 
-public sealed class Db2Table<T> : IQueryable<T>, IDb2Table
+public sealed class Db2Table<T> : IQueryable<T>
 {
-    internal Wdc5File File { get; }
+    internal string TableName { get; }
     public Db2TableSchema Schema { get; }
 
     private readonly IQueryProvider _provider;
     private readonly Db2EntityMaterializer<T> _materializer;
+    private readonly Func<string, Wdc5File> _fileResolver;
 
     public Type ElementType => typeof(T);
     public Expression Expression { get; }
     public IQueryProvider Provider => _provider;
 
-    Type IDb2Table.EntityType => typeof(T);
-    Wdc5File IDb2Table.File => File;
-    Db2TableSchema IDb2Table.Schema => Schema;
-
-    internal Db2Table(Wdc5File file, Db2TableSchema schema, IQueryProvider provider)
+    internal Db2Table(string tableName, Db2TableSchema schema, IQueryProvider provider, Func<string, Wdc5File> fileResolver)
     {
-        File = file;
+        TableName = tableName;
         Schema = schema;
         _provider = provider;
         _materializer = new Db2EntityMaterializer<T>(schema);
+        _fileResolver = fileResolver;
         Expression = Expression.Constant(this);
     }
 
@@ -43,7 +41,8 @@ public sealed class Db2Table<T> : IQueryable<T>, IDb2Table
         if (!typeof(Wdc5Entity<TId>).IsAssignableFrom(typeof(T)))
             throw new NotSupportedException($"Entity type {typeof(T).FullName} must derive from {typeof(Wdc5Entity<TId>).FullName} to use Find with key type {typeof(TId).FullName}.");
 
-        if (!File.TryGetRowById(id, out var row))
+        var file = _fileResolver(TableName);
+        if (!file.TryGetRowById(id, out var row))
             return default;
 
         return _materializer.Materialize(row);

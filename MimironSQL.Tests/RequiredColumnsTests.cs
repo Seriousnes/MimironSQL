@@ -41,8 +41,10 @@ public sealed class RequiredColumnsTests
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
         var context = new PruningTestDb2Context(dbdProvider, db2Provider);
 
+        var mapFile = context.GetOrOpenTableRaw(context.Map.TableName).File;
+
         Expression<Func<MapWithCtor, bool>> predicate = x => x.Id > 0 && x.Directory.Contains("o");
-        Db2RowPredicateCompiler.TryCompile(context.Map.File, context.Map.Schema, predicate, out _, out var requirements).ShouldBeTrue();
+        Db2RowPredicateCompiler.TryCompile(mapFile, context.Map.Schema, predicate, out _, out var requirements).ShouldBeTrue();
 
         requirements.Columns.Any(c => c.Kind == Db2RequiredColumnKind.Scalar && c.Field.IsId).ShouldBeTrue();
         requirements.Columns.Any(c => c.Kind == Db2RequiredColumnKind.String && c.Field.Name.Equals("Directory", StringComparison.OrdinalIgnoreCase)).ShouldBeTrue();
@@ -77,7 +79,8 @@ public sealed class RequiredColumnsTests
 
         context.Map.Schema.TryGetField("Directory", out var directoryField).ShouldBeTrue();
 
-        var fieldsCount = context.Map.File.Header.FieldsCount;
+        var mapFile = context.GetOrOpenTableRaw(context.Map.TableName).File;
+        var fieldsCount = mapFile.Header.FieldsCount;
 
         Wdc5RowReadSnapshot prunedSnapshot;
         using (Wdc5RowReadTracker.Start(fieldsCount))

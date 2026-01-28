@@ -56,12 +56,16 @@ These are most important in hot paths (DB2 parsing/decoding, query execution, ex
 - Prefer exposing read-only views (`IReadOnlyList<T>`, `IReadOnlyDictionary<TKey, TValue>`) over mutable collections.
 
 ## Avoid static offloading
-- Avoid offloading work into `static` helper methods as a way to avoid constructor logic or to emulate factory patterns (e.g., `static Load(...)`, `static Create(...)`, `static From(...)`, etc.).
+- Avoid offloading work into factory-like `static` methods as a way to avoid constructor logic or to emulate factory patterns (e.g., `static Load(...)`, `static Create(...)`, `static From(...)`, etc.).
 - Prefer:
   - expression-bodied field/property initialization,
   - instance methods,
   - non-static local functions (when helpful),
   - straightforward constructor code when it’s the natural place for initialization.
+
+Notes:
+- This guideline is about factory/creation flows and "static builder" APIs, not about all `static` methods.
+- Small, well-scoped `static` helpers and extension methods are fine when they reduce duplication and keep call sites readable.
 
 Rationale: we already avoid static factory-like constructors; `static` “load/build” helpers are effectively the same pattern.
 

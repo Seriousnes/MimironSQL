@@ -2,6 +2,7 @@ using System.Reflection;
 
 using MimironSQL.Db2.Query;
 using MimironSQL.Db2.Schema;
+using MimironSQL.Extensions;
 
 namespace MimironSQL.Db2.Model;
 
@@ -112,7 +113,7 @@ public sealed class Db2ModelBuilder
                 if (fkMember is null)
                     continue;
 
-                var targetClrType = GetMemberType(navMember);
+                var targetClrType = navMember.GetMemberType();
                 if (targetClrType.IsValueType)
                     continue;
 
@@ -258,11 +259,4 @@ public sealed class Db2ModelBuilder
         return null;
     }
 
-    private static Type GetMemberType(MemberInfo member)
-        => member switch
-        {
-            PropertyInfo p => p.PropertyType,
-            FieldInfo f => f.FieldType,
-            _ => throw new InvalidOperationException($"Unexpected member type: {member.GetType().FullName}"),
-        };
 }

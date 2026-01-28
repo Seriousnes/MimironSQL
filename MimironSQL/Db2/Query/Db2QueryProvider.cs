@@ -6,6 +6,7 @@ using MimironSQL.Db2.Wdc5;
 using System.Collections;
 using System.Linq.Expressions;
 using System.Reflection;
+using MimironSQL.Extensions;
 
 namespace MimironSQL.Db2.Query;
 
@@ -637,7 +638,7 @@ internal sealed class Db2QueryProvider<TEntity>(
 
             var navMember = member.Member;
             var navName = navMember.Name;
-            var navType = GetMemberType(navMember);
+            var navType = navMember.GetMemberType();
 
             if (!IsWritable(navMember))
                 throw new NotSupportedException($"Navigation member '{navName}' must be writable.");
@@ -767,12 +768,5 @@ internal sealed class Db2QueryProvider<TEntity>(
                 _ => false,
             };
 
-        private static Type GetMemberType(MemberInfo member)
-            => member switch
-            {
-                PropertyInfo p => p.PropertyType,
-                FieldInfo f => f.FieldType,
-                _ => throw new InvalidOperationException($"Unexpected member type: {member.GetType().FullName}"),
-            };
     }
 }

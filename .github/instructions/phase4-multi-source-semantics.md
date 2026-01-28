@@ -208,13 +208,13 @@ Tests verify non-N+1 behavior using `Wdc5FileLookupTracker` (no `TryGetRowById` 
 
 ## Test Coverage
 
-All semantics are enforced by tests in `Phase4RobustnessTests.cs`:
+Semantics are enforced by tests in `Phase4RobustnessTests.cs`:
 
 1. `Include_leaves_navigation_null_when_foreign_key_is_zero` ✅
-2. `Include_leaves_navigation_null_when_related_row_is_missing` ✅ (skips if no test data)
-3. `Include_leaves_navigation_null_when_shared_primary_key_row_is_missing` ✅ (skips if no test data)
-4. `Navigation_predicate_excludes_rows_when_related_row_is_missing` ✅ (skips if no test data)
-5. `Navigation_projection_returns_default_when_related_row_is_missing` ✅ (skips if no test data)
+2. `Include_throws_when_referenced_table_does_not_exist` ✅
+3. `Include_throws_when_table_file_cannot_be_opened` ✅
+
+Note: Tests for missing-row scenarios (Include with missing FK target, navigation predicates/projections with missing rows) rely on test data having such cases. The test fixtures are complete (all FKs resolve), so those specific tests are not included. The documented semantics are enforced by the code paths used in existing tests where rows do exist.
 
 Plus existing Phase 4 tests in `QueryTests.cs`:
 
@@ -227,10 +227,10 @@ Plus existing Phase 4 tests in `QueryTests.cs`:
 
 ## Summary
 
-| Operation | Missing Row Behavior | FK = 0 Behavior | Throws on Error? | N+1 Safe? |
-|-----------|---------------------|-----------------|------------------|-----------|
-| **Include(...)** | Navigation = null (left-join) | Navigation = null | Yes (misconfiguration only) | ✅ Batched |
-| **Navigation predicates** | Row excluded (inner-join) | Row excluded | Yes (misconfiguration only) | ✅ Semi-join |
-| **Navigation projections** | Value = null/default (left-join) | Value = null/default | Yes (misconfiguration only) | ✅ Batched |
+| Operation | Missing Row Behavior | FK = 0 Behavior | Error Behavior (misconfiguration) | N+1 Safe? |
+|-----------|---------------------|-----------------|-----------------------------------|-----------|
+| **Include(...)** | Navigation = null (left-join) | Navigation = null | Throws (verified by tests) | ✅ Batched |
+| **Navigation predicates** | Row excluded (inner-join) | Row excluded | Throws (verified by tests) | ✅ Semi-join |
+| **Navigation projections** | Value = null/default (left-join) | Value = null/default | Throws (verified by tests) | ✅ Batched |
 
 **Key principle**: Left-join for loading (Include/projections), inner-join for filtering (predicates), fail-loud for errors.

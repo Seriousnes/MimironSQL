@@ -606,15 +606,12 @@ internal sealed class Db2QueryProvider<TEntity>(
             return keys =>
             {
                 if (keys is { Count: 0 })
-                    return [];
+                    return new Dictionary<int, object?>();
 
                 Dictionary<int, object?> relatedByKey = new(capacity: Math.Min(keys.Count, file.Header.RecordsCount));
 
-                foreach (var row in file.EnumerateRows())
+                foreach (var row in file.EnumerateRows().Where(row => keys.Contains(row.Id)))
                 {
-                    if (!keys.Contains(row.Id))
-                        continue;
-
                     relatedByKey[row.Id] = materializeRow(row);
                 }
 

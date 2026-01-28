@@ -33,38 +33,6 @@ namespace MimironSQL.Tests;
 public sealed class Phase4RobustnessTests
 {
     [Fact]
-    public void Include_leaves_navigation_null_when_related_row_is_missing()
-    {
-        var testDataDir = TestDataPaths.GetTestDataDirectory();
-        var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
-        var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
-        var context = new TestDb2Context(dbdProvider, db2Provider);
-
-        var map = context.Map;
-        var parentMapIdField = map.Schema.Fields.First(f => f.Name.Equals("ParentMapID", StringComparison.OrdinalIgnoreCase));
-
-        // Find a map with a non-zero ParentMapID where the parent row doesn't exist
-        var candidate = map.File.EnumerateRows()
-            .Select(r => (Id: r.Id, ParentId: Convert.ToInt32(r.GetScalar<long>(parentMapIdField.ColumnStartIndex))))
-            .FirstOrDefault(x => x.ParentId > 0 && !map.File.TryGetRowById(x.ParentId, out _));
-
-        // Skip test if no missing parent references exist in test data
-        if (candidate.ParentId == 0)
-        {
-            // Can't verify missing-row semantics without test data, but semantics are already defined
-            return;
-        }
-
-        var entity = map
-            .Where(x => x.Id == candidate.Id)
-            .Include(x => x.ParentMap)
-            .Single();
-
-        entity.ParentMapID.ShouldBe(candidate.ParentId);
-        entity.ParentMap.ShouldBeNull(); // Left-join semantics: missing row => null navigation
-    }
-
-    [Fact]
     public void Include_leaves_navigation_null_when_foreign_key_is_zero()
     {
         var testDataDir = TestDataPaths.GetTestDataDirectory();
@@ -88,103 +56,38 @@ public sealed class Phase4RobustnessTests
             .Single();
 
         entity.ParentMapID.ShouldBe(0);
-        entity.ParentMap.ShouldBeNull(); // Zero FK => null navigation
+        entity.ParentMap.ShouldBeNull(); // Zero FK => null navigation (left-join semantics)
     }
 
     [Fact]
-    public void Include_leaves_navigation_null_when_shared_primary_key_row_is_missing()
+    public void Include_throws_when_referenced_table_does_not_exist()
     {
         var testDataDir = TestDataPaths.GetTestDataDirectory();
         var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
-        var context = new TestDb2Context(dbdProvider, db2Provider);
 
-        var spell = context.Spell;
-        var spellName = context.SpellName;
+        // Creating a context with a navigation to a non-existent table should throw during model building
+        var ex = Should.Throw<Exception>(() =>
+            _ = new MisconfiguredNavigationTestDb2Context(dbdProvider, db2Provider));
 
-        // Find a spell where the SpellName row doesn't exist
-        var candidateId = spell.File.EnumerateRows()
-            .Select(r => r.Id)
-            .FirstOrDefault(id => id > 0 && !spellName.File.TryGetRowById(id, out _));
-
-        // Skip test if all spells have SpellName rows (common in complete WoW data)
-        if (candidateId == 0)
-        {
-            // Can't verify missing-row semantics without test data, but semantics are already defined
-            return;
-        }
-
-        var entity = spell
-            .Where(s => s.Id == candidateId)
-            .Include(s => s.SpellName)
-            .Single();
-
-        entity.Id.ShouldBe(candidateId);
-        entity.SpellName.ShouldBeNull(); // Left-join semantics: missing row => null navigation
+        // Should fail during model building with proper exception, not silently
+        ex.ShouldNotBeNull();
     }
 
     [Fact]
-    public void Navigation_projection_returns_default_when_related_row_is_missing()
+    public void Include_throws_when_table_file_cannot_be_opened()
     {
         var testDataDir = TestDataPaths.GetTestDataDirectory();
-        var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
+        
+        // Create a provider that will fail when trying to open "MapChallengeMode" table during model building
+        var brokenProvider = new BrokenDb2StreamProvider(testDataDir, tableName => tableName == "MapChallengeMode");
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
-        var context = new TestDb2Context(dbdProvider, db2Provider);
 
-        var spell = context.Spell;
-        var spellName = context.SpellName;
+        // Should throw during model building when trying to open MapChallengeMode
+        var ex = Should.Throw<InvalidOperationException>(() =>
+            _ = new TestDb2Context(dbdProvider, brokenProvider));
 
-        // Find a spell where the SpellName row doesn't exist
-        var candidateId = spell.File.EnumerateRows()
-            .Select(r => r.Id)
-            .FirstOrDefault(id => id > 0 && !spellName.File.TryGetRowById(id, out _));
-
-        // Skip test if all spells have SpellName rows (common in complete WoW data)
-        if (candidateId == 0)
-        {
-            // Can't verify missing-row semantics without test data, but semantics are already defined
-            return;
-        }
-
-        var result = spell
-            .Where(s => s.Id == candidateId)
-            .Select(s => new { s.Id, Name = s.SpellName!.Name_lang })
-            .Single();
-
-        result.Id.ShouldBe(candidateId);
-        result.Name.ShouldBeNull(); // Missing related row => null/default for projected value
-    }
-
-    [Fact]
-    public void Navigation_predicate_excludes_rows_when_related_row_is_missing()
-    {
-        var testDataDir = TestDataPaths.GetTestDataDirectory();
-        var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
-        var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
-        var context = new TestDb2Context(dbdProvider, db2Provider);
-
-        var spell = context.Spell;
-        var spellName = context.SpellName;
-
-        // Find a spell where the SpellName row doesn't exist
-        var missingId = spell.File.EnumerateRows()
-            .Select(r => r.Id)
-            .FirstOrDefault(id => id > 0 && !spellName.File.TryGetRowById(id, out _));
-
-        // Skip test if all spells have SpellName rows (common in complete WoW data)
-        if (missingId == 0)
-        {
-            // Can't verify missing-row semantics without test data, but semantics are already defined
-            return;
-        }
-
-        // Navigation predicate should exclude rows with missing related data (inner-join semantics)
-        var results = spell
-            .Where(s => s.SpellName!.Name_lang.Contains("Fire"))
-            .Select(s => s.Id)
-            .ToList();
-
-        // The spell with missing SpellName should not be in results
-        results.ShouldNotContain(missingId);
+        ex.Message.ShouldContain("SimulatedFailure");
+        ex.Message.ShouldContain("MapChallengeMode");
     }
 }

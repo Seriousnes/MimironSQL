@@ -1,9 +1,8 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
-    <ProjectReference Include="..\Salsa20\Salsa20.csproj" />
     <ProjectReference Include="..\MimironSQL.Formats.Abstractions\MimironSQL.Formats.Abstractions.csproj" />
-    <ProjectReference Include="..\MimironSQL.Formats.Wdc5\MimironSQL.Formats.Wdc5.csproj" />
+    <ProjectReference Include="..\Salsa20\Salsa20.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

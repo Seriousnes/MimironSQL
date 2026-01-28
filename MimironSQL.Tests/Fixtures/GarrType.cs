@@ -2,6 +2,6 @@
 
 namespace MimironSQL.Tests.Fixtures;
 
-internal class GarrType : Wdc5Entity<byte>
+internal class GarrType : Db2Entity<byte>
 {
 }

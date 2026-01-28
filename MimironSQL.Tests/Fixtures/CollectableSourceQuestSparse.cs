@@ -2,7 +2,7 @@
 
 namespace MimironSQL.Tests.Fixtures;
 
-internal class CollectableSourceQuestSparse : Wdc5Entity
+internal class CollectableSourceQuestSparse : Db2Entity
 {
     public int QuestID { get; set; }
     public int CollectableSourceInfoID { get; set; }

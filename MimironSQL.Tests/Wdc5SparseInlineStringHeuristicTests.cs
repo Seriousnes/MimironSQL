@@ -1,6 +1,7 @@
 using MimironSQL.Db2;
 using MimironSQL.Db2.Schema;
 using MimironSQL.Db2.Wdc5;
+using MimironSQL.Formats;
 using MimironSQL.Providers;
 
 using Shouldly;
@@ -45,7 +46,7 @@ public sealed class Wdc5SparseInlineStringHeuristicTests
 
         var provider = new FileSystemDbdProvider(new FileSystemDbdProviderOptions(TestDataPaths.GetTestDataDirectory()));
         var mapper = new SchemaMapper(provider);
-        var schema = mapper.GetSchema("CollectableSourceQuestSparse", file);
+        var schema = mapper.GetSchema("CollectableSourceQuestSparse", new Db2FileLayout(file.Header.LayoutHash, file.Header.FieldsCount));
 
         schema.TryGetField("ID", out var idField).ShouldBeTrue();
         idField.IsVirtual.ShouldBeTrue();

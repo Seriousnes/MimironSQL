@@ -18,7 +18,10 @@ This project is a SQL engine for reading and querying World of Warcraft DB2 file
 - Target .NET 10 / C# 14 and prefer the newest language features.
 - Follow the additional coding style rules in [coding-style.md](./instructions/coding-style.md).
 
-## Performance Attributes (Hard)
+## Performance 
+- Follow the performance guidelines in [performance.md](./instructions/performance.md)
+
+### Attributes (Hard)
 - Do NOT add `[MethodImpl(...)]` attributes (including `MethodImplOptions.AggressiveInlining`).
 - Remove any `[MethodImpl(...)]` attributes you encounter.
 - Only add these attributes back after benchmarking demonstrates a real benefit.

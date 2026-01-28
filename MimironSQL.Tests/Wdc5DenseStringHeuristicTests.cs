@@ -1,5 +1,6 @@
 using MimironSQL.Db2.Schema;
 using MimironSQL.Db2.Wdc5;
+using MimironSQL.Formats;
 using MimironSQL.Providers;
 
 using Shouldly;
@@ -19,7 +20,7 @@ public sealed class Wdc5DenseStringHeuristicTests
 
         var provider = new FileSystemDbdProvider(new FileSystemDbdProviderOptions(TestDataPaths.GetTestDataDirectory()));
         var mapper = new SchemaMapper(provider);
-        var schema = mapper.GetSchema("Map", file);
+        var schema = mapper.GetSchema("Map", new Db2FileLayout(file.Header.LayoutHash, file.Header.FieldsCount));
         schema.TryGetField("Directory", out var directory).ShouldBeTrue();
         directory.IsVirtual.ShouldBeFalse();
         directory.ElementCount.ShouldBe(1);

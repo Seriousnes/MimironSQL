@@ -1,5 +1,6 @@
 using MimironSQL.Db2.Schema;
 using MimironSQL.Db2.Wdc5;
+using MimironSQL.Formats;
 using MimironSQL.Providers;
 
 using Xunit.Abstractions;
@@ -22,7 +23,7 @@ public sealed class DiagnosticTest(ITestOutputHelper output)
 
         var provider = new FileSystemDbdProvider(new FileSystemDbdProviderOptions(TestDataPaths.GetTestDataDirectory()));
         var mapper = new SchemaMapper(provider);
-        var schema = mapper.GetSchema("Map", file);
+        var schema = mapper.GetSchema("Map", new Db2FileLayout(file.Header.LayoutHash, file.Header.FieldsCount));
         schema.TryGetField("Directory", out var directory);
 
         output.WriteLine($"Directory field: ColumnStartIndex={directory.ColumnStartIndex}, IsVirtual={directory.IsVirtual}");

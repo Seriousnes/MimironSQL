@@ -1,25 +1,25 @@
 using MimironSQL.Db2.Schema.Dbd;
-using MimironSQL.Db2.Wdc5;
+using MimironSQL.Formats;
 using MimironSQL.Providers;
 
 namespace MimironSQL.Db2.Schema;
 
 internal sealed class SchemaMapper(IDbdProvider dbdProvider)
 {
-    public Db2TableSchema GetSchema(string tableName, Wdc5File file)
+    public Db2TableSchema GetSchema(string tableName, Db2FileLayout layout)
     {
         ArgumentNullException.ThrowIfNull(tableName);
-        ArgumentNullException.ThrowIfNull(file);
+
 
         using var stream = dbdProvider.Open(tableName);
         var dbd = DbdFile.Parse(stream);
 
-        var layoutHash = file.Header.LayoutHash;
-        if (!dbd.TryGetLayout(layoutHash, out var layout))
+        var layoutHash = layout.LayoutHash;
+        if (!dbd.TryGetLayout(layoutHash, out var dbdLayout))
             throw new InvalidDataException($"No matching LAYOUT {layoutHash:X8} found in {tableName}.dbd.");
 
-        var expectedPhysicalCount = file.Header.FieldsCount;
-        if (!layout.TrySelectBuildByPhysicalColumnCount(expectedPhysicalCount, out var build, out var availableCounts))
+        var expectedPhysicalCount = layout.PhysicalFieldsCount;
+        if (!dbdLayout.TrySelectBuildByPhysicalColumnCount(expectedPhysicalCount, out var build, out var availableCounts))
         {
             throw new InvalidDataException(
                 $"No BUILD block in {tableName}.dbd for layout {layoutHash:X8} matches physical column count {expectedPhysicalCount}. " +
@@ -60,7 +60,7 @@ internal sealed class SchemaMapper(IDbdProvider dbdProvider)
         }
 
         if (physicalIndex != expectedPhysicalCount)
-            throw new InvalidDataException($"Resolved schema physical column count {physicalIndex} does not match WDC5 header FieldsCount {expectedPhysicalCount}.");
+            throw new InvalidDataException($"Resolved schema physical column count {physicalIndex} does not match DB2 physical column count {expectedPhysicalCount}.");
 
         return new Db2TableSchema(tableName, layoutHash, physicalIndex, fields);
     }

@@ -12,6 +12,8 @@ public sealed class Db2Table<T> : IQueryable<T>
     internal string TableName { get; }
     public Db2TableSchema Schema { get; }
 
+    internal Wdc5File File => _fileResolver(TableName);
+
     private readonly IQueryProvider _provider;
     private readonly Db2EntityMaterializer<T> _materializer;
     private readonly Func<string, Wdc5File> _fileResolver;
@@ -38,8 +40,8 @@ public sealed class Db2Table<T> : IQueryable<T>
     public T? Find<TId>(TId id)
         where TId : IBinaryInteger<TId>
     {
-        if (!typeof(Wdc5Entity<TId>).IsAssignableFrom(typeof(T)))
-            throw new NotSupportedException($"Entity type {typeof(T).FullName} must derive from {typeof(Wdc5Entity<TId>).FullName} to use Find with key type {typeof(TId).FullName}.");
+        if (!typeof(Db2Entity<TId>).IsAssignableFrom(typeof(T)))
+            throw new NotSupportedException($"Entity type {typeof(T).FullName} must derive from {typeof(Db2Entity<TId>).FullName} to use Find with key type {typeof(TId).FullName}.");
 
         var file = _fileResolver(TableName);
         if (!file.TryGetRowById(id, out var row))

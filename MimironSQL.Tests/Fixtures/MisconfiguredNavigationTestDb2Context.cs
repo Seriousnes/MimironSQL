@@ -19,12 +19,12 @@ internal class MisconfiguredNavigationTestDb2Context(IDbdProvider dbdProvider, I
             .WithSharedPrimaryKey(e => e.Id, n => n.Id);
 }
 
-internal class EntityWithBrokenNavigation : MimironSQL.Db2.Wdc5Entity
+internal class EntityWithBrokenNavigation : MimironSQL.Db2.Db2Entity
 {
     public NonExistentTable? NonExistentTable { get; set; }
 }
 
-internal class NonExistentTable : MimironSQL.Db2.Wdc5Entity
+internal class NonExistentTable : MimironSQL.Db2.Db2Entity
 {
     public string SomeField { get; set; } = string.Empty;
 }

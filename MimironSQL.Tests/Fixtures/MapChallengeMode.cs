@@ -2,7 +2,7 @@ using MimironSQL.Db2;
 
 namespace MimironSQL.Tests.Fixtures;
 
-internal sealed class MapChallengeMode : Wdc5Entity
+internal sealed class MapChallengeMode : Db2Entity
 {
     public ushort MapID { get; set; }
 

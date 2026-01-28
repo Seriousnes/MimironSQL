@@ -2,7 +2,7 @@
 
 namespace MimironSQL.Tests.Fixtures;
 
-internal class Map : Wdc5Entity
+internal class Map : Db2Entity
 {
     public string Directory { get; set; } = string.Empty;
     public string MapName_lang { get; set; } = string.Empty;
@@ -11,7 +11,7 @@ internal class Map : Wdc5Entity
     public Map? ParentMap { get; set; }
 }
 
-internal class MapWithCtor : Wdc5Entity
+internal class MapWithCtor : Db2Entity
 {
     public static int InstancesCreated;
 

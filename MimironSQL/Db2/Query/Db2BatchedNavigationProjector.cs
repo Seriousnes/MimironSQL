@@ -4,7 +4,6 @@ using System.Reflection;
 using MimironSQL.Db2.Model;
 using MimironSQL.Db2.Schema;
 using MimironSQL.Db2.Wdc5;
-using MimironSQL.Formats;
 
 namespace MimironSQL.Db2.Query;
 
@@ -13,7 +12,7 @@ internal static class Db2BatchedNavigationProjector
     public static IEnumerable<TResult> Project<TEntity, TResult>(
         IEnumerable<TEntity> source,
         Db2Model model,
-        Func<string, (IDb2File File, Db2TableSchema Schema)> tableResolver,
+        Func<string, (Wdc5File File, Db2TableSchema Schema)> tableResolver,
         Db2NavigationMemberAccessPlan[] accesses,
         Expression<Func<TEntity, TResult>> selector,
         int? take)
@@ -53,8 +52,7 @@ internal static class Db2BatchedNavigationProjector
         {
             var join = navAccesses[0].Join;
             var target = model.GetEntityType(join.Navigation.TargetClrType);
-            var (relatedFileHandle, relatedSchema) = tableResolver(target.TableName);
-            var relatedFile = (Wdc5File)relatedFileHandle;
+            var (relatedFile, relatedSchema) = tableResolver(target.TableName);
 
             var distinctTargetMembers = navAccesses
                 .Select(a => a.TargetMember)

@@ -1,7 +1,6 @@
 using MimironSQL.Db2.Schema;
 using MimironSQL.Db2.Wdc5;
 using MimironSQL.Db2.Model;
-using MimironSQL.Formats;
 
 using System.Linq.Expressions;
 
@@ -33,9 +32,8 @@ internal sealed class Db2ContextQueryProvider(Db2Context context) : IQueryProvid
         var (entityType, tableName) = GetRootTable(expression);
 
         var (file, schema) = _context.GetOrOpenTableRaw(tableName);
-        var wdc5File = (Wdc5File)file;
 
-        var provider = CreatePerTableProvider(entityType, wdc5File, schema, _context.Model, _context.GetOrOpenTableRaw);
+        var provider = CreatePerTableProvider(entityType, file, schema, _context.Model, _context.GetOrOpenTableRaw);
         return provider.Execute(expression);
     }
 
@@ -47,7 +45,7 @@ internal sealed class Db2ContextQueryProvider(Db2Context context) : IQueryProvid
         Wdc5File file,
         Db2TableSchema schema,
         Db2Model model,
-        Func<string, (IDb2File File, Db2TableSchema Schema)> tableResolver)
+        Func<string, (Wdc5File File, Db2TableSchema Schema)> tableResolver)
     {
         var providerType = typeof(Db2QueryProvider<>).MakeGenericType(entityType);
         return (IQueryProvider)Activator.CreateInstance(providerType, file, schema, model, tableResolver)!;

@@ -85,7 +85,7 @@ public sealed class NavigationProjectionTests
 
         context.Spell.Schema.TryGetField("Description_lang", out var descriptionField).ShouldBeTrue();
         var spellFile = context.GetOrOpenTableRaw(context.Spell.TableName).File;
-        var fieldsCount = ((Wdc5File)spellFile).Header.FieldsCount;
+        var fieldsCount = spellFile.Header.FieldsCount;
 
         Wdc5RowReadSnapshot navigationProjectionSnapshot;
         using (Wdc5RowReadTracker.Start(fieldsCount))

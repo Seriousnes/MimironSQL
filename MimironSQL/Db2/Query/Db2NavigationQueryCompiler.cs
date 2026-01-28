@@ -6,7 +6,6 @@ using MimironSQL.Db2;
 using MimironSQL.Db2.Model;
 using MimironSQL.Db2.Schema;
 using MimironSQL.Db2.Wdc5;
-using MimironSQL.Formats;
 
 namespace MimironSQL.Db2.Query;
 
@@ -16,7 +15,7 @@ internal static class Db2NavigationQueryCompiler
         Db2Model model,
         Wdc5File rootFile,
         Db2TableSchema rootSchema,
-        Func<string, (IDb2File File, Db2TableSchema Schema)> tableResolver,
+        Func<string, (Wdc5File File, Db2TableSchema Schema)> tableResolver,
         Expression<Func<TEntity, bool>> predicate,
         out Func<Wdc5Row, bool> rowPredicate)
     {
@@ -295,11 +294,10 @@ internal static class Db2NavigationQueryCompiler
     }
 
     private static HashSet<int> FindMatchingIds(
-        Func<string, (IDb2File File, Db2TableSchema Schema)> tableResolver,
+        Func<string, (Wdc5File File, Db2TableSchema Schema)> tableResolver,
         Db2NavigationStringPredicatePlan plan)
     {
-        var (relatedFileHandle, relatedSchema) = tableResolver(plan.Join.Target.TableName);
-        var relatedFile = (Wdc5File)relatedFileHandle;
+        var (relatedFile, relatedSchema) = tableResolver(plan.Join.Target.TableName);
 
         if (!relatedSchema.TryGetField(plan.TargetStringMember.Name, out var relatedField))
             return [];
@@ -371,11 +369,10 @@ internal static class Db2NavigationQueryCompiler
     }
 
     private static HashSet<int> FindMatchingIdsScalar(
-        Func<string, (IDb2File File, Db2TableSchema Schema)> tableResolver,
+        Func<string, (Wdc5File File, Db2TableSchema Schema)> tableResolver,
         Db2NavigationScalarPredicatePlan plan)
     {
-        var (relatedFileHandle, relatedSchema) = tableResolver(plan.Join.Target.TableName);
-        var relatedFile = (Wdc5File)relatedFileHandle;
+        var (relatedFile, relatedSchema) = tableResolver(plan.Join.Target.TableName);
 
         Db2FieldSchema relatedField;
         if (plan.TargetScalarMember.Name.Equals(plan.Join.Target.PrimaryKeyMember.Name, StringComparison.OrdinalIgnoreCase))
@@ -399,11 +396,10 @@ internal static class Db2NavigationQueryCompiler
     }
 
     private static HashSet<int> FindExistingTargetIds(
-        Func<string, (IDb2File File, Db2TableSchema Schema)> tableResolver,
+        Func<string, (Wdc5File File, Db2TableSchema Schema)> tableResolver,
         Db2NavigationNullCheckPlan plan)
     {
-        var (relatedFileHandle, _) = tableResolver(plan.Join.Target.TableName);
-        var relatedFile = (Wdc5File)relatedFileHandle;
+        var (relatedFile, _) = tableResolver(plan.Join.Target.TableName);
         HashSet<int> existingIds = [];
 
         foreach (var relatedRow in relatedFile.EnumerateRows().Where(r => r.Id != 0))

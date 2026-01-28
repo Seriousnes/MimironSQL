@@ -43,8 +43,8 @@ public class QueryTests
         var mapFile = context.GetOrOpenTableRaw(map.TableName).File;
 
         var sample = mapFile.EnumerateRows()
-            .Take(Math.Min(200, ((Wdc5File)mapFile).Header.RecordsCount))
-            .Select(r => ((Wdc5Row)r).TryGetString(directoryField.ColumnStartIndex, out var s) ? s : string.Empty)
+            .Take(Math.Min(200, mapFile.Header.RecordsCount))
+            .Select(r => r.TryGetString(directoryField.ColumnStartIndex, out var s) ? s : string.Empty)
             .FirstOrDefault(s => !string.IsNullOrWhiteSpace(s));
 
         sample.ShouldNotBeNull();
@@ -282,7 +282,7 @@ public class QueryTests
         var mapFile = context.GetOrOpenTableRaw(map.TableName).File;
 
         var candidate = mapFile.EnumerateRows()
-            .Select(r => (Id: r.Id, ParentId: Convert.ToInt32(((Wdc5Row)r).GetScalar<long>(parentMapIdField.ColumnStartIndex))))
+            .Select(r => (Id: r.Id, ParentId: Convert.ToInt32(r.GetScalar<long>(parentMapIdField.ColumnStartIndex))))
             .FirstOrDefault(x => x.ParentId > 0 && mapFile.TryGetRowById(x.ParentId, out _));
 
         candidate.ParentId.ShouldBeGreaterThan(0);
@@ -353,7 +353,7 @@ public class QueryTests
         var mapFile = context.GetOrOpenTableRaw(map.TableName).File;
 
         var candidate = mapFile.EnumerateRows()
-            .Select(r => (Id: r.Id, ParentId: Convert.ToInt32(((Wdc5Row)r).GetScalar<long>(parentMapIdField.ColumnStartIndex))))
+            .Select(r => (Id: r.Id, ParentId: Convert.ToInt32(r.GetScalar<long>(parentMapIdField.ColumnStartIndex))))
             .FirstOrDefault(x => x.ParentId > 0 && mapFile.TryGetRowById(x.ParentId, out _));
 
         candidate.ParentId.ShouldBeGreaterThan(0);
@@ -524,7 +524,7 @@ public class QueryTests
         var allIds = mapFile.EnumerateRows().Select(r => r.Id).ToHashSet();
 
         var candidate = mapFile.EnumerateRows()
-            .Select(r => (Id: r.Id, ParentId: Convert.ToInt32(((Wdc5Row)r).GetScalar<long>(parentMapIdField.ColumnStartIndex))))
+            .Select(r => (Id: r.Id, ParentId: Convert.ToInt32(r.GetScalar<long>(parentMapIdField.ColumnStartIndex))))
             .FirstOrDefault(x => x.ParentId > 0 && allIds.Contains(x.ParentId));
 
         candidate.ParentId.ShouldBeGreaterThan(0);

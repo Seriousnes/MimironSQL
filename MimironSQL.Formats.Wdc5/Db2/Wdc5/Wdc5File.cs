@@ -2,11 +2,10 @@ using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
-using MimironSQL.Formats;
 
 namespace MimironSQL.Db2.Wdc5;
 
-public sealed class Wdc5File : IDb2File
+public sealed class Wdc5File
 {
     private const int HeaderSize = 200;
     private const uint Wdc5Magic = 0x35434457; // "WDC5"
@@ -513,24 +512,5 @@ public sealed class Wdc5File : IDb2File
         var size = Unsafe.SizeOf<T>();
         var bytes = reader.ReadBytes(count * size);
         return [.. MemoryMarshal.Cast<byte, T>(bytes)];
-    }
-
-    Db2FileLayout IDb2File.Layout => new(Header.LayoutHash, Header.FieldsCount);
-
-    IEnumerable<IDb2Row> IDb2File.EnumerateRows()
-    {
-        foreach (var row in EnumerateRows())
-            yield return row;
-    }
-
-    bool IDb2File.TryGetRowById<TId>(TId id, out IDb2Row row)
-    {
-        if (TryGetRowById(id, out var wdc5Row))
-        {
-            row = wdc5Row;
-            return true;
-        }
-        row = null!;
-        return false;
     }
 }

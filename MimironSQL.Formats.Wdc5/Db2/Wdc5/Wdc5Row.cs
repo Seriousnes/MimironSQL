@@ -4,11 +4,10 @@ using System.Runtime.CompilerServices;
 using System.Text;
 
 using Security.Cryptography;
-using MimironSQL.Formats;
 
 namespace MimironSQL.Db2.Wdc5;
 
-public readonly struct Wdc5Row : IDb2Row
+public readonly struct Wdc5Row
 {
     private static readonly UTF8Encoding Utf8Strict = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
 
@@ -460,22 +459,4 @@ public readonly struct Wdc5Row : IDb2Row
 
         return new DecryptedRowLease(buffer, clearLength: rowSizeBytes);
     }
-
-    int IDb2Row.GetInt32(int columnIndex) => GetScalar<int>(columnIndex);
-    uint IDb2Row.GetUInt32(int columnIndex) => GetScalar<uint>(columnIndex);
-    long IDb2Row.GetInt64(int columnIndex) => GetScalar<long>(columnIndex);
-    ulong IDb2Row.GetUInt64(int columnIndex) => GetScalar<ulong>(columnIndex);
-    float IDb2Row.GetSingle(int columnIndex) => GetScalar<float>(columnIndex);
-    byte IDb2Row.GetByte(int columnIndex) => GetScalar<byte>(columnIndex);
-    short IDb2Row.GetInt16(int columnIndex) => GetScalar<short>(columnIndex);
-    ushort IDb2Row.GetUInt16(int columnIndex) => GetScalar<ushort>(columnIndex);
-
-    string IDb2Row.GetString(int columnIndex)
-    {
-        if (!TryGetString(columnIndex, out var value))
-            return string.Empty;
-        return value;
-    }
-
-    T[] IDb2Row.GetArray<T>(int columnIndex, int elementCount) => GetArray<T>(columnIndex);
 }

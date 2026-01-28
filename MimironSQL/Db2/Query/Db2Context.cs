@@ -1,5 +1,6 @@
 using MimironSQL.Db2.Model;
 using MimironSQL.Db2.Schema;
+using MimironSQL.Db2.Wdc5;
 using MimironSQL.Formats;
 using MimironSQL.Formats.Wdc5;
 using MimironSQL.Providers;
@@ -15,7 +16,7 @@ public abstract class Db2Context
     private readonly SchemaMapper _schemaMapper;
     private readonly IDb2StreamProvider _db2StreamProvider;
     private readonly Db2ContextQueryProvider _queryProvider;
-    private readonly Dictionary<string, (IDb2File File, Db2TableSchema Schema)> _cache = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, (Wdc5File File, Db2TableSchema Schema)> _cache = new(StringComparer.OrdinalIgnoreCase);
 
     private Db2Model? _model;
     private IDb2Format? _format;
@@ -128,7 +129,7 @@ public abstract class Db2Context
         _isInitializing = false;
     }
 
-    internal (IDb2File File, Db2TableSchema Schema) GetOrOpenTableRaw(string tableName)
+    internal (Wdc5File File, Db2TableSchema Schema) GetOrOpenTableRaw(string tableName)
     {
         EnsureInitialized();
 
@@ -136,8 +137,11 @@ public abstract class Db2Context
             return cached;
 
         using var stream = _db2StreamProvider.OpenDb2Stream(tableName);
-        var file = _format!.OpenFile(stream);
-        var layout = file.Layout;
+        var opened = _format!.OpenFile(stream);
+        if (opened is not Wdc5File file)
+            throw new NotSupportedException("Only WDC5 files are currently supported by the built-in format.");
+
+        var layout = _format.GetLayout(file);
         var schema = _schemaMapper.GetSchema(tableName, layout);
         _cache[tableName] = (file, schema);
         return (file, schema);

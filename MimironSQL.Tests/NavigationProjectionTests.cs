@@ -1,4 +1,5 @@
 using MimironSQL.Db2;
+using MimironSQL.Db2.Query;
 using MimironSQL.Db2.Wdc5;
 using MimironSQL.Providers;
 using MimironSQL.Tests.Fixtures;
@@ -83,7 +84,8 @@ public sealed class NavigationProjectionTests
         var context = new TestDb2Context(dbdProvider, db2Provider);
 
         context.Spell.Schema.TryGetField("Description_lang", out var descriptionField).ShouldBeTrue();
-        var fieldsCount = context.Spell.File.Header.FieldsCount;
+        var spellTable = (IDb2Table)context.Spell;
+        var fieldsCount = spellTable.File.Header.FieldsCount;
 
         Wdc5RowReadSnapshot navigationProjectionSnapshot;
         using (Wdc5RowReadTracker.Start(fieldsCount))

@@ -16,12 +16,5 @@ public sealed class Wdc5Format : IDb2Format
         registry.Register(Instance);
     }
 
-    public object OpenFile(Stream stream) => new Wdc5File(stream);
-
-    public Db2FileLayout GetLayout(object file)
-    {
-        ArgumentNullException.ThrowIfNull(file);
-        var wdc5 = (Wdc5File)file;
-        return new Db2FileLayout(wdc5.Header.LayoutHash, wdc5.Header.FieldsCount);
-    }
+    public IDb2File OpenFile(Stream stream) => new Wdc5File(stream);
 }

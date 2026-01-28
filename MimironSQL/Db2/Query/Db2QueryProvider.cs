@@ -2,6 +2,7 @@ using MimironSQL.Db2;
 using MimironSQL.Db2.Schema;
 using MimironSQL.Db2.Model;
 using MimironSQL.Db2.Wdc5;
+using MimironSQL.Formats;
 
 using System.Collections;
 using System.Linq.Expressions;
@@ -14,11 +15,11 @@ internal sealed class Db2QueryProvider<TEntity>(
     Wdc5File file,
     Db2TableSchema schema,
     Db2Model model,
-    Func<string, (Wdc5File File, Db2TableSchema Schema)> tableResolver) : IQueryProvider
+    Func<string, (IDb2File File, Db2TableSchema Schema)> tableResolver) : IQueryProvider
 {
     private readonly Db2EntityMaterializer<TEntity> _materializer = new(schema);
     private readonly Db2Model _model = model;
-    private readonly Func<string, (Wdc5File File, Db2TableSchema Schema)> _tableResolver = tableResolver;
+    private readonly Func<string, (IDb2File File, Db2TableSchema Schema)> _tableResolver = tableResolver;
 
     internal TEntity Materialize(Wdc5Row row) => _materializer.Materialize(row);
 
@@ -621,7 +622,7 @@ internal sealed class Db2QueryProvider<TEntity>(
         public IncludePlan(
             LambdaExpression navigation,
             Db2Model model,
-            Func<string, (Wdc5File File, Db2TableSchema Schema)> tableResolver)
+            Func<string, (IDb2File File, Db2TableSchema Schema)> tableResolver)
         {
             if (navigation.Parameters is not { Count: 1 } || navigation.Parameters[0].Type != typeof(TEntity))
                 throw new NotSupportedException("Include navigation must be a lambda with a single parameter matching the entity type.");
@@ -706,9 +707,10 @@ internal sealed class Db2QueryProvider<TEntity>(
         private static Func<HashSet<int>, Dictionary<int, object?>> CreateEntitiesLoader(
             Type entityType,
             string referencedTableName,
-            Func<string, (Wdc5File File, Db2TableSchema Schema)> tableResolver)
+            Func<string, (IDb2File File, Db2TableSchema Schema)> tableResolver)
         {
-            var (file, schema) = tableResolver(referencedTableName);
+            var (fileHandle, schema) = tableResolver(referencedTableName);
+            var file = (Wdc5File)fileHandle;
             var materializeRow = CreateRowMaterializer(entityType, schema);
 
             return keys =>

@@ -1,5 +1,6 @@
 using MimironSQL.Db2.Schema;
 using MimironSQL.Db2.Wdc5;
+using MimironSQL.Formats;
 
 using System.Collections;
 using System.Linq.Expressions;
@@ -12,17 +13,17 @@ public sealed class Db2Table<T> : IQueryable<T>
     internal string TableName { get; }
     public Db2TableSchema Schema { get; }
 
-    internal Wdc5File File => _fileResolver(TableName);
+    internal Wdc5File File => (Wdc5File)_fileResolver(TableName);
 
     private readonly IQueryProvider _provider;
     private readonly Db2EntityMaterializer<T> _materializer;
-    private readonly Func<string, Wdc5File> _fileResolver;
+    private readonly Func<string, IDb2File> _fileResolver;
 
     public Type ElementType => typeof(T);
     public Expression Expression { get; }
     public IQueryProvider Provider => _provider;
 
-    internal Db2Table(string tableName, Db2TableSchema schema, IQueryProvider provider, Func<string, Wdc5File> fileResolver)
+    internal Db2Table(string tableName, Db2TableSchema schema, IQueryProvider provider, Func<string, IDb2File> fileResolver)
     {
         TableName = tableName;
         Schema = schema;
@@ -43,7 +44,7 @@ public sealed class Db2Table<T> : IQueryable<T>
         if (!typeof(Db2Entity<TId>).IsAssignableFrom(typeof(T)))
             throw new NotSupportedException($"Entity type {typeof(T).FullName} must derive from {typeof(Db2Entity<TId>).FullName} to use Find with key type {typeof(TId).FullName}.");
 
-        var file = _fileResolver(TableName);
+        var file = (Wdc5File)_fileResolver(TableName);
         if (!file.TryGetRowById(id, out var row))
             return default;
 

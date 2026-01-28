@@ -84,8 +84,8 @@ public sealed class NavigationProjectionTests
         var context = new TestDb2Context(dbdProvider, db2Provider);
 
         context.Spell.Schema.TryGetField("Description_lang", out var descriptionField).ShouldBeTrue();
-        var spellTable = (IDb2Table)context.Spell;
-        var fieldsCount = spellTable.File.Header.FieldsCount;
+        var spellFile = context.GetOrOpenTableRaw(context.Spell.TableName).File;
+        var fieldsCount = spellFile.Header.FieldsCount;
 
         Wdc5RowReadSnapshot navigationProjectionSnapshot;
         using (Wdc5RowReadTracker.Start(fieldsCount))

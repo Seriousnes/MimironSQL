@@ -1,5 +1,6 @@
 using MimironSQL.Db2.Schema;
 using MimironSQL.Db2.Wdc5;
+using MimironSQL.Extensions;
 
 using System.Linq.Expressions;
 using System.Reflection;
@@ -91,7 +92,7 @@ internal sealed class Db2EntityMaterializer<TEntity>
         var accessor = new Db2FieldAccessor(field);
 
         var method = typeof(Db2RowValue).GetMethod(nameof(Db2RowValue.Read), BindingFlags.Public | BindingFlags.Static);
-        var generic = method!.MakeGenericMethod(UnwrapNullable(memberType));
+        var generic = method!.MakeGenericMethod(memberType.UnwrapNullable());
 
         getter = row => generic.Invoke(null, [row, accessor]);
         return true;
@@ -140,11 +141,11 @@ internal sealed class Db2EntityMaterializer<TEntity>
             return false;
         }
 
-        var targetType = UnwrapNullable(memberType);
+        var targetType = memberType.UnwrapNullable();
         var converted = Expression.Convert(value, targetType);
 
         Expression assign = Expression.Assign(memberAccess, converted);
-        if (IsNullable(memberType))
+        if (memberType.IsNullable())
         {
             var nullableTarget = Expression.Convert(value, memberType);
             assign = Expression.Assign(memberAccess, nullableTarget);
@@ -153,12 +154,6 @@ internal sealed class Db2EntityMaterializer<TEntity>
         setter = Expression.Lambda<Action<TEntity, object?>>(assign, entity, value).Compile();
         return true;
     }
-
-    private static bool IsNullable(Type t)
-        => t.IsGenericType && t.GetGenericTypeDefinition() == typeof(Nullable<>);
-
-    private static Type UnwrapNullable(Type t)
-        => IsNullable(t) ? Nullable.GetUnderlyingType(t)! : t;
 
     private sealed record Binding(Func<Wdc5Row, object?> Getter, Action<TEntity, object?> Setter);
 }

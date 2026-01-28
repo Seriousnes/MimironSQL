@@ -52,7 +52,7 @@ public sealed class Phase4RobustnessTests
     public void Include_throws_when_table_file_cannot_be_opened()
     {
         var testDataDir = TestDataPaths.GetTestDataDirectory();
-        
+
         // Create a provider that will fail when trying to open "MapChallengeMode" table during model building
         var brokenProvider = new BrokenDb2StreamProvider(testDataDir, tableName => tableName == "MapChallengeMode");
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));

@@ -13,6 +13,16 @@ internal enum Db2NavigationStringMatchKind
     EndsWith,
 }
 
+internal enum Db2ScalarComparisonKind
+{
+    Equal = 0,
+    NotEqual,
+    LessThan,
+    LessThanOrEqual,
+    GreaterThan,
+    GreaterThanOrEqual,
+}
+
 internal sealed record Db2NavigationJoinPlan(
     Db2EntityType Root,
     Db2ReferenceNavigation Navigation,
@@ -61,5 +71,21 @@ internal sealed record Db2NavigationStringPredicatePlan(
     Db2FieldSchema TargetStringFieldSchema,
     Db2NavigationStringMatchKind MatchKind,
     string Needle,
+    Db2SourceRequirements RootRequirements,
+    Db2SourceRequirements TargetRequirements);
+
+internal sealed record Db2NavigationScalarPredicatePlan(
+    Db2NavigationJoinPlan Join,
+    MemberInfo TargetScalarMember,
+    Db2FieldSchema TargetScalarFieldSchema,
+    Db2ScalarComparisonKind ComparisonKind,
+    object ComparisonValue,
+    Type ScalarType,
+    Db2SourceRequirements RootRequirements,
+    Db2SourceRequirements TargetRequirements);
+
+internal sealed record Db2NavigationNullCheckPlan(
+    Db2NavigationJoinPlan Join,
+    bool IsNotNull,
     Db2SourceRequirements RootRequirements,
     Db2SourceRequirements TargetRequirements);

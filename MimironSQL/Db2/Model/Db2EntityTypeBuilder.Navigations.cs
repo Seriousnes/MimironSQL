@@ -1,6 +1,8 @@
 using System.Linq.Expressions;
 using System.Reflection;
 
+using MimironSQL.Extensions;
+
 namespace MimironSQL.Db2.Model;
 
 public sealed partial class Db2EntityTypeBuilder<T>
@@ -21,7 +23,7 @@ public sealed partial class Db2EntityTypeBuilder<T>
             throw new NotSupportedException("HasOne only supports direct member access on the root entity parameter.");
 
         var navMember = member.Member;
-        var navType = GetMemberType(navMember);
+        var navType = navMember.GetMemberType();
 
         var targetClrType = typeof(TTarget);
         if (!targetClrType.IsAssignableFrom(navType))
@@ -33,11 +35,4 @@ public sealed partial class Db2EntityTypeBuilder<T>
         return new Db2ReferenceNavigationBuilder<T, TTarget>(_modelBuilder, nav);
     }
 
-    private static Type GetMemberType(MemberInfo member)
-        => member switch
-        {
-            PropertyInfo p => p.PropertyType,
-            FieldInfo f => f.FieldType,
-            _ => throw new InvalidOperationException($"Unexpected member type: {member.GetType().FullName}"),
-        };
 }

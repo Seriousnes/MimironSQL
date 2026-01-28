@@ -59,7 +59,7 @@ public sealed class RequiredColumnsTests
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
         var context = new TestDb2Context(dbdProvider, db2Provider);
 
-        Expression<Func<Spell, bool>> predicate = s => s.SpellName!.Name_lang.Contains("Fire");
+        Expression<Func<Spell, bool>> predicate = s => s.SpellName.Name_lang.Contains("Fire");
 
         Db2NavigationQueryTranslator.TryTranslateStringPredicate(context.Model, predicate, out var plan).ShouldBeTrue();
 

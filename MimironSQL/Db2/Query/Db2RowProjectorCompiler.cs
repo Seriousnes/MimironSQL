@@ -3,6 +3,7 @@ using MimironSQL.Db2.Wdc5;
 
 using System.Linq.Expressions;
 using System.Reflection;
+using MimironSQL.Extensions;
 
 namespace MimironSQL.Db2.Query;
 
@@ -111,12 +112,6 @@ internal static class Db2RowProjectorCompiler
         protected override Expression VisitNewArray(NewArrayExpression node)
             => throw new NotSupportedException("Array creation in selectors is not supported in Phase 3.5.");
 
-        private static bool IsNullable(Type t)
-            => t.IsGenericType && t.GetGenericTypeDefinition() == typeof(Nullable<>);
-
-        private static Type UnwrapNullable(Type t)
-            => IsNullable(t) ? Nullable.GetUnderlyingType(t)! : t;
-
         private Expression BuildReadExpression(Db2FieldAccessor accessor, Type targetType)
         {
             if (targetType.IsArray)
@@ -137,11 +132,11 @@ internal static class Db2RowProjectorCompiler
                 throw new NotSupportedException($"Virtual field '{accessor.Field.Name}' cannot be materialized as a string.");
 
             var methodInfo = typeof(Db2RowValue).GetMethod(nameof(Db2RowValue.Read), BindingFlags.Public | BindingFlags.Static)!;
-            var readType = UnwrapNullable(targetType);
+            var readType = targetType.UnwrapNullable();
             var genericRead = methodInfo.MakeGenericMethod(readType);
             var read = Expression.Call(genericRead, rowParam, Expression.Constant(accessor));
 
-            if (IsNullable(targetType))
+            if (targetType.IsNullable())
                 return Expression.Convert(read, targetType);
 
             return read;

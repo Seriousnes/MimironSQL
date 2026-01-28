@@ -44,9 +44,6 @@ internal static class Db2NavigationRowProjector
                 if (key != 0)
                     keys.Add(key);
             }
-
-            if (take.HasValue && buffered.Count >= take.Value)
-                break;
         }
 
         var lookupByNavigation = new Dictionary<MemberInfo, NavigationLookup>();
@@ -83,11 +80,8 @@ internal static class Db2NavigationRowProjector
 
             if (keys is { Count: not 0 })
             {
-                foreach (var row in relatedFile.EnumerateRows())
+                foreach (var row in relatedFile.EnumerateRows().Where(r => keys.Contains(r.Id)))
                 {
-                    if (!keys.Contains(row.Id))
-                        continue;
-
                     var values = new object?[readers.Length];
                     for (var i = 0; i < readers.Length; i++)
                         values[i] = readers[i](row);
@@ -99,7 +93,7 @@ internal static class Db2NavigationRowProjector
             lookupByNavigation[navMember] = new NavigationLookup(valuesByKey, memberIndexes);
         }
 
-        var projectorCompiler = new RowProjectorCompiler(rootSchema, selector, lookupByNavigation, accessGroups, rootKeyAccessorByNavigation);
+        var projectorCompiler = new RowProjectorCompiler(rootSchema, selector, lookupByNavigation, rootKeyAccessorByNavigation);
         var projector = projectorCompiler.Compile<TResult>();
 
         foreach (var row in buffered)
@@ -161,7 +155,6 @@ internal static class Db2NavigationRowProjector
         Db2TableSchema rootSchema,
         LambdaExpression selector,
         Dictionary<MemberInfo, NavigationLookup> lookupByNavigation,
-        Dictionary<MemberInfo, Db2NavigationMemberAccessPlan[]> accessGroups,
         Dictionary<MemberInfo, Db2FieldAccessor> rootKeyAccessorByNavigation)
     {
         private readonly ParameterExpression _entityParam = selector.Parameters[0];
@@ -174,7 +167,6 @@ internal static class Db2NavigationRowProjector
                 _rowParam,
                 rootSchema,
                 lookupByNavigation,
-                accessGroups,
                 rootKeyAccessorByNavigation);
 
             var rewrittenBody = rewriter.Visit(selector.Body);
@@ -190,43 +182,36 @@ internal static class Db2NavigationRowProjector
             ParameterExpression rowParam,
             Db2TableSchema rootSchema,
             Dictionary<MemberInfo, NavigationLookup> lookupByNavigation,
-            Dictionary<MemberInfo, Db2NavigationMemberAccessPlan[]> accessGroups,
             Dictionary<MemberInfo, Db2FieldAccessor> rootKeyAccessorByNavigation) : ExpressionVisitor
         {
             protected override Expression VisitMember(MemberExpression node)
             {
                 // x.Nav.Member - handle navigation member access BEFORE visiting base
-                if (node.Expression is MemberExpression { Member: PropertyInfo or FieldInfo } nav && nav.Expression == entityParam)
+                if (node.Expression is MemberExpression { Member: PropertyInfo or FieldInfo } nav && nav.Expression == entityParam && lookupByNavigation.TryGetValue(nav.Member, out var lookup))
                 {
-                    if (lookupByNavigation.TryGetValue(nav.Member, out var lookup))
-                    {
-                        var plans = accessGroups[nav.Member];
-                        var join = plans[0].Join;
+                    var keyAccessor = rootKeyAccessorByNavigation[nav.Member];
+                    var keyExpression = CreateKeyExpression(keyAccessor);
+                    var memberIndex = lookup.GetMemberIndex(node.Member);
 
-                        var keyAccessor = rootKeyAccessorByNavigation[nav.Member];
-                        var keyExpression = CreateKeyExpression(keyAccessor);
-                        var memberIndex = lookup.GetMemberIndex(node.Member);
+                    var tryGet = typeof(NavigationLookup).GetMethod(nameof(NavigationLookup.TryGetValue))!;
 
-                        var tryGet = typeof(NavigationLookup).GetMethod(nameof(NavigationLookup.TryGetValue))!;
+                    var keyVar = Expression.Variable(typeof(int), "key");
+                    var valueVar = Expression.Variable(typeof(object), "value");
 
-                        var keyVar = Expression.Variable(typeof(int), "key");
-                        var valueVar = Expression.Variable(typeof(object), "value");
+                    var assignKey = Expression.Assign(keyVar, keyExpression);
 
-                        var assignKey = Expression.Assign(keyVar, keyExpression);
+                    var tryGetCall = Expression.Call(Expression.Constant(lookup), tryGet, keyVar, Expression.Constant(memberIndex), valueVar);
 
-                        var tryGetCall = Expression.Call(Expression.Constant(lookup), tryGet, keyVar, Expression.Constant(memberIndex), valueVar);
+                    var valueAsTarget = Expression.Convert(valueVar, node.Type);
 
-                        var valueAsTarget = Expression.Convert(valueVar, node.Type);
+                    var defaultValue = Expression.Default(node.Type);
 
-                        var defaultValue = Expression.Default(node.Type);
+                    var body = Expression.Block(
+                        [keyVar, valueVar],
+                        assignKey,
+                        Expression.Condition(tryGetCall, valueAsTarget, defaultValue));
 
-                        var body = Expression.Block(
-                            [keyVar, valueVar],
-                            assignKey,
-                            Expression.Condition(tryGetCall, valueAsTarget, defaultValue));
-
-                        return body;
-                    }
+                    return body;
                 }
 
                 // Visit children first

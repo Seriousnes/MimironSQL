@@ -51,7 +51,7 @@ public sealed class NavigationProjectionTests
     }
 
     [Fact]
-    public void Navigation_projection_avoids_root_entity_materialization()
+    public void Root_field_projection_avoids_entity_materialization()
     {
         var testDataDir = TestDataPaths.GetTestDataDirectory();
         var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));

@@ -120,11 +120,8 @@ internal sealed class Db2QueryProvider<TEntity>(
                 postOps.All(op => op is not Db2WhereOperation && op is not Db2IncludeOperation) &&
                 postOps.Count(op => op is Db2SelectOperation) <= 1;
 
-            if (canAttemptNavigationPrune)
-            {
-                if (TryExecuteNavigationProjectionPruned(preEntityWhere, stopAfter, selectOp.Selector, postOps, out var navPruned))
-                    return (IEnumerable<TElement>)navPruned;
-            }
+            if (canAttemptNavigationPrune && TryExecuteNavigationProjectionPruned(preEntityWhere, stopAfter, selectOp.Selector, postOps, out var navPruned))
+                return (IEnumerable<TElement>)navPruned;
         }
 
         IEnumerable<TEntity> baseEntities = EnumerateEntities(preEntityWhere, stopAfter);
@@ -391,17 +388,7 @@ internal sealed class Db2QueryProvider<TEntity>(
             var yielded = 0;
             foreach (var row in file.EnumerateRows())
             {
-                var ok = true;
-                foreach (var p in rowPredicates)
-                {
-                    if (!p(row))
-                    {
-                        ok = false;
-                        break;
-                    }
-                }
-
-                if (!ok)
+                if (!rowPredicates.All(p => p(row)))
                     continue;
 
                 yield return row;
@@ -419,7 +406,7 @@ internal sealed class Db2QueryProvider<TEntity>(
             _tableResolver,
             [.. navAccesses],
             selector,
-            take);
+            null);
     }
 
     private TResult ExecuteScalar<TResult>(Expression expression)

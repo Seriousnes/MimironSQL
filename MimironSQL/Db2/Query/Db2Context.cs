@@ -5,6 +5,7 @@ using MimironSQL.Formats;
 using MimironSQL.Formats.Wdc5;
 using MimironSQL.Providers;
 
+using System.Collections.Concurrent;
 using System.Reflection;
 
 namespace MimironSQL.Db2.Query;
@@ -12,6 +13,8 @@ namespace MimironSQL.Db2.Query;
 public abstract class Db2Context
 {
     private static readonly Type Db2TableOpenGenericType = typeof(Db2Table<>);
+    private static readonly ConcurrentDictionary<Type, Func<Db2Context, string, object>> OpenTableDelegates = new();
+    private static readonly ConcurrentDictionary<PropertyInfo, Action<Db2Context, object>> TablePropertySetters = new();
 
     private readonly SchemaMapper _schemaMapper;
     private readonly IDb2StreamProvider _db2StreamProvider;
@@ -167,8 +170,28 @@ public abstract class Db2Context
                 ? configured.TableName
                 : entityType.Name;
 
-            var table = OpenTable(entityType, tableName);
-            p.SetValue(this, table);
+            var openTable = OpenTableDelegates.GetOrAdd(entityType, static entityType =>
+            {
+                var factoryMethod = typeof(Db2Context)
+                    .GetMethod(nameof(OpenTableByEntity), BindingFlags.Static | BindingFlags.NonPublic)!;
+
+                var generic = factoryMethod.MakeGenericMethod(entityType);
+                return (Func<Db2Context, string, object>)generic.CreateDelegate(typeof(Func<Db2Context, string, object>));
+            });
+
+            var setter = TablePropertySetters.GetOrAdd(p, static p =>
+            {
+                var ctx = System.Linq.Expressions.Expression.Parameter(typeof(Db2Context), "ctx");
+                var value = System.Linq.Expressions.Expression.Parameter(typeof(object), "value");
+
+                var declaring = System.Linq.Expressions.Expression.Convert(ctx, p.DeclaringType!);
+                var typedValue = System.Linq.Expressions.Expression.Convert(value, p.PropertyType);
+                var set = System.Linq.Expressions.Expression.Call(declaring, p.SetMethod!, typedValue);
+                return System.Linq.Expressions.Expression.Lambda<Action<Db2Context, object>>(set, ctx, value).Compile();
+            });
+
+            var table = openTable(this, tableName);
+            setter(this, table);
         }
     }
 
@@ -182,14 +205,8 @@ public abstract class Db2Context
         return builder.Build(tableName => GetOrOpenTableRaw(tableName).Schema);
     }
 
-    private object OpenTable(Type entityType, string tableName)
-    {
-        ArgumentNullException.ThrowIfNull(entityType);
-        ArgumentNullException.ThrowIfNull(tableName);
-
-        var m = typeof(Db2Context).GetMethod(nameof(OpenTableGeneric), BindingFlags.Instance | BindingFlags.NonPublic)!;
-        return m.MakeGenericMethod(entityType).Invoke(this, [tableName])!;
-    }
+    private static object OpenTableByEntity<TEntity>(Db2Context context, string tableName)
+        => context.OpenTableGeneric<TEntity>(tableName);
 
     private Db2Table<T> OpenTableGeneric<T>(string tableName)
     {

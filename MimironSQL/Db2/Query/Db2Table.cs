@@ -7,7 +7,13 @@ using System.Numerics;
 
 namespace MimironSQL.Db2.Query;
 
-public sealed class Db2Table<T> : IQueryable<T>
+internal interface IDb2Table
+{
+    Type EntityType { get; }
+    string TableName { get; }
+}
+
+public sealed class Db2Table<T> : IQueryable<T>, IDb2Table
 {
     internal string TableName { get; }
     public Db2TableSchema Schema { get; }
@@ -21,6 +27,9 @@ public sealed class Db2Table<T> : IQueryable<T>
     public Type ElementType => typeof(T);
     public Expression Expression { get; }
     public IQueryProvider Provider => _provider;
+
+    Type IDb2Table.EntityType => typeof(T);
+    string IDb2Table.TableName => TableName;
 
     internal Db2Table(string tableName, Db2TableSchema schema, IQueryProvider provider, Func<string, Wdc5File> fileResolver)
     {

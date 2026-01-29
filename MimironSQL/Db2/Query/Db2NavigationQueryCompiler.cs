@@ -6,6 +6,7 @@ using MimironSQL.Db2;
 using MimironSQL.Db2.Model;
 using MimironSQL.Db2.Schema;
 using MimironSQL.Db2.Wdc5;
+using MimironSQL.Extensions;
 
 namespace MimironSQL.Db2.Query;
 
@@ -271,7 +272,7 @@ internal static class Db2NavigationQueryCompiler
             rowPredicate = nullCheckPlan.Join.Kind switch
             {
                 Db2ReferenceNavigationKind.ForeignKeyToPrimaryKey => CompileNullCheckForeignKey(nullCheckPlan.Join.RootKeyFieldSchema, existingIds, nullCheckPlan.IsNotNull),
-                Db2ReferenceNavigationKind.SharedPrimaryKeyOneToOne => row => nullCheckPlan.IsNotNull ? (row is { Id: not 0 } && existingIds.Contains(row.Id)) : (row.Id == 0 || !existingIds.Contains(row.Id)),
+                Db2ReferenceNavigationKind.SharedPrimaryKeyOneToOne => row => existingIds.MatchesSharedPrimaryKeyNullCheck(row.Id, nullCheckPlan.IsNotNull),
                 _ => _ => false,
             };
 
@@ -372,27 +373,100 @@ internal static class Db2NavigationQueryCompiler
         Func<string, (Wdc5File File, Db2TableSchema Schema)> tableResolver,
         Db2NavigationScalarPredicatePlan plan)
     {
-        var (relatedFile, relatedSchema) = tableResolver(plan.Join.Target.TableName);
+        return plan switch
+        {
+            Db2NavigationScalarPredicatePlan<bool> p => FindMatchingIdsScalar(tableResolver, p),
+            Db2NavigationScalarPredicatePlan<byte> p => FindMatchingIdsScalar(tableResolver, p),
+            Db2NavigationScalarPredicatePlan<sbyte> p => FindMatchingIdsScalar(tableResolver, p),
+            Db2NavigationScalarPredicatePlan<short> p => FindMatchingIdsScalar(tableResolver, p),
+            Db2NavigationScalarPredicatePlan<ushort> p => FindMatchingIdsScalar(tableResolver, p),
+            Db2NavigationScalarPredicatePlan<int> p => FindMatchingIdsScalar(tableResolver, p),
+            Db2NavigationScalarPredicatePlan<uint> p => FindMatchingIdsScalar(tableResolver, p),
+            Db2NavigationScalarPredicatePlan<long> p => FindMatchingIdsScalar(tableResolver, p),
+            Db2NavigationScalarPredicatePlan<ulong> p => FindMatchingIdsScalar(tableResolver, p),
+            Db2NavigationScalarPredicatePlan<float> p => FindMatchingIdsScalar(tableResolver, p),
+            Db2NavigationScalarPredicatePlan<double> p => FindMatchingIdsScalar(tableResolver, p),
+            _ => [],
+        };
+    }
 
-        Db2FieldSchema relatedField;
-        if (plan.TargetScalarMember.Name.Equals(plan.Join.Target.PrimaryKeyMember.Name, StringComparison.OrdinalIgnoreCase))
-        {
-            relatedField = plan.Join.Target.PrimaryKeyFieldSchema;
-        }
-        else if (!relatedSchema.TryGetFieldCaseInsensitive(plan.TargetScalarMember.Name, out relatedField!))
-        {
+    private static HashSet<int> FindMatchingIdsScalar<T>(
+        Func<string, (Wdc5File File, Db2TableSchema Schema)> tableResolver,
+        Db2NavigationScalarPredicatePlan<T> plan) where T : unmanaged, IComparable<T>, IEquatable<T>
+    {
+        var (relatedFile, relatedSchema) = tableResolver(plan.Join.Target.TableName);
+        if (!TryResolveRelatedScalarField(plan.Join, plan.TargetScalarMember, relatedSchema, out var relatedField))
             return [];
-        }
 
         var accessor = new Db2FieldAccessor(relatedField);
         HashSet<int> matchingIds = [];
 
-        foreach (var relatedRow in relatedFile.EnumerateRows().Where(r => EvaluateScalarComparison(r, accessor, plan.ComparisonKind, plan.ComparisonValue, plan.ScalarType)))
+        foreach (var relatedRow in relatedFile.EnumerateRows())
         {
-            matchingIds.Add(relatedRow.Id);
+            var value = ScalarReader<T>.Read(relatedRow, accessor);
+            if (EvaluateComparison(value, plan.ComparisonValue, plan.ComparisonKind))
+                matchingIds.Add(relatedRow.Id);
         }
 
         return matchingIds;
+    }
+
+    private static bool TryResolveRelatedScalarField(
+        Db2NavigationJoinPlan join,
+        MemberInfo targetScalarMember,
+        Db2TableSchema relatedSchema,
+        out Db2FieldSchema relatedField)
+    {
+        if (targetScalarMember.Name.Equals(join.Target.PrimaryKeyMember.Name, StringComparison.OrdinalIgnoreCase))
+        {
+            relatedField = join.Target.PrimaryKeyFieldSchema;
+            return true;
+        }
+
+        return relatedSchema.TryGetFieldCaseInsensitive(targetScalarMember.Name, out relatedField!);
+    }
+
+    private static class ScalarReader<T>
+    {
+        public static readonly Func<Wdc5Row, Db2FieldAccessor, T> Read = Create();
+
+        private static Func<Wdc5Row, Db2FieldAccessor, T> Create()
+        {
+            if (typeof(T) == typeof(bool))
+                return (Func<Wdc5Row, Db2FieldAccessor, T>)(object)(Func<Wdc5Row, Db2FieldAccessor, bool>)Db2RowValue.ReadBoolean;
+
+            if (typeof(T) == typeof(byte))
+                return (Func<Wdc5Row, Db2FieldAccessor, T>)(object)(Func<Wdc5Row, Db2FieldAccessor, byte>)Db2RowValue.ReadByte;
+
+            if (typeof(T) == typeof(sbyte))
+                return (Func<Wdc5Row, Db2FieldAccessor, T>)(object)(Func<Wdc5Row, Db2FieldAccessor, sbyte>)Db2RowValue.ReadSByte;
+
+            if (typeof(T) == typeof(short))
+                return (Func<Wdc5Row, Db2FieldAccessor, T>)(object)(Func<Wdc5Row, Db2FieldAccessor, short>)Db2RowValue.ReadInt16;
+
+            if (typeof(T) == typeof(ushort))
+                return (Func<Wdc5Row, Db2FieldAccessor, T>)(object)(Func<Wdc5Row, Db2FieldAccessor, ushort>)Db2RowValue.ReadUInt16;
+
+            if (typeof(T) == typeof(int))
+                return (Func<Wdc5Row, Db2FieldAccessor, T>)(object)(Func<Wdc5Row, Db2FieldAccessor, int>)Db2RowValue.ReadInt32;
+
+            if (typeof(T) == typeof(uint))
+                return (Func<Wdc5Row, Db2FieldAccessor, T>)(object)(Func<Wdc5Row, Db2FieldAccessor, uint>)Db2RowValue.ReadUInt32;
+
+            if (typeof(T) == typeof(long))
+                return (Func<Wdc5Row, Db2FieldAccessor, T>)(object)(Func<Wdc5Row, Db2FieldAccessor, long>)Db2RowValue.ReadInt64;
+
+            if (typeof(T) == typeof(ulong))
+                return (Func<Wdc5Row, Db2FieldAccessor, T>)(object)(Func<Wdc5Row, Db2FieldAccessor, ulong>)Db2RowValue.ReadUInt64;
+
+            if (typeof(T) == typeof(float))
+                return (Func<Wdc5Row, Db2FieldAccessor, T>)(object)(Func<Wdc5Row, Db2FieldAccessor, float>)Db2RowValue.ReadSingle;
+
+            if (typeof(T) == typeof(double))
+                return (Func<Wdc5Row, Db2FieldAccessor, T>)(object)(Func<Wdc5Row, Db2FieldAccessor, double>)Db2RowValue.ReadDouble;
+
+            throw new NotSupportedException($"Unsupported scalar type {typeof(T).FullName}.");
+        }
     }
 
     private static HashSet<int> FindExistingTargetIds(
@@ -410,13 +484,9 @@ internal static class Db2NavigationQueryCompiler
         return existingIds;
     }
 
-    private static bool EvaluateScalarComparison(Wdc5Row row, Db2FieldAccessor accessor, Db2ScalarComparisonKind kind, object compareValue, Type scalarType)
+    private static bool EvaluateComparison<T>(T value, T compareValue, Db2ScalarComparisonKind kind) where T : IComparable<T>
     {
-        object? value = ReadScalarValue(row, accessor, scalarType);
-        if (value is null)
-            return false;
-
-        var comparison = CompareScalars(value, compareValue, scalarType);
+        var comparison = value.CompareTo(compareValue);
 
         return kind switch
         {
@@ -427,46 +497,6 @@ internal static class Db2NavigationQueryCompiler
             Db2ScalarComparisonKind.GreaterThan => comparison > 0,
             Db2ScalarComparisonKind.GreaterThanOrEqual => comparison >= 0,
             _ => false,
-        };
-    }
-
-    private static object? ReadScalarValue(Wdc5Row row, Db2FieldAccessor accessor, Type type)
-    {
-        return Type.GetTypeCode(type) switch
-        {
-            TypeCode.Byte => Db2RowValue.Read<byte>(row, accessor),
-            TypeCode.SByte => Db2RowValue.Read<sbyte>(row, accessor),
-            TypeCode.Int16 => Db2RowValue.Read<short>(row, accessor),
-            TypeCode.UInt16 => Db2RowValue.Read<ushort>(row, accessor),
-            TypeCode.Int32 => Db2RowValue.Read<int>(row, accessor),
-            TypeCode.UInt32 => Db2RowValue.Read<uint>(row, accessor),
-            TypeCode.Int64 => Db2RowValue.Read<long>(row, accessor),
-            TypeCode.UInt64 => Db2RowValue.Read<ulong>(row, accessor),
-            TypeCode.Single => Db2RowValue.Read<float>(row, accessor),
-            TypeCode.Double => Db2RowValue.Read<double>(row, accessor),
-            TypeCode.Boolean => Db2RowValue.Read<bool>(row, accessor),
-            _ => type.IsEnum ? Db2RowValue.Read<int>(row, accessor) : null,
-        };
-    }
-
-    private static int CompareScalars(object a, object b, Type type)
-    {
-        return Type.GetTypeCode(type) switch
-        {
-            TypeCode.Byte => ((byte)a).CompareTo((byte)b),
-            TypeCode.SByte => ((sbyte)a).CompareTo((sbyte)b),
-            TypeCode.Int16 => ((short)a).CompareTo((short)b),
-            TypeCode.UInt16 => ((ushort)a).CompareTo((ushort)b),
-            TypeCode.Int32 => ((int)a).CompareTo((int)b),
-            TypeCode.UInt32 => ((uint)a).CompareTo((uint)b),
-            TypeCode.Int64 => ((long)a).CompareTo((long)b),
-            TypeCode.UInt64 => ((ulong)a).CompareTo((ulong)b),
-            TypeCode.Single => ((float)a).CompareTo((float)b),
-            TypeCode.Double => ((double)a).CompareTo((double)b),
-            TypeCode.Boolean => ((bool)a).CompareTo((bool)b),
-            _ => type.IsEnum
-                ? Comparer<int>.Default.Compare(Convert.ToInt32(a), Convert.ToInt32(b))
-                : throw new NotSupportedException($"Comparison not supported for type '{type.FullName}'."),
         };
     }
 

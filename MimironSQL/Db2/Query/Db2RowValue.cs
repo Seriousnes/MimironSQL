@@ -5,78 +5,115 @@ namespace MimironSQL.Db2.Query;
 
 internal static class Db2RowValue
 {
-    public static T Read<T>(Wdc5Row row, Db2FieldAccessor accessor)
+    public static string ReadString(Wdc5Row row, Db2FieldAccessor accessor)
     {
         var field = accessor.Field;
 
-        if (typeof(T) == typeof(string))
-        {
-            if (field.IsVirtual)
-                throw new NotSupportedException($"Virtual field '{field.Name}' cannot be materialized as a string.");
-
-            _ = row.TryGetString(field.ColumnStartIndex, out var str);
-            return (T)(object)str;
-        }
-
-        if (typeof(T) == typeof(float))
-        {
-            var value = field.IsVirtual
-                ? GetVirtualNumeric(row, field)
-                : field is { ValueType: Db2ValueType.Single }
-                    ? row.GetScalar<float>(field.ColumnStartIndex)
-                    : Convert.ToSingle(ReadNumericRaw(row, field));
-
-            return (T)(object)value;
-        }
-
-        if (typeof(T) == typeof(double))
-            return (T)(object)Convert.ToDouble(ReadNumericRaw(row, field));
-
-        if (typeof(T) == typeof(bool))
-            return (T)(object)(ReadInt64(row, accessor) != 0);
-
-        if (typeof(T) == typeof(byte))
-            return (T)(object)Convert.ToByte(ReadNumericRaw(row, field));
-
-        if (typeof(T) == typeof(sbyte))
-            return (T)(object)Convert.ToSByte(ReadNumericRaw(row, field));
-
-        if (typeof(T) == typeof(short))
-            return (T)(object)Convert.ToInt16(ReadNumericRaw(row, field));
-
-        if (typeof(T) == typeof(ushort))
-            return (T)(object)Convert.ToUInt16(ReadNumericRaw(row, field));
-
-        if (typeof(T) == typeof(int))
-            return (T)(object)Convert.ToInt32(ReadNumericRaw(row, field));
-
-        if (typeof(T) == typeof(uint))
-        {
-            if (field.IsVirtual)
-                return (T)(object)GetVirtualNumericUInt32(row, field);
-
-            return (T)(object)Convert.ToUInt32(ReadNumericRaw(row, field));
-        }
-
-        if (typeof(T) == typeof(long))
-            return (T)(object)ReadInt64(row, accessor);
-
-        if (typeof(T) == typeof(ulong))
-            return (T)(object)ReadUInt64(row, accessor);
-
-        throw new NotSupportedException($"Unsupported target type {typeof(T).FullName} for DB2 field reads.");
-    }
-
-    public static T[] ReadArray<T>(Wdc5Row row, Db2FieldAccessor accessor) where T : unmanaged
-    {
-        var field = accessor.Field;
         if (field.IsVirtual)
-            throw new NotSupportedException($"Virtual field '{field.Name}' cannot be materialized as an array.");
+            throw new NotSupportedException($"Virtual field '{field.Name}' cannot be materialized as a string.");
 
-        return row.GetArray<T>(field.ColumnStartIndex);
+        _ = row.TryGetString(field.ColumnStartIndex, out var str);
+        return str;
     }
 
-    private static long ReadInt64(Wdc5Row row, Db2FieldAccessor accessor)
+    public static float ReadSingle(Wdc5Row row, Db2FieldAccessor accessor)
+    {
+        var field = accessor.Field;
+
+        if (field.IsVirtual)
+            return GetVirtualNumeric(row, field);
+
+        return field is { ValueType: Db2ValueType.Single }
+            ? row.GetScalar<float>(field.ColumnStartIndex)
+            : Convert.ToSingle(ReadNumericInt64OrUInt64(row, field));
+    }
+
+    public static double ReadDouble(Wdc5Row row, Db2FieldAccessor accessor)
+    {
+        var field = accessor.Field;
+
+        if (field.IsVirtual)
+            return GetVirtualNumeric(row, field);
+
+        return Convert.ToDouble(ReadNumericInt64OrUInt64(row, field));
+    }
+
+    public static bool ReadBoolean(Wdc5Row row, Db2FieldAccessor accessor)
+        => ReadInt64(row, accessor) != 0;
+
+    public static byte ReadByte(Wdc5Row row, Db2FieldAccessor accessor)
+    {
+        var field = accessor.Field;
+
+        if (field.IsVirtual)
+            return Convert.ToByte(GetVirtualNumeric(row, field));
+
+        return field.ValueType == Db2ValueType.UInt64
+            ? Convert.ToByte(ReadNumericUInt64(row, field))
+            : Convert.ToByte(ReadNumericInt64(row, field));
+    }
+
+    public static sbyte ReadSByte(Wdc5Row row, Db2FieldAccessor accessor)
+    {
+        var field = accessor.Field;
+
+        if (field.IsVirtual)
+            return Convert.ToSByte(GetVirtualNumeric(row, field));
+
+        return field.ValueType == Db2ValueType.UInt64
+            ? Convert.ToSByte(ReadNumericUInt64(row, field))
+            : Convert.ToSByte(ReadNumericInt64(row, field));
+    }
+
+    public static short ReadInt16(Wdc5Row row, Db2FieldAccessor accessor)
+    {
+        var field = accessor.Field;
+
+        if (field.IsVirtual)
+            return Convert.ToInt16(GetVirtualNumeric(row, field));
+
+        return field.ValueType == Db2ValueType.UInt64
+            ? Convert.ToInt16(ReadNumericUInt64(row, field))
+            : Convert.ToInt16(ReadNumericInt64(row, field));
+    }
+
+    public static ushort ReadUInt16(Wdc5Row row, Db2FieldAccessor accessor)
+    {
+        var field = accessor.Field;
+
+        if (field.IsVirtual)
+            return Convert.ToUInt16(GetVirtualNumeric(row, field));
+
+        return field.ValueType == Db2ValueType.UInt64
+            ? Convert.ToUInt16(ReadNumericUInt64(row, field))
+            : Convert.ToUInt16(ReadNumericInt64(row, field));
+    }
+
+    public static int ReadInt32(Wdc5Row row, Db2FieldAccessor accessor)
+    {
+        var field = accessor.Field;
+
+        if (field.IsVirtual)
+            return Convert.ToInt32(GetVirtualNumeric(row, field));
+
+        return field.ValueType == Db2ValueType.UInt64
+            ? Convert.ToInt32(ReadNumericUInt64(row, field))
+            : Convert.ToInt32(ReadNumericInt64(row, field));
+    }
+
+    public static uint ReadUInt32(Wdc5Row row, Db2FieldAccessor accessor)
+    {
+        var field = accessor.Field;
+
+        if (field.IsVirtual)
+            return GetVirtualNumericUInt32(row, field);
+
+        return field.ValueType == Db2ValueType.UInt64
+            ? Convert.ToUInt32(ReadNumericUInt64(row, field))
+            : Convert.ToUInt32(ReadNumericInt64(row, field));
+    }
+
+    public static long ReadInt64(Wdc5Row row, Db2FieldAccessor accessor)
     {
         var field = accessor.Field;
 
@@ -91,7 +128,7 @@ internal static class Db2RowValue
         };
     }
 
-    private static ulong ReadUInt64(Wdc5Row row, Db2FieldAccessor accessor)
+    public static ulong ReadUInt64(Wdc5Row row, Db2FieldAccessor accessor)
     {
         var field = accessor.Field;
 
@@ -106,18 +143,45 @@ internal static class Db2RowValue
         };
     }
 
-    private static object ReadNumericRaw(Wdc5Row row, Db2FieldSchema field)
+    public static T[] ReadArray<T>(Wdc5Row row, Db2FieldAccessor accessor) where T : unmanaged
+    {
+        var field = accessor.Field;
+        if (field.IsVirtual)
+            throw new NotSupportedException($"Virtual field '{field.Name}' cannot be materialized as an array.");
+
+        return row.GetArray<T>(field.ColumnStartIndex);
+    }
+
+    private static long ReadNumericInt64(Wdc5Row row, Db2FieldSchema field)
     {
         if (field.IsVirtual)
             return GetVirtualNumeric(row, field);
 
         return field.ValueType switch
         {
-            Db2ValueType.Single => row.GetScalar<float>(field.ColumnStartIndex),
-            Db2ValueType.UInt64 => row.GetScalar<ulong>(field.ColumnStartIndex),
+            Db2ValueType.Single => Convert.ToInt64(row.GetScalar<float>(field.ColumnStartIndex)),
+            Db2ValueType.UInt64 => unchecked((long)row.GetScalar<ulong>(field.ColumnStartIndex)),
             _ => row.GetScalar<long>(field.ColumnStartIndex),
         };
     }
+
+    private static ulong ReadNumericUInt64(Wdc5Row row, Db2FieldSchema field)
+    {
+        if (field.IsVirtual)
+            return GetVirtualNumericUInt32(row, field);
+
+        return field.ValueType switch
+        {
+            Db2ValueType.Single => Convert.ToUInt64(row.GetScalar<float>(field.ColumnStartIndex)),
+            Db2ValueType.Int64 => unchecked((ulong)row.GetScalar<long>(field.ColumnStartIndex)),
+            _ => row.GetScalar<ulong>(field.ColumnStartIndex),
+        };
+    }
+
+    private static double ReadNumericInt64OrUInt64(Wdc5Row row, Db2FieldSchema field)
+        => field.ValueType == Db2ValueType.UInt64
+            ? ReadNumericUInt64(row, field)
+            : ReadNumericInt64(row, field);
 
     private static int GetVirtualNumeric(Wdc5Row row, Db2FieldSchema field)
     {

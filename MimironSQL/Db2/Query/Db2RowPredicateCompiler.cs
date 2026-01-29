@@ -1,5 +1,6 @@
 using MimironSQL.Db2.Schema;
 using MimironSQL.Db2.Wdc5;
+using MimironSQL.Extensions;
 
 using System.Linq.Expressions;
 using System.Reflection;
@@ -147,9 +148,10 @@ internal static class Db2RowPredicateCompiler
 
         private Expression BuildReadExpression(Db2FieldAccessor accessor, Type targetType)
         {
-            var method = typeof(Db2RowValue).GetMethod(nameof(Db2RowValue.Read), BindingFlags.Public | BindingFlags.Static)!;
-            var generic = method.MakeGenericMethod(targetType);
-            return Expression.Call(generic, rowParam, Expression.Constant(accessor));
+            var readType = targetType.UnwrapNullable();
+            var methodInfo = readType.GetReadMethod();
+            var read = Expression.Call(methodInfo, rowParam, Expression.Constant(accessor));
+            return targetType.IsNullable() ? Expression.Convert(read, targetType) : read;
         }
     }
 }

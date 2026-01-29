@@ -2,6 +2,7 @@ using System.Linq.Expressions;
 using System.Reflection;
 
 using MimironSQL.Db2.Model;
+using MimironSQL.Db2.Schema;
 using MimironSQL.Extensions;
 
 namespace MimironSQL.Db2.Query;
@@ -78,7 +79,7 @@ internal static class Db2NavigationQueryTranslator
         var rootParam = predicate.Parameters[0];
         var body = predicate.Body.UnwrapConvert()!;
 
-        if (!TryParseNavigationScalarPredicate(body, rootParam, out var navMember, out var targetMember, out var comparisonKind, out var comparisonValue, out var scalarType))
+        if (!TryParseNavigationScalarPredicate(body, rootParam, out var navMember, out var targetMember, out var comparisonKind, out var comparisonValueExpression, out var scalarType))
             return false;
 
         if (!model.TryGetReferenceNavigation(typeof(TEntity), navMember, out var navigation))
@@ -102,17 +103,150 @@ internal static class Db2NavigationQueryTranslator
                 $"This field is required for navigation scalar predicate on '{typeof(TEntity).FullName}.{navMember.Name}'.");
         }
 
-        plan = new Db2NavigationScalarPredicatePlan(
-            Join: join,
-            TargetScalarMember: targetMember,
-            TargetScalarFieldSchema: targetFieldSchema,
-            ComparisonKind: comparisonKind,
-            ComparisonValue: comparisonValue,
-            ScalarType: scalarType,
-            RootRequirements: rootReq,
-            TargetRequirements: targetReq);
+        plan = CreateScalarPredicatePlan(
+            join,
+            targetMember,
+            targetFieldSchema,
+            comparisonKind,
+            comparisonValueExpression,
+            scalarType,
+            rootReq,
+            targetReq);
 
         return true;
+    }
+
+    private static Db2NavigationScalarPredicatePlan CreateScalarPredicatePlan(
+        Db2NavigationJoinPlan join,
+        MemberInfo targetMember,
+        Db2FieldSchema targetFieldSchema,
+        Db2ScalarComparisonKind comparisonKind,
+        Expression comparisonValueExpression,
+        Type scalarType,
+        Db2SourceRequirements rootReq,
+        Db2SourceRequirements targetReq)
+    {
+        var underlying = scalarType.UnwrapNullable();
+        if (underlying.IsEnum)
+            underlying = Enum.GetUnderlyingType(underlying);
+
+        return Type.GetTypeCode(underlying) switch
+        {
+            TypeCode.Boolean => new Db2NavigationScalarPredicatePlan<bool>(
+                Join: join,
+                TargetScalarMember: targetMember,
+                TargetScalarFieldSchema: targetFieldSchema,
+                ComparisonKind: comparisonKind,
+                ComparisonValue: EvaluateScalarConstant<bool>(comparisonValueExpression),
+                RootRequirements: rootReq,
+                TargetRequirements: targetReq),
+
+            TypeCode.Byte => new Db2NavigationScalarPredicatePlan<byte>(
+                Join: join,
+                TargetScalarMember: targetMember,
+                TargetScalarFieldSchema: targetFieldSchema,
+                ComparisonKind: comparisonKind,
+                ComparisonValue: EvaluateScalarConstant<byte>(comparisonValueExpression),
+                RootRequirements: rootReq,
+                TargetRequirements: targetReq),
+
+            TypeCode.SByte => new Db2NavigationScalarPredicatePlan<sbyte>(
+                Join: join,
+                TargetScalarMember: targetMember,
+                TargetScalarFieldSchema: targetFieldSchema,
+                ComparisonKind: comparisonKind,
+                ComparisonValue: EvaluateScalarConstant<sbyte>(comparisonValueExpression),
+                RootRequirements: rootReq,
+                TargetRequirements: targetReq),
+
+            TypeCode.Int16 => new Db2NavigationScalarPredicatePlan<short>(
+                Join: join,
+                TargetScalarMember: targetMember,
+                TargetScalarFieldSchema: targetFieldSchema,
+                ComparisonKind: comparisonKind,
+                ComparisonValue: EvaluateScalarConstant<short>(comparisonValueExpression),
+                RootRequirements: rootReq,
+                TargetRequirements: targetReq),
+
+            TypeCode.UInt16 => new Db2NavigationScalarPredicatePlan<ushort>(
+                Join: join,
+                TargetScalarMember: targetMember,
+                TargetScalarFieldSchema: targetFieldSchema,
+                ComparisonKind: comparisonKind,
+                ComparisonValue: EvaluateScalarConstant<ushort>(comparisonValueExpression),
+                RootRequirements: rootReq,
+                TargetRequirements: targetReq),
+
+            TypeCode.Int32 => new Db2NavigationScalarPredicatePlan<int>(
+                Join: join,
+                TargetScalarMember: targetMember,
+                TargetScalarFieldSchema: targetFieldSchema,
+                ComparisonKind: comparisonKind,
+                ComparisonValue: EvaluateScalarConstant<int>(comparisonValueExpression),
+                RootRequirements: rootReq,
+                TargetRequirements: targetReq),
+
+            TypeCode.UInt32 => new Db2NavigationScalarPredicatePlan<uint>(
+                Join: join,
+                TargetScalarMember: targetMember,
+                TargetScalarFieldSchema: targetFieldSchema,
+                ComparisonKind: comparisonKind,
+                ComparisonValue: EvaluateScalarConstant<uint>(comparisonValueExpression),
+                RootRequirements: rootReq,
+                TargetRequirements: targetReq),
+
+            TypeCode.Int64 => new Db2NavigationScalarPredicatePlan<long>(
+                Join: join,
+                TargetScalarMember: targetMember,
+                TargetScalarFieldSchema: targetFieldSchema,
+                ComparisonKind: comparisonKind,
+                ComparisonValue: EvaluateScalarConstant<long>(comparisonValueExpression),
+                RootRequirements: rootReq,
+                TargetRequirements: targetReq),
+
+            TypeCode.UInt64 => new Db2NavigationScalarPredicatePlan<ulong>(
+                Join: join,
+                TargetScalarMember: targetMember,
+                TargetScalarFieldSchema: targetFieldSchema,
+                ComparisonKind: comparisonKind,
+                ComparisonValue: EvaluateScalarConstant<ulong>(comparisonValueExpression),
+                RootRequirements: rootReq,
+                TargetRequirements: targetReq),
+
+            TypeCode.Single => new Db2NavigationScalarPredicatePlan<float>(
+                Join: join,
+                TargetScalarMember: targetMember,
+                TargetScalarFieldSchema: targetFieldSchema,
+                ComparisonKind: comparisonKind,
+                ComparisonValue: EvaluateScalarConstant<float>(comparisonValueExpression),
+                RootRequirements: rootReq,
+                TargetRequirements: targetReq),
+
+            TypeCode.Double => new Db2NavigationScalarPredicatePlan<double>(
+                Join: join,
+                TargetScalarMember: targetMember,
+                TargetScalarFieldSchema: targetFieldSchema,
+                ComparisonKind: comparisonKind,
+                ComparisonValue: EvaluateScalarConstant<double>(comparisonValueExpression),
+                RootRequirements: rootReq,
+                TargetRequirements: targetReq),
+
+            _ => throw new NotSupportedException($"Scalar predicate type '{scalarType.FullName}' is not supported."),
+        };
+    }
+
+    private static T EvaluateScalarConstant<T>(Expression expr) where T : unmanaged
+    {
+        expr = expr.UnwrapConvert()!;
+
+        if (expr is ConstantExpression { Value: not null } constant)
+        {
+            // Allowed: unboxing for expression constants during translation.
+            return (T)constant.Value;
+        }
+
+        var lambda = Expression.Lambda<Func<T>>(Expression.Convert(expr, typeof(T)));
+        return lambda.Compile().Invoke();
     }
 
     public static bool TryTranslateNullCheck<TEntity>(
@@ -379,13 +513,13 @@ internal static class Db2NavigationQueryTranslator
         out MemberInfo navMember,
         out MemberInfo targetMember,
         out Db2ScalarComparisonKind comparisonKind,
-        out object comparisonValue,
+        out Expression comparisonValueExpression,
         out Type scalarType)
     {
         navMember = null!;
         targetMember = null!;
         comparisonKind = default;
-        comparisonValue = null!;
+        comparisonValueExpression = null!;
         scalarType = null!;
 
         expression = expression.UnwrapConvert()!;
@@ -411,19 +545,17 @@ internal static class Db2NavigationQueryTranslator
         var leftIsNav = TryGetNavThenMemberAccess(bin.Left, rootParam, out var leftNav, out var leftMember);
         var rightIsNav = TryGetNavThenMemberAccess(bin.Right, rootParam, out var rightNav, out var rightMember);
 
-        if (leftIsNav && TryGetScalarValue(bin.Right, rootParam, out var rightValue, out scalarType))
+        if (leftIsNav && TryGetScalarValueExpression(bin.Right, rootParam, out comparisonValueExpression, out scalarType))
         {
             navMember = leftNav;
             targetMember = leftMember;
-            comparisonValue = rightValue;
             return true;
         }
 
-        if (rightIsNav && TryGetScalarValue(bin.Left, rootParam, out var leftValue, out scalarType))
+        if (rightIsNav && TryGetScalarValueExpression(bin.Left, rootParam, out comparisonValueExpression, out scalarType))
         {
             navMember = rightNav;
             targetMember = rightMember;
-            comparisonValue = leftValue;
             comparisonKind = FlipComparison(comparisonKind);
             return true;
         }
@@ -461,34 +593,26 @@ internal static class Db2NavigationQueryTranslator
             return true;
         }
 
-        static bool TryGetScalarValue(Expression expr, ParameterExpression root, out object value, out Type type)
+        static bool TryGetScalarValueExpression(Expression expr, ParameterExpression root, out Expression valueExpression, out Type type)
         {
             expr = expr.UnwrapConvert()!;
             type = expr.Type;
 
+            if (expr.ContainsParameter(root))
+            {
+                valueExpression = null!;
+                return false;
+            }
+
             if (expr is ConstantExpression { Value: not null } constant)
             {
-                value = constant.Value;
+                valueExpression = constant;
                 return type.IsScalarType();
             }
 
-            if (expr.ContainsParameter(root))
-            {
-                value = null!;
-                return false;
-            }
-
-            try
-            {
-                var lambda = Expression.Lambda<Func<object>>(Expression.Convert(expr, typeof(object)));
-                value = lambda.Compile().Invoke();
-                return value is not null && type.IsScalarType();
-            }
-            catch
-            {
-                value = null!;
-                return false;
-            }
+            // Allow captured values and other parameter-free expressions by evaluating later as a typed delegate.
+            valueExpression = expr;
+            return type.IsScalarType();
         }
 
         static Db2ScalarComparisonKind FlipComparison(Db2ScalarComparisonKind kind)

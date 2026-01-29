@@ -131,15 +131,11 @@ internal static class Db2RowProjectorCompiler
             if (targetType == typeof(string) && accessor.Field.IsVirtual)
                 throw new NotSupportedException($"Virtual field '{accessor.Field.Name}' cannot be materialized as a string.");
 
-            var methodInfo = typeof(Db2RowValue).GetMethod(nameof(Db2RowValue.Read), BindingFlags.Public | BindingFlags.Static)!;
             var readType = targetType.UnwrapNullable();
-            var genericRead = methodInfo.MakeGenericMethod(readType);
-            var read = Expression.Call(genericRead, rowParam, Expression.Constant(accessor));
+            var methodInfo = readType.GetReadMethod();
+            var read = Expression.Call(methodInfo, rowParam, Expression.Constant(accessor));
 
-            if (targetType.IsNullable())
-                return Expression.Convert(read, targetType);
-
-            return read;
+            return targetType.IsNullable() ? Expression.Convert(read, targetType) : read;
         }
     }
 }

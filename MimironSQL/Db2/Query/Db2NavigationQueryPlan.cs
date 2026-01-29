@@ -74,15 +74,30 @@ internal sealed record Db2NavigationStringPredicatePlan(
     Db2SourceRequirements RootRequirements,
     Db2SourceRequirements TargetRequirements);
 
-internal sealed record Db2NavigationScalarPredicatePlan(
+internal abstract record Db2NavigationScalarPredicatePlan(
     Db2NavigationJoinPlan Join,
     MemberInfo TargetScalarMember,
     Db2FieldSchema TargetScalarFieldSchema,
     Db2ScalarComparisonKind ComparisonKind,
-    object ComparisonValue,
-    Type ScalarType,
     Db2SourceRequirements RootRequirements,
     Db2SourceRequirements TargetRequirements);
+
+internal sealed record Db2NavigationScalarPredicatePlan<T>(
+    Db2NavigationJoinPlan Join,
+    MemberInfo TargetScalarMember,
+    Db2FieldSchema TargetScalarFieldSchema,
+    Db2ScalarComparisonKind ComparisonKind,
+    T ComparisonValue,
+    Db2SourceRequirements RootRequirements,
+    Db2SourceRequirements TargetRequirements)
+    : Db2NavigationScalarPredicatePlan(
+        Join,
+        TargetScalarMember,
+        TargetScalarFieldSchema,
+        ComparisonKind,
+        RootRequirements,
+        TargetRequirements)
+    where T : unmanaged, IComparable<T>, IEquatable<T>;
 
 internal sealed record Db2NavigationNullCheckPlan(
     Db2NavigationJoinPlan Join,

@@ -1,6 +1,7 @@
 using MimironSQL.Db2.Schema;
-using MimironSQL.Db2.Wdc5;
+using MimironSQL.Db2;
 using MimironSQL.Formats;
+using MimironSQL.Formats.Wdc5;
 using MimironSQL.Providers;
 
 using Shouldly;
@@ -15,7 +16,7 @@ public sealed class Wdc5DenseStringHeuristicTests
         var db2Provider = new FileSystemDb2StreamProvider(new(TestDataPaths.GetTestDataDirectory()));
         using var stream = db2Provider.OpenDb2Stream("Map");
         var file = new Wdc5File(stream);
-        file.Header.Flags.HasFlag(Db2.Db2Flags.Sparse).ShouldBeFalse();
+        file.Header.Flags.HasFlag(Db2Flags.Sparse).ShouldBeFalse();
         file.Header.StringTableSize.ShouldBeGreaterThan(0);
 
         var provider = new FileSystemDbdProvider(new FileSystemDbdProviderOptions(TestDataPaths.GetTestDataDirectory()));
@@ -30,8 +31,15 @@ public sealed class Wdc5DenseStringHeuristicTests
         var foundStrings = new HashSet<string>(StringComparer.Ordinal);
         foreach (var row in file.EnumerateRows().Take(maxRowsToScan))
         {
-            if (!row.TryGetDenseString(directory.ColumnStartIndex, out var value))
+            string value;
+            try
+            {
+                value = row.Get<string>(directory.ColumnStartIndex);
+            }
+            catch
+            {
                 continue;
+            }
 
             if (string.IsNullOrWhiteSpace(value) || value.Length > 256)
                 continue;

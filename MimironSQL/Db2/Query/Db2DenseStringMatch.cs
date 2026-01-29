@@ -1,24 +1,27 @@
-using MimironSQL.Db2.Wdc5;
+using MimironSQL.Formats;
 
 namespace MimironSQL.Db2.Query;
 
 internal static class Db2DenseStringMatch
 {
-    public static bool Contains(Wdc5Row row, Db2FieldAccessor accessor, HashSet<int> matchingStarts)
-        => Match(row, accessor, matchingStarts);
+    public static bool Contains<TRow>(IDb2DenseStringTableIndexProvider<TRow> provider, TRow row, int fieldIndex, HashSet<int> matchingStarts)
+        where TRow : struct, IDb2Row
+        => Match(provider, row, fieldIndex, matchingStarts);
 
-    public static bool StartsWith(Wdc5Row row, Db2FieldAccessor accessor, HashSet<int> matchingStarts)
-        => Match(row, accessor, matchingStarts);
+    public static bool StartsWith<TRow>(IDb2DenseStringTableIndexProvider<TRow> provider, TRow row, int fieldIndex, HashSet<int> matchingStarts)
+        where TRow : struct, IDb2Row
+        => Match(provider, row, fieldIndex, matchingStarts);
 
-    public static bool EndsWith(Wdc5Row row, Db2FieldAccessor accessor, HashSet<int> matchingStarts)
-        => Match(row, accessor, matchingStarts);
+    public static bool EndsWith<TRow>(IDb2DenseStringTableIndexProvider<TRow> provider, TRow row, int fieldIndex, HashSet<int> matchingStarts)
+        where TRow : struct, IDb2Row
+        => Match(provider, row, fieldIndex, matchingStarts);
 
-    private static bool Match(Wdc5Row row, Db2FieldAccessor accessor, HashSet<int> matchingStarts)
+    private static bool Match<TRow>(IDb2DenseStringTableIndexProvider<TRow> provider, TRow row, int fieldIndex, HashSet<int> matchingStarts)
+        where TRow : struct, IDb2Row
     {
-        var fieldIndex = accessor.Field.ColumnStartIndex;
         if (fieldIndex < 0)
             return false;
 
-        return row.TryGetDenseStringTableIndex(fieldIndex, out var stringTableIndex) && matchingStarts.Contains(stringTableIndex);
+        return provider.TryGetDenseStringTableIndex(row, fieldIndex, out var stringTableIndex) && matchingStarts.Contains(stringTableIndex);
     }
 }

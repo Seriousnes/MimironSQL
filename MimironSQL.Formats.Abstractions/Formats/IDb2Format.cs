@@ -6,7 +6,7 @@ public interface IDb2Format
 {
     Db2Format Format { get; }
 
-    object OpenFile(Stream stream);
+    IDb2File OpenFile(Stream stream);
 
-    Db2FileLayout GetLayout(object file);
+    Db2FileLayout GetLayout(IDb2File file);
 }

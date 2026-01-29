@@ -1,6 +1,6 @@
 using System.Threading;
 
-namespace MimironSQL.Db2.Wdc5;
+namespace MimironSQL.Formats.Wdc5;
 
 public readonly record struct Wdc5RowReadSnapshot(int[] ScalarReads, int[] ArrayReads, int[] StringReads);
 

@@ -1,6 +1,6 @@
 using MimironSQL.Db2.Schema;
-using MimironSQL.Db2.Wdc5;
 using MimironSQL.Db2.Model;
+using MimironSQL.Formats;
 
 using System.Collections.Concurrent;
 using System.Linq.Expressions;
@@ -10,7 +10,7 @@ namespace MimironSQL.Db2.Query;
 internal sealed class Db2ContextQueryProvider(Db2Context context) : IQueryProvider
 {
     private static readonly ConcurrentDictionary<Type, Func<IQueryProvider, Expression, IQueryable>> QueryableFactories = new();
-    private static readonly ConcurrentDictionary<Type, Func<Wdc5File, Db2TableSchema, Db2Model, Func<string, (Wdc5File File, Db2TableSchema Schema)>, IQueryProvider>> PerTableProviderFactories = new();
+    private static readonly ConcurrentDictionary<(Type EntityType, Type RowType), Func<Db2Context, IDb2File, Db2TableSchema, Db2Model, IQueryProvider>> PerTableProviderFactories = new();
 
     private readonly Db2Context _context = context;
 
@@ -52,15 +52,15 @@ internal sealed class Db2ContextQueryProvider(Db2Context context) : IQueryProvid
         var (entityType, tableName) = GetRootTable(expression);
         var (file, schema) = _context.GetOrOpenTableRaw(tableName);
 
-        var provider = PerTableProviderFactories.GetOrAdd(entityType, static entityType =>
+        var provider = PerTableProviderFactories.GetOrAdd((entityType, file.RowType), static key =>
         {
             var factoryMethod = typeof(Db2ContextQueryProvider)
                 .GetMethod(nameof(CreatePerTableProvider), System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!;
 
-            var generic = factoryMethod.MakeGenericMethod(entityType);
-            return (Func<Wdc5File, Db2TableSchema, Db2Model, Func<string, (Wdc5File File, Db2TableSchema Schema)>, IQueryProvider>)
-                generic.CreateDelegate(typeof(Func<Wdc5File, Db2TableSchema, Db2Model, Func<string, (Wdc5File File, Db2TableSchema Schema)>, IQueryProvider>));
-        })(file, schema, _context.Model, _context.GetOrOpenTableRaw);
+            var generic = factoryMethod.MakeGenericMethod(key.EntityType, key.RowType);
+            return (Func<Db2Context, IDb2File, Db2TableSchema, Db2Model, IQueryProvider>)
+                generic.CreateDelegate(typeof(Func<Db2Context, IDb2File, Db2TableSchema, Db2Model, IQueryProvider>));
+        })(_context, file, schema, _context.Model);
 
         return provider.Execute<TResult>(expression);
     }
@@ -68,12 +68,17 @@ internal sealed class Db2ContextQueryProvider(Db2Context context) : IQueryProvid
     private static IQueryable CreateQueryable<TElement>(IQueryProvider provider, Expression expression)
         => new Db2Queryable<TElement>(provider, expression);
 
-    private static IQueryProvider CreatePerTableProvider<TEntity>(
-        Wdc5File file,
+    private static IQueryProvider CreatePerTableProvider<TEntity, TRow>(
+        Db2Context context,
+        IDb2File file,
         Db2TableSchema schema,
-        Db2Model model,
-        Func<string, (Wdc5File File, Db2TableSchema Schema)> tableResolver)
-        => new Db2QueryProvider<TEntity>(file, schema, model, tableResolver);
+        Db2Model model)
+        where TRow : struct, IDb2Row
+    {
+        var typedFile = (IDb2File<TRow>)file;
+        Func<string, (IDb2File<TRow> File, Db2TableSchema Schema)> resolver = tableName => context.GetOrOpenTableRawTyped<TRow>(tableName);
+        return new Db2QueryProvider<TEntity, TRow>(typedFile, schema, model, resolver);
+    }
 
     private static (Type EntityType, string TableName) GetRootTable(Expression expression)
     {

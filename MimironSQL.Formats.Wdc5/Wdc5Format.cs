@@ -1,6 +1,6 @@
 using MimironSQL.Db2;
 using MimironSQL.Formats;
-using MimironSQL.Db2.Wdc5;
+using MimironSQL.Formats.Wdc5;
 
 namespace MimironSQL.Formats.Wdc5;
 
@@ -16,9 +16,9 @@ public sealed class Wdc5Format : IDb2Format
         registry.Register(Instance);
     }
 
-    public object OpenFile(Stream stream) => new Wdc5File(stream);
+    public IDb2File OpenFile(Stream stream) => new Wdc5File(stream);
 
-    public Db2FileLayout GetLayout(object file)
+    public Db2FileLayout GetLayout(IDb2File file)
     {
         ArgumentNullException.ThrowIfNull(file);
         var wdc5 = (Wdc5File)file;

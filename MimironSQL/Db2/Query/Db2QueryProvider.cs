@@ -1,7 +1,7 @@
 using MimironSQL.Db2;
 using MimironSQL.Db2.Schema;
 using MimironSQL.Db2.Model;
-using MimironSQL.Db2.Wdc5;
+using MimironSQL.Formats;
 
 using System.Collections.Concurrent;
 using System.Collections;
@@ -12,20 +12,21 @@ using MimironSQL.Extensions;
 
 namespace MimironSQL.Db2.Query;
 
-internal sealed class Db2QueryProvider<TEntity>(
-    Wdc5File file,
+internal sealed class Db2QueryProvider<TEntity, TRow>(
+    IDb2File<TRow> file,
     Db2TableSchema schema,
     Db2Model model,
-    Func<string, (Wdc5File File, Db2TableSchema Schema)> tableResolver) : IQueryProvider
+    Func<string, (IDb2File<TRow> File, Db2TableSchema Schema)> tableResolver) : IQueryProvider
+    where TRow : struct, IDb2Row
 {
-    private static readonly ConcurrentDictionary<Type, Func<Db2QueryProvider<TEntity>, Expression, object>> ExecuteEnumerableDelegates = new();
-    private static readonly ConcurrentDictionary<Type, Func<Db2QueryProvider<TEntity>, IEnumerable<TEntity>, LambdaExpression, IEnumerable<TEntity>>> IncludeDelegates = new();
+    private static readonly ConcurrentDictionary<Type, Func<Db2QueryProvider<TEntity, TRow>, Expression, object>> ExecuteEnumerableDelegates = new();
+    private static readonly ConcurrentDictionary<Type, Func<Db2QueryProvider<TEntity, TRow>, IEnumerable<TEntity>, LambdaExpression, IEnumerable<TEntity>>> IncludeDelegates = new();
 
-    private readonly Db2EntityMaterializer<TEntity> _materializer = new(schema);
+    private readonly Db2EntityMaterializer<TEntity, TRow> _materializer = new(schema);
     private readonly Db2Model _model = model;
-    private readonly Func<string, (Wdc5File File, Db2TableSchema Schema)> _tableResolver = tableResolver;
+    private readonly Func<string, (IDb2File<TRow> File, Db2TableSchema Schema)> _tableResolver = tableResolver;
 
-    internal TEntity Materialize(Wdc5Row row) => _materializer.Materialize(row);
+    internal TEntity Materialize(TRow row) => _materializer.Materialize(row);
 
     public IQueryable CreateQuery(Expression expression)
     {
@@ -35,7 +36,7 @@ internal sealed class Db2QueryProvider<TEntity>(
 
         // Non-generic CreateQuery is not used by the normal strongly-typed Queryable surface.
         // Keep it functional without using reflection invocation.
-        var factoryMethod = typeof(Db2QueryProvider<TEntity>)
+        var factoryMethod = typeof(Db2QueryProvider<TEntity, TRow>)
             .GetMethod(nameof(CreateQueryableFactory), BindingFlags.Static | BindingFlags.NonPublic)!;
 
         var generic = factoryMethod.MakeGenericMethod(elementType);
@@ -79,19 +80,19 @@ internal sealed class Db2QueryProvider<TEntity>(
     private static Func<IQueryProvider, Expression, IQueryable> CreateQueryableFactory<TElement>()
         => static (provider, expression) => new Db2Queryable<TElement>(provider, expression);
 
-    private static object ExecuteEnumerableForResult<TElement>(Db2QueryProvider<TEntity> provider, Expression expression)
+    private static object ExecuteEnumerableForResult<TElement>(Db2QueryProvider<TEntity, TRow> provider, Expression expression)
         => provider.ExecuteEnumerable<TElement>(expression);
 
-    private static Func<Db2QueryProvider<TEntity>, Expression, object> GetExecuteEnumerableDelegate(Type elementType)
+    private static Func<Db2QueryProvider<TEntity, TRow>, Expression, object> GetExecuteEnumerableDelegate(Type elementType)
         => ExecuteEnumerableDelegates.GetOrAdd(elementType, static elementType =>
         {
-            var method = typeof(Db2QueryProvider<TEntity>).GetMethod(
+            var method = typeof(Db2QueryProvider<TEntity, TRow>).GetMethod(
                 nameof(ExecuteEnumerableForResult),
                 BindingFlags.Static | BindingFlags.NonPublic)!
                 .MakeGenericMethod(elementType);
 
-            return (Func<Db2QueryProvider<TEntity>, Expression, object>)method.CreateDelegate(
-                typeof(Func<Db2QueryProvider<TEntity>, Expression, object>));
+            return (Func<Db2QueryProvider<TEntity, TRow>, Expression, object>)method.CreateDelegate(
+                typeof(Func<Db2QueryProvider<TEntity, TRow>, Expression, object>));
         });
 
     private IEnumerable<TElement> ExecuteEnumerable<TElement>(Expression expression)
@@ -259,7 +260,7 @@ internal sealed class Db2QueryProvider<TEntity>(
         if (selector is not Expression<Func<TEntity, TProjected>> && selector.Parameters is not { Count: 1 })
             return false;
 
-        var rowPredicates = new List<Func<Wdc5Row, bool>>();
+        var rowPredicates = new List<Func<TRow, bool>>();
         var requirements = new Db2SourceRequirements(schema, typeof(TEntity));
         foreach (var predicate in preEntityWhere)
         {
@@ -277,7 +278,7 @@ internal sealed class Db2QueryProvider<TEntity>(
         requirements.Columns.UnionWith(compiled.Value.Requirements.Columns);
 
         // Pruning is only safe when we can satisfy the projection/predicate from row-level reads.
-        // Virtual strings cannot be materialized from WDC5 rows.
+        // Virtual strings cannot be materialized from row-level reads.
         if (requirements.Columns.Any(c => c is { Kind: Db2RequiredColumnKind.String, Field.IsVirtual: true }))
             return false;
 
@@ -322,7 +323,7 @@ internal sealed class Db2QueryProvider<TEntity>(
         if (navAccesses is not { Count: not 0 })
             return false;
 
-        var rowPredicates = new List<Func<Wdc5Row, bool>>();
+        var rowPredicates = new List<Func<TRow, bool>>();
         var rootRequirements = new Db2SourceRequirements(schema, typeof(TEntity));
 
         foreach (var predicate in preEntityWhere)
@@ -367,19 +368,19 @@ internal sealed class Db2QueryProvider<TEntity>(
         return true;
     }
 
-    private (Func<Wdc5Row, TProjected> Projector, Db2SourceRequirements Requirements)? TryCreateProjector<TProjected>(LambdaExpression selector)
+    private (Func<TRow, TProjected> Projector, Db2SourceRequirements Requirements)? TryCreateProjector<TProjected>(LambdaExpression selector)
     {
         if (selector is not Expression<Func<TEntity, TProjected>> typed)
             return null;
 
-        return Db2RowProjectorCompiler.TryCompile(schema, typed, out var projector, out var requirements)
+        return Db2RowProjectorCompiler.TryCompile<TEntity, TProjected, TRow>(schema, typed, out var projector, out var requirements)
             ? (projector, requirements)
             : null;
     }
 
     private IEnumerable<TProjected> EnumerateProjected<TProjected>(
-        List<Func<Wdc5Row, bool>> rowPredicates,
-        Func<Wdc5Row, TProjected> projector,
+        List<Func<TRow, bool>> rowPredicates,
+        Func<TRow, TProjected> projector,
         int? take)
     {
         var yielded = 0;
@@ -407,12 +408,12 @@ internal sealed class Db2QueryProvider<TEntity>(
     }
 
     private IEnumerable<TProjected> EnumerateNavigationProjected<TProjected>(
-        List<Func<Wdc5Row, bool>> rowPredicates,
+        List<Func<TRow, bool>> rowPredicates,
         int? take,
         IReadOnlyList<Db2NavigationMemberAccessPlan> navAccesses,
         LambdaExpression selector)
     {
-        IEnumerable<Wdc5Row> FilteredRows()
+        IEnumerable<TRow> FilteredRows()
         {
             var yielded = 0;
             foreach (var row in file.EnumerateRows())
@@ -428,7 +429,7 @@ internal sealed class Db2QueryProvider<TEntity>(
             }
         }
 
-        return Db2NavigationRowProjector.ProjectFromRows<TProjected>(
+        return Db2NavigationRowProjector.ProjectFromRows<TProjected, TRow>(
             FilteredRows(),
             schema,
             _model,
@@ -511,12 +512,12 @@ internal sealed class Db2QueryProvider<TEntity>(
 
     private IEnumerable<TEntity> EnumerateEntities(IList<Expression<Func<TEntity, bool>>> predicates, int? take)
     {
-        var rowPredicates = new List<Func<Wdc5Row, bool>>();
+        var rowPredicates = new List<Func<TRow, bool>>();
         var entityPredicates = new List<Func<TEntity, bool>>();
 
         foreach (var predicate in predicates)
         {
-            if (Db2NavigationQueryCompiler.TryCompileSemiJoinPredicate(_model, file, schema, _tableResolver, predicate, out var navPredicate))
+            if (Db2NavigationQueryCompiler.TryCompileSemiJoinPredicate<TEntity, TRow>(_model, file, schema, _tableResolver, predicate, out var navPredicate))
             {
                 rowPredicates.Add(navPredicate);
                 continue;
@@ -710,17 +711,17 @@ internal sealed class Db2QueryProvider<TEntity>(
 
         return IncludeDelegates.GetOrAdd(navType, static navType =>
         {
-            var factoryMethod = typeof(Db2QueryProvider<TEntity>)
+            var factoryMethod = typeof(Db2QueryProvider<TEntity, TRow>)
                 .GetMethod(nameof(ApplyIncludeTyped), BindingFlags.Static | BindingFlags.NonPublic)!;
 
             var generic = factoryMethod.MakeGenericMethod(navType);
-            return (Func<Db2QueryProvider<TEntity>, IEnumerable<TEntity>, LambdaExpression, IEnumerable<TEntity>>)
-                generic.CreateDelegate(typeof(Func<Db2QueryProvider<TEntity>, IEnumerable<TEntity>, LambdaExpression, IEnumerable<TEntity>>));
+            return (Func<Db2QueryProvider<TEntity, TRow>, IEnumerable<TEntity>, LambdaExpression, IEnumerable<TEntity>>)
+                generic.CreateDelegate(typeof(Func<Db2QueryProvider<TEntity, TRow>, IEnumerable<TEntity>, LambdaExpression, IEnumerable<TEntity>>));
         })(this, source, navigation);
     }
 
     private static IEnumerable<TEntity> ApplyIncludeTyped<TRelated>(
-        Db2QueryProvider<TEntity> provider,
+        Db2QueryProvider<TEntity, TRow> provider,
         IEnumerable<TEntity> source,
         LambdaExpression navigation)
         where TRelated : class
@@ -765,7 +766,7 @@ internal sealed class Db2QueryProvider<TEntity>(
 
         var targetEntityType = _model.GetEntityType(modelNav.TargetClrType);
         var (relatedFile, relatedSchema) = _tableResolver(targetEntityType.TableName);
-        var relatedMaterializer = new Db2EntityMaterializer<TRelated>(relatedSchema);
+        var relatedMaterializer = new Db2EntityMaterializer<TRelated, TRow>(relatedSchema);
 
         var entitiesWithKeys = new List<(TEntity Entity, int Key)>();
         HashSet<int> keys = [];
@@ -778,12 +779,16 @@ internal sealed class Db2QueryProvider<TEntity>(
                 keys.Add(key);
         }
 
-        Dictionary<int, TRelated> relatedByKey = new(capacity: Math.Min(keys.Count, relatedFile.Header.RecordsCount));
+        Dictionary<int, TRelated> relatedByKey = new(capacity: Math.Min(keys.Count, relatedFile.RecordsCount));
         if (keys is { Count: not 0 })
         {
-            foreach (var row in relatedFile.EnumerateRows().Where(row => keys.Contains(row.Id)))
+            foreach (var row in relatedFile.EnumerateRows())
             {
-                relatedByKey[row.Id] = relatedMaterializer.Materialize(row);
+                var rowId = row.Get<int>(Db2VirtualFieldIndex.Id);
+                if (!keys.Contains(rowId))
+                    continue;
+
+                relatedByKey[rowId] = relatedMaterializer.Materialize(row);
             }
         }
 

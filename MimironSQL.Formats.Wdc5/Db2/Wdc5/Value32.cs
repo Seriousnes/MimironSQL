@@ -1,7 +1,7 @@
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
-namespace MimironSQL.Db2.Wdc5;
+namespace MimironSQL.Formats.Wdc5;
 
 [StructLayout(LayoutKind.Sequential, Pack = 1, Size = 4)]
 public readonly struct Value32

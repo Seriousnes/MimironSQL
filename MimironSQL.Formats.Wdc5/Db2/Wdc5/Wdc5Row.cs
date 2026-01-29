@@ -3,11 +3,14 @@ using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
 using System.Text;
 
+using MimironSQL.Db2;
+using MimironSQL.Formats;
+
 using Security.Cryptography;
 
-namespace MimironSQL.Db2.Wdc5;
+namespace MimironSQL.Formats.Wdc5;
 
-public readonly struct Wdc5Row
+public readonly struct Wdc5Row : IDb2Row
 {
     private static readonly UTF8Encoding Utf8Strict = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
 
@@ -15,13 +18,13 @@ public readonly struct Wdc5Row
     private readonly Wdc5Section _section;
     private readonly BitReader _reader;
 
-    public int GlobalRowIndex { get; }
-    public int RowIndexInSection { get; }
-    public int Id { get; }
-    public int SourceId { get; }
-    public int ReferenceId { get; }
+    internal int GlobalRowIndex { get; }
+    internal int RowIndexInSection { get; }
+    internal int Id { get; }
+    internal int SourceId { get; }
+    internal int ParentRelationId { get; }
 
-    internal Wdc5Row(Wdc5File file, Wdc5Section section, BitReader reader, int globalRowIndex, int rowIndexInSection, int id, int sourceId, int referenceId)
+    internal Wdc5Row(Wdc5File file, Wdc5Section section, BitReader reader, int globalRowIndex, int rowIndexInSection, int id, int sourceId, int parentRelationId)
     {
         _file = file;
         _section = section;
@@ -30,10 +33,196 @@ public readonly struct Wdc5Row
         RowIndexInSection = rowIndexInSection;
         Id = id;
         SourceId = sourceId;
-        ReferenceId = referenceId;
+        ParentRelationId = parentRelationId;
     }
 
-    public bool TryGetDenseStringTableIndex(int fieldIndex, out int stringTableIndex)
+    public T Get<T>(int fieldIndex)
+    {
+        if (fieldIndex < 0)
+        {
+            if (fieldIndex == Db2VirtualFieldIndex.Id)
+                return ConvertVirtual<T>(Id);
+
+            if (fieldIndex == Db2VirtualFieldIndex.ParentRelation)
+                return ConvertVirtual<T>(ParentRelationId);
+
+            throw new NotSupportedException($"Unsupported virtual field index {fieldIndex}.");
+        }
+
+        if (typeof(T) == typeof(string))
+        {
+            _ = TryGetString(fieldIndex, out var s);
+            return (T)(object)s;
+        }
+
+        if (typeof(T) == typeof(double))
+            return (T)(object)Convert.ToDouble(GetScalar<float>(fieldIndex));
+
+        if (typeof(T).IsArray)
+        {
+            if (typeof(T) == typeof(byte[]))
+                return (T)(object)GetArray<byte>(fieldIndex);
+            if (typeof(T) == typeof(sbyte[]))
+                return (T)(object)GetArray<sbyte>(fieldIndex);
+            if (typeof(T) == typeof(short[]))
+                return (T)(object)GetArray<short>(fieldIndex);
+            if (typeof(T) == typeof(ushort[]))
+                return (T)(object)GetArray<ushort>(fieldIndex);
+            if (typeof(T) == typeof(int[]))
+                return (T)(object)GetArray<int>(fieldIndex);
+            if (typeof(T) == typeof(uint[]))
+                return (T)(object)GetArray<uint>(fieldIndex);
+            if (typeof(T) == typeof(long[]))
+                return (T)(object)GetArray<long>(fieldIndex);
+            if (typeof(T) == typeof(ulong[]))
+                return (T)(object)GetArray<ulong>(fieldIndex);
+            if (typeof(T) == typeof(float[]))
+                return (T)(object)GetArray<float>(fieldIndex);
+            if (typeof(T) == typeof(double[]))
+            {
+                var floats = GetArray<float>(fieldIndex);
+                var doubles = new double[floats.Length];
+                for (var i = 0; i < floats.Length; i++)
+                    doubles[i] = floats[i];
+                return (T)(object)doubles;
+            }
+
+            throw new NotSupportedException($"Unsupported array type {typeof(T).FullName}.");
+        }
+
+        var nonNullable = Nullable.GetUnderlyingType(typeof(T)) ?? typeof(T);
+        if (nonNullable.IsEnum)
+        {
+            var underlying = Enum.GetUnderlyingType(nonNullable);
+            object underlyingValue = underlying == typeof(byte)
+                ? Get<byte>(fieldIndex)
+                : underlying == typeof(sbyte)
+                    ? Get<sbyte>(fieldIndex)
+                    : underlying == typeof(short)
+                        ? Get<short>(fieldIndex)
+                        : underlying == typeof(ushort)
+                            ? Get<ushort>(fieldIndex)
+                            : underlying == typeof(int)
+                                ? Get<int>(fieldIndex)
+                                : underlying == typeof(uint)
+                                    ? Get<uint>(fieldIndex)
+                                    : underlying == typeof(long)
+                                        ? Get<long>(fieldIndex)
+                                        : underlying == typeof(ulong)
+                                            ? Get<ulong>(fieldIndex)
+                                            : throw new NotSupportedException($"Unsupported enum underlying type {underlying.FullName}.");
+
+            var enumObj = Enum.ToObject(nonNullable, underlyingValue);
+            return typeof(T) == nonNullable ? (T)enumObj : (T)Convert.ChangeType(enumObj, nonNullable);
+        }
+
+        if (typeof(T) == typeof(bool))
+            return (T)(object)(GetScalar<long>(fieldIndex) != 0);
+
+        if (typeof(T) == typeof(byte))
+            return (T)(object)checked((byte)GetScalar<ulong>(fieldIndex));
+        if (typeof(T) == typeof(sbyte))
+            return (T)(object)checked((sbyte)GetScalar<long>(fieldIndex));
+        if (typeof(T) == typeof(short))
+            return (T)(object)checked((short)GetScalar<long>(fieldIndex));
+        if (typeof(T) == typeof(ushort))
+            return (T)(object)checked((ushort)GetScalar<ulong>(fieldIndex));
+        if (typeof(T) == typeof(int))
+            return (T)(object)checked((int)GetScalar<long>(fieldIndex));
+        if (typeof(T) == typeof(uint))
+            return (T)(object)checked((uint)GetScalar<ulong>(fieldIndex));
+        if (typeof(T) == typeof(long))
+            return (T)(object)GetScalar<long>(fieldIndex);
+        if (typeof(T) == typeof(ulong))
+            return (T)(object)GetScalar<ulong>(fieldIndex);
+        if (typeof(T) == typeof(float))
+            return (T)(object)GetScalar<float>(fieldIndex);
+
+        if (Nullable.GetUnderlyingType(typeof(T)) is not null)
+        {
+            var underlyingType = Nullable.GetUnderlyingType(typeof(T))!;
+            if (underlyingType == typeof(int))
+                return (T)(object)(int?)Get<int>(fieldIndex);
+            if (underlyingType == typeof(uint))
+                return (T)(object)(uint?)Get<uint>(fieldIndex);
+            if (underlyingType == typeof(long))
+                return (T)(object)(long?)Get<long>(fieldIndex);
+            if (underlyingType == typeof(ulong))
+                return (T)(object)(ulong?)Get<ulong>(fieldIndex);
+            if (underlyingType == typeof(short))
+                return (T)(object)(short?)Get<short>(fieldIndex);
+            if (underlyingType == typeof(ushort))
+                return (T)(object)(ushort?)Get<ushort>(fieldIndex);
+            if (underlyingType == typeof(byte))
+                return (T)(object)(byte?)Get<byte>(fieldIndex);
+            if (underlyingType == typeof(sbyte))
+                return (T)(object)(sbyte?)Get<sbyte>(fieldIndex);
+            if (underlyingType == typeof(bool))
+                return (T)(object)(bool?)Get<bool>(fieldIndex);
+            if (underlyingType == typeof(float))
+                return (T)(object)(float?)Get<float>(fieldIndex);
+            if (underlyingType == typeof(double))
+                return (T)(object)(double?)Get<double>(fieldIndex);
+        }
+
+        throw new NotSupportedException($"Unsupported target type {typeof(T).FullName}.");
+    }
+
+    private static T ConvertVirtual<T>(int value)
+    {
+        if (typeof(T) == typeof(int))
+            return (T)(object)value;
+        if (typeof(T) == typeof(uint))
+            return (T)(object)checked((uint)value);
+        if (typeof(T) == typeof(long))
+            return (T)(object)(long)value;
+        if (typeof(T) == typeof(ulong))
+            return (T)(object)checked((ulong)value);
+        if (typeof(T) == typeof(short))
+            return (T)(object)checked((short)value);
+        if (typeof(T) == typeof(ushort))
+            return (T)(object)checked((ushort)value);
+        if (typeof(T) == typeof(byte))
+            return (T)(object)checked((byte)value);
+        if (typeof(T) == typeof(sbyte))
+            return (T)(object)checked((sbyte)value);
+        if (typeof(T) == typeof(bool))
+            return (T)(object)(value != 0);
+        if (typeof(T) == typeof(float))
+            return (T)(object)(float)value;
+        if (typeof(T) == typeof(double))
+            return (T)(object)(double)value;
+
+        if (Nullable.GetUnderlyingType(typeof(T)) is { } underlying)
+        {
+            if (underlying == typeof(int))
+                return (T)(object)(int?)value;
+            if (underlying == typeof(uint))
+                return (T)(object)(uint?)checked((uint)value);
+            if (underlying == typeof(long))
+                return (T)(object)(long?)value;
+            if (underlying == typeof(ulong))
+                return (T)(object)(ulong?)checked((ulong)value);
+            if (underlying == typeof(short))
+                return (T)(object)(short?)checked((short)value);
+            if (underlying == typeof(ushort))
+                return (T)(object)(ushort?)checked((ushort)value);
+            if (underlying == typeof(byte))
+                return (T)(object)(byte?)checked((byte)value);
+            if (underlying == typeof(sbyte))
+                return (T)(object)(sbyte?)checked((sbyte)value);
+            if (underlying == typeof(bool))
+                return (T)(object)(bool?)(value != 0);
+            if (underlying == typeof(float))
+                return (T)(object)(float?)value;
+            if (underlying == typeof(double))
+                return (T)(object)(double?)value;
+        }
+
+        throw new NotSupportedException($"Unsupported virtual numeric conversion to {typeof(T).FullName}.");
+    }
+
+    internal bool TryGetDenseStringTableIndex(int fieldIndex, out int stringTableIndex)
     {
         if (_file.Header.Flags.HasFlag(Db2Flags.Sparse))
         {
@@ -99,7 +288,7 @@ public readonly struct Wdc5Row
         }
     }
 
-    public T GetScalar<T>(int fieldIndex) where T : unmanaged
+    private T GetScalar<T>(int fieldIndex) where T : unmanaged
     {
         if ((uint)fieldIndex >= (uint)_file.Header.FieldsCount)
             throw new ArgumentOutOfRangeException(nameof(fieldIndex));
@@ -122,7 +311,7 @@ public readonly struct Wdc5Row
         return Wdc5FieldDecoder.ReadScalar<T>(Id, ref localReader2, fieldMeta2, columnMeta2, _file.PalletData[fieldIndex], _file.CommonData[fieldIndex]);
     }
 
-    public T[] GetArray<T>(int fieldIndex) where T : unmanaged
+    private T[] GetArray<T>(int fieldIndex) where T : unmanaged
     {
         if ((uint)fieldIndex >= (uint)_file.Header.FieldsCount)
             throw new ArgumentOutOfRangeException(nameof(fieldIndex));
@@ -159,7 +348,7 @@ public readonly struct Wdc5Row
         };
     }
 
-    public bool TryGetDenseString(int fieldIndex, out string value)
+    private bool TryGetDenseString(int fieldIndex, out string value)
     {
         if (_file.Header.Flags.HasFlag(Db2Flags.Sparse))
         {
@@ -225,7 +414,7 @@ public readonly struct Wdc5Row
                 return false;
             }
 
-            return TryReadNullTerminatedUtf8(_file.DenseStringTableBytes, startIndex: (int)stringIndex, endExclusive: sectionEndExclusive, out value);
+            return TryReadNullTerminatedUtf8(_file.DenseStringTableBytes.Span, startIndex: (int)stringIndex, endExclusive: sectionEndExclusive, out value);
         }
         finally
         {
@@ -233,7 +422,7 @@ public readonly struct Wdc5Row
         }
     }
 
-    public bool TryGetInlineString(int fieldIndex, out string? value)
+    private bool TryGetInlineString(int fieldIndex, out string? value)
     {
         if (!_file.Header.Flags.HasFlag(Db2Flags.Sparse))
         {
@@ -313,7 +502,7 @@ public readonly struct Wdc5Row
         }
     }
 
-    public bool TryGetString(int fieldIndex, out string value)
+    private bool TryGetString(int fieldIndex, out string value)
     {
         if ((uint)fieldIndex >= (uint)_file.Header.FieldsCount)
             throw new ArgumentOutOfRangeException(nameof(fieldIndex));

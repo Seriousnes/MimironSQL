@@ -1,6 +1,5 @@
 using MimironSQL.Db2.Model;
 using MimironSQL.Db2.Schema;
-using MimironSQL.Db2.Wdc5;
 using MimironSQL.Formats;
 using MimironSQL.Formats.Wdc5;
 using MimironSQL.Providers;
@@ -19,7 +18,7 @@ public abstract class Db2Context
     private readonly SchemaMapper _schemaMapper;
     private readonly IDb2StreamProvider _db2StreamProvider;
     private readonly Db2ContextQueryProvider _queryProvider;
-    private readonly Dictionary<string, (Wdc5File File, Db2TableSchema Schema)> _cache = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, (IDb2File File, Db2TableSchema Schema)> _cache = new(StringComparer.OrdinalIgnoreCase);
 
     private Db2Model? _model;
     private IDb2Format? _format;
@@ -31,17 +30,7 @@ public abstract class Db2Context
     {
     }
 
-    protected Db2Context(IDbdProvider dbdProvider, IDb2StreamProvider db2StreamProvider, bool deferInitialization)
-        : this(dbdProvider, db2StreamProvider, registerFormats: null, deferInitialization)
-    {
-    }
-
-    protected Db2Context(IDbdProvider dbdProvider, IDb2StreamProvider db2StreamProvider, Action<Db2FormatRegistry> registerFormats)
-        : this(dbdProvider, db2StreamProvider, registerFormats, deferInitialization: false)
-    {
-    }
-
-    private Db2Context(IDbdProvider dbdProvider, IDb2StreamProvider db2StreamProvider, Action<Db2FormatRegistry>? registerFormats, bool deferInitialization)
+    private Db2Context(IDbdProvider dbdProvider, IDb2StreamProvider db2StreamProvider, Action<Db2FormatRegistry>? registerFormats, bool deferInitialization = true)
     {
         _schemaMapper = new SchemaMapper(dbdProvider);
         _db2StreamProvider = db2StreamProvider;
@@ -132,7 +121,7 @@ public abstract class Db2Context
         _isInitializing = false;
     }
 
-    internal (Wdc5File File, Db2TableSchema Schema) GetOrOpenTableRaw(string tableName)
+    internal (IDb2File File, Db2TableSchema Schema) GetOrOpenTableRaw(string tableName)
     {
         EnsureInitialized();
 
@@ -140,14 +129,18 @@ public abstract class Db2Context
             return cached;
 
         using var stream = _db2StreamProvider.OpenDb2Stream(tableName);
-        var opened = _format!.OpenFile(stream);
-        if (opened is not Wdc5File file)
-            throw new NotSupportedException("Only WDC5 files are currently supported by the built-in format.");
-
+        var file = _format!.OpenFile(stream);
         var layout = _format.GetLayout(file);
         var schema = _schemaMapper.GetSchema(tableName, layout);
         _cache[tableName] = (file, schema);
         return (file, schema);
+    }
+
+    internal (IDb2File<TRow> File, Db2TableSchema Schema) GetOrOpenTableRawTyped<TRow>(string tableName)
+        where TRow : struct, IDb2Row
+    {
+        var (file, schema) = GetOrOpenTableRaw(tableName);
+        return ((IDb2File<TRow>)file, schema);
     }
 
     private void InitializeTableProperties()
@@ -212,8 +205,16 @@ public abstract class Db2Context
     {
         var (file, schema) = GetOrOpenTableRaw(tableName);
 
-        return new Db2Table<T>(tableName, schema, _queryProvider, name => GetOrOpenTableRaw(name).File);
+        var createMethod = typeof(Db2Context)
+            .GetMethod(nameof(CreateTypedTable), BindingFlags.Instance | BindingFlags.NonPublic)!;
+
+        var generic = createMethod.MakeGenericMethod(typeof(T), file.RowType);
+        return (Db2Table<T>)generic.Invoke(this, [tableName, schema, file])!;
     }
+
+    private Db2Table<TEntity> CreateTypedTable<TEntity, TRow>(string tableName, Db2TableSchema schema, IDb2File file)
+        where TRow : struct, IDb2Row
+        => new Db2Table<TEntity, TRow>(tableName, schema, _queryProvider, (IDb2File<TRow>)file);
 
     protected Db2Table<T> Table<T>(string? tableName = null)
     {

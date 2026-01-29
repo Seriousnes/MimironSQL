@@ -95,8 +95,17 @@ public sealed class Db2ModelBuilder
     {
         ArgumentNullException.ThrowIfNull(schemaResolver);
 
-        foreach (var (clrType, entityMetadata) in _entityTypes)
+        var pending = new Queue<Type>(_entityTypes.Keys);
+        var visited = new HashSet<Type>();
+
+        while (pending.TryDequeue(out var clrType))
         {
+            if (!visited.Add(clrType))
+                continue;
+
+            if (!_entityTypes.TryGetValue(clrType, out var entityMetadata))
+                continue;
+
             var tableName = entityMetadata.TableName ?? clrType.Name;
             var schema = schemaResolver(tableName);
 
@@ -113,11 +122,28 @@ public sealed class Db2ModelBuilder
                 if (fkMember is null)
                     continue;
 
-                var targetClrType = navMember.GetMemberType();
+                var navMemberType = navMember.GetMemberType();
+                if (navMemberType != typeof(string) && typeof(System.Collections.IEnumerable).IsAssignableFrom(navMemberType))
+                {
+                    // Schema conventions only apply to 1-hop reference navigations.
+                    // Collection navigations are not yet supported here.
+                    continue;
+                }
+
+                var targetClrType = navMemberType;
                 if (targetClrType.IsValueType)
                     continue;
 
-                var targetMetadata = Entity(targetClrType);
+                if (!_entityTypes.TryGetValue(targetClrType, out var targetMetadata))
+                {
+                    targetMetadata = new Db2EntityTypeMetadata(targetClrType)
+                    {
+                        TableName = targetClrType.Name,
+                    };
+
+                    _entityTypes.Add(targetClrType, targetMetadata);
+                    pending.Enqueue(targetClrType);
+                }
 
                 if (!targetMetadata.TableNameWasConfigured && targetMetadata.TableName == targetClrType.Name && targetMetadata.TableName != f.ReferencedTableName)
                     targetMetadata.TableName = f.ReferencedTableName;

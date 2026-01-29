@@ -3,9 +3,12 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
 
-namespace MimironSQL.Db2.Wdc5;
+using MimironSQL.Db2;
+using MimironSQL.Formats;
 
-public sealed class Wdc5File
+namespace MimironSQL.Formats.Wdc5;
+
+public sealed class Wdc5File : IDb2File<Wdc5Row>, IDb2DenseStringTableIndexProvider<Wdc5Row>
 {
     private const int HeaderSize = 200;
     private const uint Wdc5Magic = 0x35434457; // "WDC5"
@@ -18,8 +21,14 @@ public sealed class Wdc5File
     public Value32[][] PalletData { get; }
     public Dictionary<int, Value32>[] CommonData { get; }
 
-    public byte[] DenseStringTableBytes { get; } = [];
+    public ReadOnlyMemory<byte> DenseStringTableBytes { get; } = ReadOnlyMemory<byte>.Empty;
     public int RecordsBlobSizeBytes { get; }
+
+    public Type RowType => typeof(Wdc5Row);
+
+    public Db2Flags Flags => Header.Flags;
+
+    public int RecordsCount => Header.RecordsCount;
 
     public int TotalSectionRecordCount => ParsedSections.Sum(s => s.NumRecords);
 
@@ -333,7 +342,7 @@ public sealed class Wdc5File
         ColumnMeta = columnMeta;
         PalletData = palletData;
         CommonData = commonData;
-        DenseStringTableBytes = [.. denseStringTableBytes];
+        DenseStringTableBytes = new ReadOnlyMemory<byte>([.. denseStringTableBytes]);
         RecordsBlobSizeBytes = recordsBlobSizeBytes;
 
         if (recordsCount > 0 && parsedSections is { Count: 0 })
@@ -354,8 +363,8 @@ public sealed class Wdc5File
                     ? section.IndexData[rowIndex]
                     : rowIndex;
 
-                _ = section.ParentLookupEntries.TryGetValue(referenceKey, out var referenceId);
-                yield return new Wdc5Row(this, section, reader, globalIndex, rowIndex, id, sourceId: id, referenceId);
+                _ = section.ParentLookupEntries.TryGetValue(referenceKey, out var parentRelationId);
+                yield return new Wdc5Row(this, section, reader, globalIndex, rowIndex, id, sourceId: id, parentRelationId);
                 globalIndex++;
             }
         }
@@ -385,10 +394,13 @@ public sealed class Wdc5File
             ? section.IndexData[location.RowIndexInSection]
             : location.RowIndexInSection;
 
-        _ = section.ParentLookupEntries.TryGetValue(referenceKey, out var referenceId);
-        row = new Wdc5Row(this, section, reader, globalRowIndex: location.GlobalRecordIndex, rowIndexInSection: location.RowIndexInSection, id: requestedId, sourceId: id, referenceId);
+        _ = section.ParentLookupEntries.TryGetValue(referenceKey, out var parentRelationId);
+        row = new Wdc5Row(this, section, reader, globalRowIndex: location.GlobalRecordIndex, rowIndexInSection: location.RowIndexInSection, id: requestedId, sourceId: id, parentRelationId);
         return true;
     }
+
+    public bool TryGetDenseStringTableIndex(Wdc5Row row, int fieldIndex, out int stringTableIndex)
+        => row.TryGetDenseStringTableIndex(fieldIndex, out stringTableIndex);
 
     public bool TryGetRowById<TId>(TId id, out Wdc5Row row) where TId : IBinaryInteger<TId>
     {

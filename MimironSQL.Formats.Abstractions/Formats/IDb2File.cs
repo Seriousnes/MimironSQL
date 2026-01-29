@@ -1,0 +1,21 @@
+using MimironSQL.Db2;
+
+namespace MimironSQL.Formats;
+
+public interface IDb2File
+{
+    Type RowType { get; }
+
+    Db2Flags Flags { get; }
+
+    int RecordsCount { get; }
+
+    ReadOnlyMemory<byte> DenseStringTableBytes { get; }
+}
+
+public interface IDb2File<TRow> : IDb2File where TRow : struct, IDb2Row
+{
+    IEnumerable<TRow> EnumerateRows();
+
+    bool TryGetRowById(int id, out TRow row);
+}

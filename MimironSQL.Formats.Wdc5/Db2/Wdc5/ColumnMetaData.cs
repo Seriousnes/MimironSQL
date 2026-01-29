@@ -1,6 +1,6 @@
 using System.Runtime.InteropServices;
 
-namespace MimironSQL.Db2.Wdc5;
+namespace MimironSQL.Formats.Wdc5;
 
 [StructLayout(LayoutKind.Explicit, Pack = 1, Size = 24)]
 public struct ColumnMetaData

@@ -32,10 +32,16 @@ internal sealed class SchemaMapper(IDbdProvider dbdProvider)
         {
             if (entry.IsNonInline)
             {
+                var virtualIndex = entry.IsId
+                    ? global::MimironSQL.Db2.Db2VirtualFieldIndex.Id
+                    : entry.IsRelation
+                        ? global::MimironSQL.Db2.Db2VirtualFieldIndex.ParentRelation
+                        : global::MimironSQL.Db2.Db2VirtualFieldIndex.UnsupportedNonInline;
+
                 fields.Add(new Db2FieldSchema(
                     entry.Name,
                     entry.ValueType,
-                    ColumnStartIndex: -1,
+                    ColumnStartIndex: virtualIndex,
                     ElementCount: 0,
                     IsVerified: entry.IsVerified,
                     IsVirtual: true,

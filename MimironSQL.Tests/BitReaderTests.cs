@@ -1,4 +1,4 @@
-using MimironSQL.Db2.Wdc5;
+using MimironSQL.Formats.Wdc5;
 
 using Shouldly;
 

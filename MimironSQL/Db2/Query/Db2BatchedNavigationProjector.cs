@@ -3,20 +3,21 @@ using System.Reflection;
 
 using MimironSQL.Db2.Model;
 using MimironSQL.Db2.Schema;
-using MimironSQL.Db2.Wdc5;
+using MimironSQL.Formats;
 using MimironSQL.Extensions;
 
 namespace MimironSQL.Db2.Query;
 
 internal static class Db2BatchedNavigationProjector
 {
-    public static IEnumerable<TResult> Project<TEntity, TResult>(
+    public static IEnumerable<TResult> Project<TEntity, TResult, TRow>(
         IEnumerable<TEntity> source,
         Db2Model model,
-        Func<string, (Wdc5File File, Db2TableSchema Schema)> tableResolver,
+        Func<string, (IDb2File<TRow> File, Db2TableSchema Schema)> tableResolver,
         Db2NavigationMemberAccessPlan[] accesses,
         Expression<Func<TEntity, TResult>> selector,
         int? take)
+        where TRow : struct, IDb2Row
     {
         var accessGroups = accesses
             .GroupBy(a => a.Join.Navigation.NavigationMember)
@@ -47,7 +48,7 @@ internal static class Db2BatchedNavigationProjector
                 break;
         }
 
-        var lookupByNavigation = new Dictionary<MemberInfo, NavigationLookup>();
+        var lookupByNavigation = new Dictionary<MemberInfo, NavigationLookup<TRow>>();
 
         foreach (var (navMember, navAccesses) in accessGroups)
         {
@@ -72,23 +73,24 @@ internal static class Db2BatchedNavigationProjector
             }
 
             var keys = keysByNavigation[navMember];
-            Dictionary<int, Wdc5Row> rowsByKey = new(capacity: Math.Min(keys.Count, relatedFile.Header.RecordsCount));
+            Dictionary<int, TRow> rowsByKey = new(capacity: Math.Min(keys.Count, relatedFile.RecordsCount));
 
             if (keys is { Count: not 0 })
             {
                 foreach (var row in relatedFile.EnumerateRows())
                 {
-                    if (!keys.Contains(row.Id))
+                    var rowId = row.Get<int>(Db2VirtualFieldIndex.Id);
+                    if (!keys.Contains(rowId))
                         continue;
 
-                    rowsByKey[row.Id] = row;
+                    rowsByKey[rowId] = row;
                 }
             }
 
-            lookupByNavigation[navMember] = new NavigationLookup(rowsByKey, accessorByMember);
+            lookupByNavigation[navMember] = new NavigationLookup<TRow>(rowsByKey, accessorByMember);
         }
 
-        var rewritten = new SelectorRewriter(selector.Parameters[0], lookupByNavigation, accessGroups).Visit(selector.Body);
+        var rewritten = new SelectorRewriter<TRow>(selector.Parameters[0], lookupByNavigation, accessGroups).Visit(selector.Body);
         var projection = Expression.Lambda<Func<TEntity, TResult>>(rewritten!, selector.Parameters[0]).Compile();
 
         foreach (var entity in buffered)
@@ -130,9 +132,10 @@ internal static class Db2BatchedNavigationProjector
         return Expression.Lambda<Func<TEntity, int>>(key, entity).Compile();
     }
 
-    private sealed class NavigationLookup(Dictionary<int, Wdc5Row> rowsByKey, Dictionary<MemberInfo, Db2FieldAccessor> accessorByMember)
+    private sealed class NavigationLookup<TRow>(Dictionary<int, TRow> rowsByKey, Dictionary<MemberInfo, Db2FieldAccessor> accessorByMember)
+        where TRow : struct, IDb2Row
     {
-        public bool TryGetRow(int key, out Wdc5Row row)
+        public bool TryGetRow(int key, out TRow row)
         {
             return rowsByKey.TryGetValue(key, out row);
         }
@@ -141,10 +144,11 @@ internal static class Db2BatchedNavigationProjector
             => accessorByMember[member];
     }
 
-    private sealed class SelectorRewriter(
+    private sealed class SelectorRewriter<TRow>(
         ParameterExpression entityParam,
-        Dictionary<MemberInfo, NavigationLookup> lookupByNavigation,
+        Dictionary<MemberInfo, NavigationLookup<TRow>> lookupByNavigation,
         Dictionary<MemberInfo, Db2NavigationMemberAccessPlan[]> accessGroups) : ExpressionVisitor
+        where TRow : struct, IDb2Row
     {
         protected override Expression VisitMember(MemberExpression node)
         {
@@ -162,10 +166,10 @@ internal static class Db2BatchedNavigationProjector
                 var keyGetter = CreateKeyExpression(join.RootKeyMember);
                 var accessor = lookup.GetAccessor(node.Member);
 
-                var tryGet = typeof(NavigationLookup).GetMethod(nameof(NavigationLookup.TryGetRow))!;
+                var tryGet = typeof(NavigationLookup<TRow>).GetMethod(nameof(NavigationLookup<TRow>.TryGetRow))!;
 
                 var keyVar = Expression.Variable(typeof(int), "key");
-                var relatedRowVar = Expression.Variable(typeof(Wdc5Row), "relatedRow");
+                var relatedRowVar = Expression.Variable(typeof(TRow), "relatedRow");
 
                 var assignKey = Expression.Assign(keyVar, keyGetter);
                 var tryGetCall = Expression.Call(Expression.Constant(lookup), tryGet, keyVar, relatedRowVar);
@@ -189,6 +193,29 @@ internal static class Db2BatchedNavigationProjector
 
         private static Expression BuildReadExpression(Expression rowExpression, Db2FieldAccessor accessor, Type targetType)
         {
+            if (accessor.Field.ElementCount > 1
+                && targetType.IsGenericType
+                && (targetType.GetGenericTypeDefinition() == typeof(ICollection<>)
+                    || targetType.GetGenericTypeDefinition() == typeof(IList<>)
+                    || targetType.GetGenericTypeDefinition() == typeof(IEnumerable<>)
+                    || targetType.GetGenericTypeDefinition() == typeof(IReadOnlyCollection<>)
+                    || targetType.GetGenericTypeDefinition() == typeof(IReadOnlyList<>)))
+            {
+                var elementType = targetType.GetGenericArguments()[0];
+                if (elementType == typeof(string))
+                    throw new NotSupportedException("String arrays are not supported.");
+
+                if (!elementType.IsPrimitive && elementType != typeof(float) && elementType != typeof(double))
+                    throw new NotSupportedException($"Unsupported array element type {elementType.FullName}.");
+
+                var arrayType = elementType.MakeArrayType();
+                var getArray = typeof(TRow).GetMethod(nameof(IDb2Row.Get), BindingFlags.Public | BindingFlags.Instance)!
+                    .MakeGenericMethod(arrayType);
+
+                var readArray = Expression.Call(rowExpression, getArray, Expression.Constant(accessor.Field.ColumnStartIndex));
+                return Expression.Convert(readArray, targetType);
+            }
+
             if (targetType.IsArray)
             {
                 var elementType = targetType.GetElementType()!;
@@ -197,18 +224,20 @@ internal static class Db2BatchedNavigationProjector
 
                 if (!elementType.IsPrimitive && elementType != typeof(float) && elementType != typeof(double))
                     throw new NotSupportedException($"Unsupported array element type {elementType.FullName}.");
-
-                var method = typeof(Db2RowValue).GetMethod(nameof(Db2RowValue.ReadArray), BindingFlags.Public | BindingFlags.Static)!;
-                var generic = method.MakeGenericMethod(elementType);
-                return Expression.Call(generic, rowExpression, Expression.Constant(accessor));
             }
 
             if (targetType == typeof(string) && accessor.Field.IsVirtual)
                 throw new NotSupportedException($"Virtual field '{accessor.Field.Name}' cannot be materialized as a string.");
 
             var readType = targetType.UnwrapNullable();
-            var methodInfo = readType.GetReadMethod();
-            var read = Expression.Call(methodInfo, rowExpression, Expression.Constant(accessor));
+            var methodInfo = typeof(TRow).GetMethod(nameof(IDb2Row.Get), BindingFlags.Public | BindingFlags.Instance)!
+                .MakeGenericMethod(readType);
+
+            var read = Expression.Call(
+                rowExpression,
+                methodInfo,
+                Expression.Constant(accessor.Field.ColumnStartIndex));
+
             return targetType.IsNullable() ? Expression.Convert(read, targetType) : read;
         }        
     }

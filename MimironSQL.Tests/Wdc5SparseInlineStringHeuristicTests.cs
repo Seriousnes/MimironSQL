@@ -1,7 +1,7 @@
 using MimironSQL.Db2;
 using MimironSQL.Db2.Schema;
-using MimironSQL.Db2.Wdc5;
 using MimironSQL.Formats;
+using MimironSQL.Formats.Wdc5;
 using MimironSQL.Providers;
 
 using Shouldly;
@@ -22,7 +22,7 @@ public sealed class Wdc5SparseInlineStringHeuristicTests
 
         var sampleIds = file.EnumerateRows()
             .Take(Math.Min(50, file.Header.RecordsCount))
-            .Select(r => r.Id)
+            .Select(r => r.Get<int>(Db2VirtualFieldIndex.Id))
             .Where(id => id > 0)
             .Distinct()
             .Take(10);
@@ -32,7 +32,7 @@ public sealed class Wdc5SparseInlineStringHeuristicTests
         foreach (var id in sampleIds)
         {
             file.TryGetRowById(id, out var row).ShouldBeTrue();
-            row.Id.ShouldBe(id);
+            row.Get<int>(Db2VirtualFieldIndex.Id).ShouldBe(id);
         }
     }
 
@@ -68,11 +68,11 @@ public sealed class Wdc5SparseInlineStringHeuristicTests
 
         foreach (var row in file.EnumerateRows().Take(maxRowsToScan))
         {
-            row.Id.ShouldBeGreaterThan(0);
+            row.Get<int>(Db2VirtualFieldIndex.Id).ShouldBeGreaterThan(0);
 
-            Should.NotThrow(() => row.GetScalar<uint>(questId.ColumnStartIndex));
+            Should.NotThrow(() => row.Get<uint>(questId.ColumnStartIndex));
 
-            var coords = row.GetArray<float>(pos.ColumnStartIndex);
+            var coords = row.Get<float[]>(pos.ColumnStartIndex);
             coords.Length.ShouldBe(3);
         }
     }

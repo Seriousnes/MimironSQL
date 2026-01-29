@@ -493,11 +493,10 @@ public class QueryTests
 
         using (Wdc5FileLookupTracker.Start())
         {
-            names = context.Spell
+            names = [.. context.Spell
                 .Where(s => s.Id > 0)
                 .Select(s => (string?)s.SpellName.Name_lang)
-                .Take(50)
-                .ToList();
+                .Take(50)];
 
             snapshot = Wdc5FileLookupTracker.Snapshot();
         }
@@ -628,6 +627,135 @@ public class QueryTests
     }
 
     [Fact]
+    public void Include_populates_collection_navigation_from_id_array_preserving_slots()
+    {
+        var testDataDir = TestDataPaths.GetTestDataDirectory();
+        var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
+        var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
+        var context = new TestDb2Context(dbdProvider, db2Provider);
+
+        var mcm = context.MapChallengeMode
+            .Where(x => x.Id == 56)
+            .Include(x => x.FirstRewardQuest)
+            .Single();
+
+        mcm.FirstRewardQuestID.Count.ShouldBe(6);
+        mcm.FirstRewardQuest.Count.ShouldBe(6);
+
+        var ids = mcm.FirstRewardQuestID.ToArray();
+        var quests = mcm.FirstRewardQuest.ToArray();
+
+        var questFile = context.GetOrOpenTableRawTyped<Wdc5Row>(nameof(QuestV2)).File;
+        var questIds = questFile.EnumerateRows().Select(r => r.Get<int>(Db2VirtualFieldIndex.Id)).ToHashSet();
+
+        for (var i = 0; i < ids.Length; i++)
+        {
+            if (ids[i] == 0)
+            {
+                quests[i].ShouldBeNull();
+                continue;
+            }
+
+            if (questIds.Contains(ids[i]))
+            {
+                quests[i].ShouldNotBeNull();
+                quests[i]!.Id.ShouldBe(ids[i]);
+            }
+            else
+            {
+                quests[i].ShouldBeNull();
+            }
+        }
+    }
+
+    [Fact]
+    public void Include_populates_inverse_fk_collection_navigation_as_empty_or_populated()
+    {
+        var testDataDir = TestDataPaths.GetTestDataDirectory();
+        var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
+        var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
+        var context = new TestDb2Context(dbdProvider, db2Provider);
+
+        var mapChallengeModeFile = context.GetOrOpenTableRawTyped<Wdc5Row>(nameof(MapChallengeMode)).File;
+        var mapChallengeModeSchema = context.GetOrOpenTableRawTyped<Wdc5Row>(nameof(MapChallengeMode)).Schema;
+
+        mapChallengeModeSchema.TryGetField("MapID", out var mapIdField).ShouldBeTrue();
+        var mapIdsWithChallengeModes = mapChallengeModeFile.EnumerateRows()
+            .Select(r => (int)r.Get<ushort>(mapIdField.ColumnStartIndex))
+            .Where(id => id != 0)
+            .ToHashSet();
+
+        var mapFile = context.GetOrOpenTableRawTyped<Wdc5Row>(nameof(Map)).File;
+        var mapIds = mapFile.EnumerateRows().Select(r => r.Get<int>(Db2VirtualFieldIndex.Id)).Where(id => id != 0).ToList();
+
+        var populatedMapId = mapIds.First(id => mapIdsWithChallengeModes.Contains(id));
+        var emptyMapId = mapIds.First(id => !mapIdsWithChallengeModes.Contains(id));
+
+        var populated = context.Map
+            .Where(m => m.Id == populatedMapId)
+            .Include(m => m.MapChallengeModes)
+            .Single();
+
+        populated.MapChallengeModes.Count.ShouldBeGreaterThan(0);
+        populated.MapChallengeModes.All(mcm => mcm.MapID == populatedMapId).ShouldBeTrue();
+
+        var empty = context.Map
+            .Where(m => m.Id == emptyMapId)
+            .Include(m => m.MapChallengeModes)
+            .Single();
+
+        empty.MapChallengeModes.Count.ShouldBe(0);
+    }
+
+    [Fact]
+    public void Where_supports_collection_any_semi_join()
+    {
+        var testDataDir = TestDataPaths.GetTestDataDirectory();
+        var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
+        var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
+        var context = new TestDb2Context(dbdProvider, db2Provider);
+
+        var mapChallengeModeFile = context.GetOrOpenTableRawTyped<Wdc5Row>(nameof(MapChallengeMode)).File;
+        var mapChallengeModeSchema = context.GetOrOpenTableRawTyped<Wdc5Row>(nameof(MapChallengeMode)).Schema;
+        mapChallengeModeSchema.TryGetField("MapID", out var mapIdField).ShouldBeTrue();
+        var expected = mapChallengeModeFile.EnumerateRows()
+            .Select(r => (int)r.Get<ushort>(mapIdField.ColumnStartIndex))
+            .Where(id => id != 0)
+            .ToHashSet();
+
+        var results = context.Map
+            .Where(m => m.MapChallengeModes.Any())
+            .Take(50)
+            .ToList();
+
+        results.Count.ShouldBeGreaterThan(0);
+        results.All(m => expected.Contains(m.Id)).ShouldBeTrue();
+    }
+
+    [Fact]
+    public void Where_supports_collection_any_with_scalar_predicate()
+    {
+        var testDataDir = TestDataPaths.GetTestDataDirectory();
+        var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
+        var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
+        var context = new TestDb2Context(dbdProvider, db2Provider);
+
+        var mapChallengeModeFile = context.GetOrOpenTableRawTyped<Wdc5Row>(nameof(MapChallengeMode)).File;
+        var mapChallengeModeSchema = context.GetOrOpenTableRawTyped<Wdc5Row>(nameof(MapChallengeMode)).Schema;
+        mapChallengeModeSchema.TryGetField("MapID", out var mapIdField).ShouldBeTrue();
+
+        var first = mapChallengeModeFile.EnumerateRows()
+            .Select(r => (Id: r.Get<int>(Db2VirtualFieldIndex.Id), MapId: (int)r.Get<ushort>(mapIdField.ColumnStartIndex)))
+            .First(x => x.Id != 0 && x.MapId != 0);
+
+        var result = context.Map
+            .Where(m => m.MapChallengeModes.Any(mc => mc.Id == first.Id))
+            .Single();
+
+        result.Id.ShouldBe(first.MapId);
+    }
+
+    [Fact]
     public void Phase3_supports_navigation_scalar_not_equal_predicate()
     {
         var testDataDir = TestDataPaths.GetTestDataDirectory();
@@ -734,10 +862,9 @@ public class QueryTests
 
         List<Map> results = [];
         Should.NotThrow(() =>
-            results = map
+            results = [.. map
                 .Where(m => m.ParentMap.Id > 0 && m.Directory.Contains("o"))
-                .Take(50)
-                .ToList());
+                .Take(50)]);
 
         results.All(r => r.ParentMapID != 0 && allMapIds.Contains(r.ParentMapID)).ShouldBeTrue();
     }

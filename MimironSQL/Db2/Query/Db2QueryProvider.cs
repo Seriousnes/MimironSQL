@@ -21,6 +21,8 @@ internal sealed class Db2QueryProvider<TEntity, TRow>(
 {
     private static readonly ConcurrentDictionary<Type, Func<Db2QueryProvider<TEntity, TRow>, Expression, object>> ExecuteEnumerableDelegates = new();
     private static readonly ConcurrentDictionary<Type, Func<Db2QueryProvider<TEntity, TRow>, IEnumerable<TEntity>, LambdaExpression, IEnumerable<TEntity>>> IncludeDelegates = new();
+    private static readonly ConcurrentDictionary<(Type NavigationType, Type TargetType), Func<Db2QueryProvider<TEntity, TRow>, IEnumerable<TEntity>, MemberInfo, string, Db2CollectionNavigation, IEnumerable<TEntity>>> ForeignKeyArrayToPrimaryKeyIncludeDelegates = new();
+    private static readonly ConcurrentDictionary<(Type NavigationType, Type TargetType), Func<Db2QueryProvider<TEntity, TRow>, IEnumerable<TEntity>, MemberInfo, string, Db2CollectionNavigation, IEnumerable<TEntity>>> DependentForeignKeyToPrimaryKeyIncludeDelegates = new();
 
     private readonly Db2EntityMaterializer<TEntity, TRow> _materializer = new(schema);
     private readonly Db2Model _model = model;
@@ -749,37 +751,164 @@ internal sealed class Db2QueryProvider<TEntity, TRow>(
         if (!IsWritable(navMember))
             throw new NotSupportedException($"Navigation member '{navName}' must be writable.");
 
-        if (!_model.TryGetReferenceNavigation(typeof(TEntity), navMember, out var modelNav))
-            throw new NotSupportedException($"Include navigation '{typeof(TEntity).FullName}.{navName}' is not configured. Configure the navigation in OnModelCreating, or ensure schema FK conventions can apply.");
+        if (_model.TryGetReferenceNavigation(typeof(TEntity), navMember, out var modelNav))
+            return ApplyReferenceInclude(source, navMember, navName, modelNav);
 
-        if (!IsReadable(modelNav.SourceKeyMember))
-            throw new NotSupportedException($"Navigation key member '{modelNav.SourceKeyMember.Name}' must be readable.");
+        if (_model.TryGetCollectionNavigation(typeof(TEntity), navMember, out var collectionNav))
+            return ApplyCollectionInclude(source, navMember, navName, collectionNav);
 
-        if (modelNav.Kind != Db2ReferenceNavigationKind.ForeignKeyToPrimaryKey &&
-            modelNav.Kind != Db2ReferenceNavigationKind.SharedPrimaryKeyOneToOne)
+        throw new NotSupportedException($"Include navigation '{typeof(TEntity).FullName}.{navName}' is not configured. Configure the navigation in OnModelCreating, or ensure schema FK conventions can apply.");
+
+        IEnumerable<TEntity> ApplyReferenceInclude(IEnumerable<TEntity> referenceSource, MemberInfo referenceNavMember, string referenceNavName, Db2ReferenceNavigation referenceNav)
         {
-            throw new NotSupportedException($"Include navigation '{typeof(TEntity).FullName}.{navName}' has unsupported kind '{modelNav.Kind}'.");
+            if (!IsReadable(referenceNav.SourceKeyMember))
+                throw new NotSupportedException($"Navigation key member '{referenceNav.SourceKeyMember.Name}' must be readable.");
+
+            if (referenceNav.Kind != Db2ReferenceNavigationKind.ForeignKeyToPrimaryKey &&
+                referenceNav.Kind != Db2ReferenceNavigationKind.SharedPrimaryKeyOneToOne)
+            {
+                throw new NotSupportedException($"Include navigation '{typeof(TEntity).FullName}.{referenceNavName}' has unsupported kind '{referenceNav.Kind}'.");
+            }
+
+            var keyGetter = CreateIntGetter(referenceNav.SourceKeyMember);
+            var navigationSetter = CreateNavigationSetter<TRelated>(referenceNavMember);
+
+            var targetEntityType = _model.GetEntityType(referenceNav.TargetClrType);
+            var (relatedFile, relatedSchema) = _tableResolver(targetEntityType.TableName);
+            var relatedMaterializer = new Db2EntityMaterializer<TRelated, TRow>(relatedSchema);
+
+            var entitiesWithKeys = new List<(TEntity Entity, int Key)>();
+            HashSet<int> keys = [];
+
+            foreach (var entity in referenceSource)
+            {
+                var key = keyGetter(entity);
+                entitiesWithKeys.Add((entity, key));
+                if (key != 0)
+                    keys.Add(key);
+            }
+
+            Dictionary<int, TRelated> relatedByKey = new(capacity: Math.Min(keys.Count, relatedFile.RecordsCount));
+            if (keys is { Count: not 0 })
+            {
+                foreach (var row in relatedFile.EnumerateRows())
+                {
+                    var rowId = row.Get<int>(Db2VirtualFieldIndex.Id);
+                    if (!keys.Contains(rowId))
+                        continue;
+
+                    relatedByKey[rowId] = relatedMaterializer.Materialize(row);
+                }
+            }
+
+            foreach (var (entity, key) in entitiesWithKeys)
+            {
+                relatedByKey.TryGetValue(key, out var related);
+                navigationSetter(entity, related);
+                yield return entity;
+            }
         }
 
-        var keyGetter = CreateIntGetter(modelNav.SourceKeyMember);
-        var navigationSetter = CreateNavigationSetter<TRelated>(navMember);
+        IEnumerable<TEntity> ApplyCollectionInclude(IEnumerable<TEntity> collectionSource, MemberInfo collectionNavMember, string collectionNavName, Db2CollectionNavigation collectionNav)
+        {
+            if (collectionNav is { Kind: Db2CollectionNavigationKind.ForeignKeyArrayToPrimaryKey })
+            {
+                return ApplyCollectionIncludeViaDelegate(
+                    ForeignKeyArrayToPrimaryKeyIncludeDelegates,
+                    nameof(ApplyForeignKeyArrayToPrimaryKeyInclude),
+                    collectionNav,
+                    collectionNavName,
+                    collectionSource,
+                    collectionNavMember);
+            }
 
-        var targetEntityType = _model.GetEntityType(modelNav.TargetClrType);
-        var (relatedFile, relatedSchema) = _tableResolver(targetEntityType.TableName);
-        var relatedMaterializer = new Db2EntityMaterializer<TRelated, TRow>(relatedSchema);
+            if (collectionNav is { Kind: Db2CollectionNavigationKind.DependentForeignKeyToPrimaryKey })
+            {
+                return ApplyCollectionIncludeViaDelegate(
+                    DependentForeignKeyToPrimaryKeyIncludeDelegates,
+                    nameof(ApplyDependentForeignKeyToPrimaryKeyInclude),
+                    collectionNav,
+                    collectionNavName,
+                    collectionSource,
+                    collectionNavMember);
+            }
 
-        var entitiesWithKeys = new List<(TEntity Entity, int Key)>();
+            throw new NotSupportedException($"Include navigation '{typeof(TEntity).FullName}.{collectionNavName}' has unsupported kind '{collectionNav.Kind}'.");
+
+            IEnumerable<TEntity> ApplyCollectionIncludeViaDelegate(
+                ConcurrentDictionary<(Type NavigationType, Type TargetType), Func<Db2QueryProvider<TEntity, TRow>, IEnumerable<TEntity>, MemberInfo, string, Db2CollectionNavigation, IEnumerable<TEntity>>> cache,
+                string methodName,
+                Db2CollectionNavigation nav,
+                string navName,
+                IEnumerable<TEntity> src,
+                MemberInfo member)
+            {
+                if (!nav.TargetClrType.IsClass)
+                    throw new NotSupportedException($"Collection navigation '{typeof(TEntity).FullName}.{navName}' target type must be a reference type.");
+
+                var key = (NavigationType: typeof(TRelated), TargetType: nav.TargetClrType);
+                var d = cache.GetOrAdd(key, _ =>
+                {
+                    var m = typeof(Db2QueryProvider<TEntity, TRow>)
+                        .GetMethod(methodName, BindingFlags.Static | BindingFlags.NonPublic)!;
+
+                    var g = m.MakeGenericMethod(typeof(TRelated), nav.TargetClrType);
+                    return (Func<Db2QueryProvider<TEntity, TRow>, IEnumerable<TEntity>, MemberInfo, string, Db2CollectionNavigation, IEnumerable<TEntity>>)
+                        g.CreateDelegate(typeof(Func<Db2QueryProvider<TEntity, TRow>, IEnumerable<TEntity>, MemberInfo, string, Db2CollectionNavigation, IEnumerable<TEntity>>));
+                });
+
+                return d(this, src, member, navName, nav);
+            }
+        }
+
+    }
+
+    private static IEnumerable<TEntity> ApplyForeignKeyArrayToPrimaryKeyInclude<TRelatedNav, TTarget>(
+        Db2QueryProvider<TEntity, TRow> provider,
+        IEnumerable<TEntity> source,
+        MemberInfo navMember,
+        string navName,
+        Db2CollectionNavigation nav)
+        where TRelatedNav : class
+        where TTarget : class
+    {
+        if (nav.SourceKeyCollectionMember is null || nav.SourceKeyFieldSchema is null)
+            throw new NotSupportedException($"Collection navigation '{typeof(TEntity).FullName}.{navName}' must specify a source key collection member.");
+
+        if (!IsReadable(nav.SourceKeyCollectionMember))
+            throw new NotSupportedException($"Navigation key member '{nav.SourceKeyCollectionMember.Name}' must be readable.");
+
+        if (navMember.GetMemberType() != typeof(TRelatedNav))
+            throw new NotSupportedException($"Collection navigation '{typeof(TEntity).FullName}.{navName}' must have CLR type '{typeof(TRelatedNav).FullName}'.");
+
+        if (!typeof(TRelatedNav).IsAssignableFrom(typeof(TTarget[])))
+            throw new NotSupportedException($"Collection navigation '{typeof(TEntity).FullName}.{navName}' must be assignable from '{typeof(TTarget[]).FullName}'.");
+
+        var keyListGetter = CreateIntEnumerableGetter(nav.SourceKeyCollectionMember);
+        var navigationSetter = CreateNavigationSetter<TRelatedNav>(navMember);
+
+        var targetEntityType = provider._model.GetEntityType(typeof(TTarget));
+        var (relatedFile, relatedSchema) = provider._tableResolver(targetEntityType.TableName);
+        var relatedMaterializer = new Db2EntityMaterializer<TTarget, TRow>(relatedSchema);
+
+        var entitiesWithIds = new List<(TEntity Entity, int[] Ids)>();
         HashSet<int> keys = [];
 
         foreach (var entity in source)
         {
-            var key = keyGetter(entity);
-            entitiesWithKeys.Add((entity, key));
-            if (key != 0)
-                keys.Add(key);
+            var idsEnumerable = keyListGetter(entity);
+            var ids = idsEnumerable as int[] ?? idsEnumerable?.ToArray() ?? [];
+
+            entitiesWithIds.Add((entity, ids));
+            for (var i = 0; i < ids.Length; i++)
+            {
+                var id = ids[i];
+                if (id != 0)
+                    keys.Add(id);
+            }
         }
 
-        Dictionary<int, TRelated> relatedByKey = new(capacity: Math.Min(keys.Count, relatedFile.RecordsCount));
+        Dictionary<int, TTarget> relatedByKey = new(capacity: Math.Min(keys.Count, relatedFile.RecordsCount));
         if (keys is { Count: not 0 })
         {
             foreach (var row in relatedFile.EnumerateRows())
@@ -792,13 +921,130 @@ internal sealed class Db2QueryProvider<TEntity, TRow>(
             }
         }
 
-        foreach (var (entity, key) in entitiesWithKeys)
+        foreach (var (entity, ids) in entitiesWithIds)
         {
-            relatedByKey.TryGetValue(key, out var related);
-            navigationSetter(entity, related);
+            var relatedArray = new TTarget[ids.Length];
+            for (var i = 0; i < ids.Length; i++)
+            {
+                var id = ids[i];
+                if (id == 0)
+                    continue;
+
+                if (relatedByKey.TryGetValue(id, out var related))
+                    relatedArray[i] = related;
+            }
+
+            var value = (TRelatedNav)(IEnumerable<TTarget>)relatedArray;
+            navigationSetter(entity, value);
             yield return entity;
         }
     }
+
+    private static IEnumerable<TEntity> ApplyDependentForeignKeyToPrimaryKeyInclude<TRelatedNav, TTarget>(
+        Db2QueryProvider<TEntity, TRow> provider,
+        IEnumerable<TEntity> source,
+        MemberInfo navMember,
+        string navName,
+        Db2CollectionNavigation nav)
+        where TRelatedNav : class
+        where TTarget : class
+    {
+        if (nav.PrincipalKeyMember is null)
+            throw new NotSupportedException($"Collection navigation '{typeof(TEntity).FullName}.{navName}' must specify a principal key member.");
+
+        if (nav.DependentForeignKeyFieldSchema is null || nav.DependentForeignKeyMember is null)
+            throw new NotSupportedException($"Collection navigation '{typeof(TEntity).FullName}.{navName}' must specify a dependent foreign key member.");
+
+        if (!IsReadable(nav.PrincipalKeyMember))
+            throw new NotSupportedException($"Principal key member '{nav.PrincipalKeyMember.Name}' must be readable.");
+
+        if (navMember.GetMemberType() != typeof(TRelatedNav))
+            throw new NotSupportedException($"Collection navigation '{typeof(TEntity).FullName}.{navName}' must have CLR type '{typeof(TRelatedNav).FullName}'.");
+
+        if (!typeof(TRelatedNav).IsAssignableFrom(typeof(TTarget[])))
+            throw new NotSupportedException($"Collection navigation '{typeof(TEntity).FullName}.{navName}' must be assignable from '{typeof(TTarget[]).FullName}'.");
+
+        var navigationSetter = CreateNavigationSetter<TRelatedNav>(navMember);
+        var principalKeyGetter = CreateIntGetter(nav.PrincipalKeyMember);
+
+        var entitiesWithKeys = new List<(TEntity Entity, int Key)>();
+        HashSet<int> keys = [];
+        foreach (var entity in source)
+        {
+            var key = principalKeyGetter(entity);
+            entitiesWithKeys.Add((entity, key));
+            if (key != 0)
+                keys.Add(key);
+        }
+
+        var targetEntityType = provider._model.GetEntityType(typeof(TTarget));
+        var (relatedFile, relatedSchema) = provider._tableResolver(targetEntityType.TableName);
+        var relatedMaterializer = new Db2EntityMaterializer<TTarget, TRow>(relatedSchema);
+
+        Dictionary<int, List<TTarget>> dependentsByKey = [];
+        if (keys is { Count: not 0 })
+        {
+            var fkFieldIndex = nav.DependentForeignKeyFieldSchema.Value.ColumnStartIndex;
+            foreach (var row in relatedFile.EnumerateRows())
+            {
+                var fk = row.Get<int>(fkFieldIndex);
+                if (fk == 0 || !keys.Contains(fk))
+                    continue;
+
+                var dependent = relatedMaterializer.Materialize(row);
+                if (!dependentsByKey.TryGetValue(fk, out var list))
+                {
+                    list = [];
+                    dependentsByKey.Add(fk, list);
+                }
+
+                list.Add(dependent);
+            }
+        }
+
+        foreach (var (entity, key) in entitiesWithKeys)
+        {
+            if (!dependentsByKey.TryGetValue(key, out var dependents) || dependents.Count == 0)
+            {
+                var empty = Array.Empty<TTarget>();
+                var emptyValue = (TRelatedNav)(IEnumerable<TTarget>)empty;
+                navigationSetter(entity, emptyValue);
+                yield return entity;
+                continue;
+            }
+
+            var array = new TTarget[dependents.Count];
+            for (var i = 0; i < dependents.Count; i++)
+                array[i] = dependents[i];
+
+            var value = (TRelatedNav)(IEnumerable<TTarget>)array;
+            navigationSetter(entity, value);
+            yield return entity;
+        }
+    }
+
+    private static Func<TEntity, IEnumerable<int>?> CreateIntEnumerableGetter(MemberInfo member)
+    {
+        var entity = Expression.Parameter(typeof(TEntity), "entity");
+
+        Expression access = member switch
+        {
+            PropertyInfo p => Expression.Property(entity, p),
+            FieldInfo f => Expression.Field(entity, f),
+            _ => throw new InvalidOperationException($"Unexpected member type: {member.GetType().FullName}"),
+        };
+
+        var memberType = member.GetMemberType();
+
+        if (memberType == typeof(int[]))
+            return Expression.Lambda<Func<TEntity, IEnumerable<int>?>>(Expression.Convert(access, typeof(IEnumerable<int>)), entity).Compile();
+
+        if (typeof(IEnumerable<int>).IsAssignableFrom(memberType))
+            return Expression.Lambda<Func<TEntity, IEnumerable<int>?>>(Expression.Convert(access, typeof(IEnumerable<int>)), entity).Compile();
+
+        throw new NotSupportedException($"Expected an int enumerable member but found '{memberType.FullName}'.");
+    }
+
 
     private static Func<TEntity, int> CreateIntGetter(MemberInfo member)
     {

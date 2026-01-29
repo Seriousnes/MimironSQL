@@ -9,6 +9,62 @@ namespace MimironSQL.Db2.Query;
 
 internal static class Db2NavigationQueryTranslator
 {
+    public static bool TryTranslateCollectionAnyPredicate<TEntity>(
+        Db2Model model,
+        Expression<Func<TEntity, bool>> predicate,
+        out (Db2CollectionNavigation Navigation, LambdaExpression? DependentPredicate) plan)
+    {
+        ArgumentNullException.ThrowIfNull(model);
+        ArgumentNullException.ThrowIfNull(predicate);
+
+        plan = default;
+
+        if (predicate.Parameters is not { Count: 1 } || predicate.Parameters[0].Type != typeof(TEntity))
+            return false;
+
+        var rootParam = predicate.Parameters[0];
+        var body = predicate.Body.UnwrapConvert()!;
+
+        if (body is not MethodCallExpression call)
+            return false;
+
+        if (!IsEnumerableAny(call.Method))
+            return false;
+
+        if (call.Arguments.Count is < 1 or > 2)
+            return false;
+
+        var source = call.Arguments[0].UnwrapConvert()!;
+        if (source is not MemberExpression { Member: PropertyInfo or FieldInfo } member)
+            return false;
+
+        if (member.Expression != rootParam)
+            return false;
+
+        var navMember = member.Member;
+        if (!model.TryGetCollectionNavigation(typeof(TEntity), navMember, out var nav))
+            return false;
+
+        LambdaExpression? dependentPredicate = null;
+        if (call.Arguments.Count == 2)
+        {
+            var arg = call.Arguments[1];
+            if (arg is UnaryExpression { NodeType: ExpressionType.Quote } q)
+                arg = q.Operand;
+
+            if (arg is not LambdaExpression lambda)
+                return false;
+
+            dependentPredicate = lambda;
+        }
+
+        plan = (nav, dependentPredicate);
+        return true;
+
+        static bool IsEnumerableAny(MethodInfo method)
+            => method is { Name: nameof(Enumerable.Any), IsStatic: true } && method.DeclaringType == typeof(Enumerable);
+    }
+
     public static bool TryTranslateStringPredicate<TEntity>(
         Db2Model model,
         Expression<Func<TEntity, bool>> predicate,

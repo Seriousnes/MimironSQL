@@ -9,6 +9,7 @@ internal class Map : Db2Entity
 
     public int ParentMapID { get; set; }
     public Map? ParentMap { get; set; }
+    public ICollection<MapChallengeMode> MapChallengeModes { get; set; } = null!;
 }
 
 internal class MapWithCtor : Db2Entity

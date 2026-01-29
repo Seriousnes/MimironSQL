@@ -32,10 +32,7 @@ internal sealed class Db2EntityMaterializer<TEntity, TRow>
 
     private static Func<TEntity> CreateFactory()
     {
-        var ctor = typeof(TEntity).GetConstructor(Type.EmptyTypes);
-        if (ctor is null)
-            throw new NotSupportedException($"Entity type {typeof(TEntity).FullName} must have a public parameterless constructor for reflection-based materialization.");
-
+        var ctor = typeof(TEntity).GetConstructor(Type.EmptyTypes) ?? throw new NotSupportedException($"Entity type {typeof(TEntity).FullName} must have a public parameterless constructor for reflection-based materialization.");
         var body = Expression.New(ctor);
         return Expression.Lambda<Func<TEntity>>(body).Compile();
     }

@@ -33,6 +33,49 @@ internal static class Db2NavigationQueryCompiler
             var left = Expression.Lambda<Func<TEntity, bool>>(andAlso.Left, p);
             var right = Expression.Lambda<Func<TEntity, bool>>(andAlso.Right, p);
 
+            if (Db2NavigationQueryTranslator.TryTranslateCollectionAnyPredicate(model, left, out var leftAnyPlan) &&
+                Db2RowPredicateCompiler.TryCompile(rootFile, rootSchema, right, out var rightRowPredicateAny))
+            {
+                var ids = FindMatchingRootIdsForCollectionAny<TRow>(model, tableResolver, leftAnyPlan.Navigation, leftAnyPlan.DependentPredicate);
+                var nav = CompileSharedPrimaryKeySemiJoin<TRow>(ids);
+                rowPredicate = row => nav(row) && rightRowPredicateAny(row);
+                return true;
+            }
+
+            if (Db2NavigationQueryTranslator.TryTranslateCollectionAnyPredicate(model, right, out var rightAnyPlan) &&
+                Db2RowPredicateCompiler.TryCompile(rootFile, rootSchema, left, out var leftRowPredicateAny))
+            {
+                var ids = FindMatchingRootIdsForCollectionAny<TRow>(model, tableResolver, rightAnyPlan.Navigation, rightAnyPlan.DependentPredicate);
+                var nav = CompileSharedPrimaryKeySemiJoin<TRow>(ids);
+                rowPredicate = row => leftRowPredicateAny(row) && nav(row);
+                return true;
+            }
+
+            if (Db2NavigationQueryTranslator.TryTranslateCollectionAnyPredicate(model, left, out var leftAny) &&
+                Db2NavigationQueryTranslator.TryTranslateCollectionAnyPredicate(model, right, out var rightAny) &&
+                leftAny.Navigation.NavigationMember != rightAny.Navigation.NavigationMember)
+            {
+                var leftIds = FindMatchingRootIdsForCollectionAny<TRow>(model, tableResolver, leftAny.Navigation, leftAny.DependentPredicate);
+                var rightIds = FindMatchingRootIdsForCollectionAny<TRow>(model, tableResolver, rightAny.Navigation, rightAny.DependentPredicate);
+
+                var leftNav = CompileSharedPrimaryKeySemiJoin<TRow>(leftIds);
+                var rightNav = CompileSharedPrimaryKeySemiJoin<TRow>(rightIds);
+                rowPredicate = row => leftNav(row) && rightNav(row);
+                return true;
+            }
+
+            if (Db2NavigationQueryTranslator.TryTranslateCollectionAnyPredicate(model, left, out var leftAnySame) &&
+                Db2NavigationQueryTranslator.TryTranslateCollectionAnyPredicate(model, right, out var rightAnySame) &&
+                leftAnySame.Navigation.NavigationMember == rightAnySame.Navigation.NavigationMember)
+            {
+                var leftIds = FindMatchingRootIdsForCollectionAny<TRow>(model, tableResolver, leftAnySame.Navigation, leftAnySame.DependentPredicate);
+                var rightIds = FindMatchingRootIdsForCollectionAny<TRow>(model, tableResolver, rightAnySame.Navigation, rightAnySame.DependentPredicate);
+                leftIds.IntersectWith(rightIds);
+
+                rowPredicate = CompileSharedPrimaryKeySemiJoin<TRow>(leftIds);
+                return true;
+            }
+
             // Null check + scalar predicate on same navigation
             if (Db2NavigationQueryTranslator.TryTranslateNullCheck(model, left, out var nullCheckLeft) && nullCheckLeft.IsNotNull &&
                 Db2NavigationQueryTranslator.TryTranslateScalarPredicate(model, right, out var scalarRight) &&
@@ -252,6 +295,13 @@ internal static class Db2NavigationQueryCompiler
             }
         }
 
+        if (Db2NavigationQueryTranslator.TryTranslateCollectionAnyPredicate(model, predicate, out var anyPlan))
+        {
+            var ids = FindMatchingRootIdsForCollectionAny<TRow>(model, tableResolver, anyPlan.Navigation, anyPlan.DependentPredicate);
+            rowPredicate = CompileSharedPrimaryKeySemiJoin<TRow>(ids);
+            return true;
+        }
+
         if (Db2NavigationQueryTranslator.TryTranslateScalarPredicate(model, predicate, out var scalarPlan))
         {
             var scalarMatchingIds = FindMatchingIdsScalar<TRow>(tableResolver, scalarPlan);
@@ -293,6 +343,100 @@ internal static class Db2NavigationQueryCompiler
         };
 
         return true;
+    }
+
+    private static HashSet<int> FindMatchingRootIdsForCollectionAny<TRow>(
+        Db2Model model,
+        Func<string, (IDb2File<TRow> File, Db2TableSchema Schema)> tableResolver,
+        Db2CollectionNavigation navigation,
+        LambdaExpression? dependentPredicate)
+        where TRow : struct, IDb2Row
+    {
+        if (navigation.Kind != Db2CollectionNavigationKind.DependentForeignKeyToPrimaryKey)
+            return [];
+
+        if (navigation.DependentForeignKeyFieldSchema is null)
+            return [];
+
+        var m = typeof(Db2NavigationQueryCompiler)
+            .GetMethod(nameof(FindMatchingRootIdsForCollectionAnyTyped), BindingFlags.Static | BindingFlags.NonPublic)!;
+
+        var g = m.MakeGenericMethod(navigation.TargetClrType, typeof(TRow));
+
+        var typedPredicate = dependentPredicate is null
+            ? null
+            : (LambdaExpression)Expression.Lambda(
+                typeof(Func<,>).MakeGenericType(navigation.TargetClrType, typeof(bool)),
+                dependentPredicate.Body,
+                dependentPredicate.Parameters);
+
+        return (HashSet<int>)g.Invoke(null, [model, tableResolver, navigation, typedPredicate])!;
+    }
+
+    private static HashSet<int> FindMatchingRootIdsForCollectionAnyTyped<TDependent, TRow>(
+        Db2Model model,
+        Func<string, (IDb2File<TRow> File, Db2TableSchema Schema)> tableResolver,
+        Db2CollectionNavigation navigation,
+        LambdaExpression? dependentPredicate)
+        where TDependent : class
+        where TRow : struct, IDb2Row
+    {
+        if (navigation.Kind != Db2CollectionNavigationKind.DependentForeignKeyToPrimaryKey)
+            return [];
+
+        if (navigation.DependentForeignKeyFieldSchema is null)
+            return [];
+
+        var dependentEntityType = model.GetEntityType(typeof(TDependent));
+        var (dependentFile, dependentSchema) = tableResolver(dependentEntityType.TableName);
+
+        var fkIndex = navigation.DependentForeignKeyFieldSchema.Value.ColumnStartIndex;
+        HashSet<int> matchingRootIds = [];
+
+        if (dependentPredicate is null)
+        {
+            foreach (var row in dependentFile.EnumerateRows())
+            {
+                var fk = row.Get<int>(fkIndex);
+                if (fk != 0)
+                    matchingRootIds.Add(fk);
+            }
+
+            return matchingRootIds;
+        }
+
+        var typedPredicate = (Expression<Func<TDependent, bool>>)dependentPredicate;
+
+        if (Db2RowPredicateCompiler.TryCompile(dependentFile, dependentSchema, typedPredicate, out var dependentRowPredicate))
+        {
+            foreach (var row in dependentFile.EnumerateRows())
+            {
+                if (!dependentRowPredicate(row))
+                    continue;
+
+                var fk = row.Get<int>(fkIndex);
+                if (fk != 0)
+                    matchingRootIds.Add(fk);
+            }
+
+            return matchingRootIds;
+        }
+
+        var dependentEntityPredicate = typedPredicate.Compile();
+        var materializer = new Db2EntityMaterializer<TDependent, TRow>(dependentSchema);
+
+        foreach (var row in dependentFile.EnumerateRows())
+        {
+            var entity = materializer.Materialize(row);
+            if (!dependentEntityPredicate(entity))
+                continue;
+
+            var fk = row.Get<int>(fkIndex);
+            if (fk != 0)
+                matchingRootIds.Add(fk);
+        }
+
+        return matchingRootIds;
     }
 
     private static HashSet<int> FindMatchingIds<TRow>(

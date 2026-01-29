@@ -20,5 +20,15 @@ internal class TestDb2Context(IDbdProvider dbdProvider, IDb2StreamProvider db2St
             .Entity<Spell>()
             .HasOne(s => s.SpellName)
             .WithSharedPrimaryKey(s => s.Id, sn => sn.Id);
+
+        modelBuilder
+            .Entity<MapChallengeMode>()
+            .HasMany(m => m.FirstRewardQuest)
+            .WithForeignKeyArray(m => m.FirstRewardQuestID);
+
+        modelBuilder
+            .Entity<Map>()
+            .HasMany(m => m.MapChallengeModes)
+            .WithForeignKey(mc => mc.MapID);
     }
 }

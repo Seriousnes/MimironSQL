@@ -15,4 +15,6 @@ internal sealed class Db2EntityTypeMetadata(Type clrType)
     public bool PrimaryKeyWasConfigured { get; set; }
 
     public List<Db2NavigationMetadata> Navigations { get; } = [];
+
+    public List<Db2CollectionNavigationMetadata> CollectionNavigations { get; } = [];
 }

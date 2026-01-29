@@ -128,11 +128,7 @@ internal static class Db2NavigationRowProjector
                 lookupByNavigation,
                 rootKeyFieldIndexByNavigation);
 
-            var rewrittenBody = rewriter.Visit(selector.Body);
-
-            if (rewrittenBody is null)
-                throw new NotSupportedException("Failed to rewrite selector for row-based projection.");
-
+            var rewrittenBody = rewriter.Visit(selector.Body) ?? throw new NotSupportedException("Failed to rewrite selector for row-based projection.");
             return Expression.Lambda<Func<TRow, TResult>>(rewrittenBody, _rowParam).Compile();
         }
 

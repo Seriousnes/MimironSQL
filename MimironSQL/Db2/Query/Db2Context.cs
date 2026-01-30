@@ -138,7 +138,7 @@ public abstract class Db2Context
     }
 
     internal (IDb2File<TRow> File, Db2TableSchema Schema) GetOrOpenTableRawTyped<TRow>(string tableName)
-        where TRow : struct, IDb2Row
+        where TRow : struct
     {
         var (file, schema) = GetOrOpenTableRaw(tableName);
         return ((IDb2File<TRow>)file, schema);
@@ -220,11 +220,11 @@ public abstract class Db2Context
     }
 
     private static IDb2Table CreateTypedTableByTypes<TEntity, TRow>(Db2Context context, string tableName, Db2TableSchema schema, IDb2File file)
-        where TRow : struct, IDb2Row
+        where TRow : struct
         => context.CreateTypedTable<TEntity, TRow>(tableName, schema, file);
 
     private Db2Table<TEntity> CreateTypedTable<TEntity, TRow>(string tableName, Db2TableSchema schema, IDb2File file)
-        where TRow : struct, IDb2Row
+        where TRow : struct
         => new Db2Table<TEntity, TRow>(tableName, schema, _queryProvider, (IDb2File<TRow>)file);
 
     protected Db2Table<T> Table<T>(string? tableName = null)

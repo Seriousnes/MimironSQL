@@ -1,7 +1,7 @@
 using System.Linq.Expressions;
 
 using MimironSQL.Db2.Query;
-using MimironSQL.Formats.Wdc5;
+using MimironSQL.Formats;
 using MimironSQL.Providers;
 
 using Shouldly;
@@ -21,13 +21,15 @@ public sealed class RequiredColumnsTests
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
         var context = new PruningTestDb2Context(dbdProvider, db2Provider);
 
+        var mapFile = context.GetOrOpenTableRawTyped<RowHandle>(context.Map.TableName).File;
+
         Expression<Func<MapWithCtor, int>> selectId = x => x.Id;
-        Db2RowProjectorCompiler.TryCompile<MapWithCtor, int, Wdc5Row>(context.Map.Schema, selectId, out _, out var reqId).ShouldBeTrue();
+        Db2RowProjectorCompiler.TryCompile<MapWithCtor, int, RowHandle>(mapFile, context.Map.Schema, selectId, out _, out var reqId).ShouldBeTrue();
 
         reqId.Columns.Any(c => c.Kind == Db2RequiredColumnKind.Scalar && c.Field.IsId).ShouldBeTrue();
 
         Expression<Func<MapWithCtor, string>> selectDirectory = x => x.Directory;
-        Db2RowProjectorCompiler.TryCompile<MapWithCtor, string, Wdc5Row>(context.Map.Schema, selectDirectory, out _, out var reqDir).ShouldBeTrue();
+        Db2RowProjectorCompiler.TryCompile<MapWithCtor, string, RowHandle>(mapFile, context.Map.Schema, selectDirectory, out _, out var reqDir).ShouldBeTrue();
 
         reqDir.Columns.Any(c => c.Kind == Db2RequiredColumnKind.String && c.Field.Name.Equals("Directory", StringComparison.OrdinalIgnoreCase)).ShouldBeTrue();
     }
@@ -41,10 +43,10 @@ public sealed class RequiredColumnsTests
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
         var context = new PruningTestDb2Context(dbdProvider, db2Provider);
 
-        var mapFile = context.GetOrOpenTableRawTyped<Wdc5Row>(context.Map.TableName).File;
+        var mapFile = context.GetOrOpenTableRawTyped<RowHandle>(context.Map.TableName).File;
 
         Expression<Func<MapWithCtor, bool>> predicate = x => x.Id > 0 && x.Directory.Contains("o");
-        Db2RowPredicateCompiler.TryCompile<MapWithCtor, Wdc5Row>(mapFile, context.Map.Schema, predicate, out _, out var requirements).ShouldBeTrue();
+        Db2RowPredicateCompiler.TryCompile<MapWithCtor, RowHandle>(mapFile, context.Map.Schema, predicate, out _, out var requirements).ShouldBeTrue();
 
         requirements.Columns.Any(c => c.Kind == Db2RequiredColumnKind.Scalar && c.Field.IsId).ShouldBeTrue();
         requirements.Columns.Any(c => c.Kind == Db2RequiredColumnKind.String && c.Field.Name.Equals("Directory", StringComparison.OrdinalIgnoreCase)).ShouldBeTrue();

@@ -10,15 +10,16 @@ namespace MimironSQL.Db2.Query;
 internal static class Db2RowProjectorCompiler
 {
     public static bool TryCompile<TEntity, TResult, TRow>(Db2TableSchema schema, Expression<Func<TEntity, TResult>> selector, out Func<TRow, TResult> projector)
-        where TRow : struct, IDb2Row
-        => TryCompile<TEntity, TResult, TRow>(schema, selector, out projector, out _);
+        where TRow : struct, IRowHandle
+        => TryCompile<TEntity, TResult, TRow>(file: null, schema, selector, out projector, out _);
 
     public static bool TryCompile<TEntity, TResult, TRow>(
+        IDb2File? file,
         Db2TableSchema schema,
         Expression<Func<TEntity, TResult>> selector,
         out Func<TRow, TResult> projector,
         out Db2SourceRequirements requirements)
-        where TRow : struct, IDb2Row
+        where TRow : struct, IRowHandle
     {
         var fieldsByName = schema.Fields.ToDictionary(f => f.Name, StringComparer.OrdinalIgnoreCase);
 
@@ -44,7 +45,7 @@ internal static class Db2RowProjectorCompiler
 
         try
         {
-            var rewriter = new SelectorRewriter<TRow>(entityParam, rowParam, GetAccessor, requirements);
+            var rewriter = new SelectorRewriter<TRow>(entityParam, rowParam, GetAccessor, requirements, file);
             var rewrittenBody = rewriter.Visit(selector.Body);
 
             if (rewrittenBody is null)
@@ -67,9 +68,11 @@ internal static class Db2RowProjectorCompiler
         ParameterExpression entityParam,
         ParameterExpression rowParam,
         Func<string, Db2FieldAccessor> getAccessor,
-        Db2SourceRequirements requirements) : ExpressionVisitor
-        where TRow : struct, IDb2Row
+        Db2SourceRequirements requirements,
+        IDb2File? file) : ExpressionVisitor
+        where TRow : struct, IRowHandle
     {
+        private readonly ConstantExpression? _fileExpression = file is null ? null : Expression.Constant(file, typeof(IDb2File));
         protected override Expression VisitParameter(ParameterExpression node)
         {
             if (node == entityParam)
@@ -117,21 +120,24 @@ internal static class Db2RowProjectorCompiler
 
         private Expression BuildReadExpression(Db2FieldSchema field, Type targetType)
         {
+            if (_fileExpression is null)
+                throw new NotSupportedException("Row-level projection requires an IDb2File instance.");
+
             if (TryMapSchemaArrayCollectionRead(field, targetType, out var readType))
             {
-                var getArray = typeof(TRow)
-                    .GetMethod(nameof(IDb2Row.Get), BindingFlags.Instance | BindingFlags.Public, [typeof(int)])!
-                    .MakeGenericMethod(readType);
+                var readArrayMethod = typeof(Db2RowHandleAccess)
+                    .GetMethod(nameof(Db2RowHandleAccess.ReadField), BindingFlags.Public | BindingFlags.Static)!
+                    .MakeGenericMethod(typeof(TRow), readType);
 
-                var readArray = Expression.Call(rowParam, getArray, Expression.Constant(field.ColumnStartIndex));
+                var readArray = Expression.Call(readArrayMethod, _fileExpression, rowParam, Expression.Constant(field.ColumnStartIndex));
                 return Expression.Convert(readArray, targetType);
             }
 
-            var get = typeof(TRow)
-                .GetMethod(nameof(IDb2Row.Get), BindingFlags.Instance | BindingFlags.Public, [typeof(int)])!
-                .MakeGenericMethod(targetType);
+            var readMethod = typeof(Db2RowHandleAccess)
+                .GetMethod(nameof(Db2RowHandleAccess.ReadField), BindingFlags.Public | BindingFlags.Static)!
+                .MakeGenericMethod(typeof(TRow), targetType);
 
-            return Expression.Call(rowParam, get, Expression.Constant(field.ColumnStartIndex));
+            return Expression.Call(readMethod, _fileExpression, rowParam, Expression.Constant(field.ColumnStartIndex));
         }
 
         private static bool TryMapSchemaArrayCollectionRead(Db2FieldSchema field, Type targetType, out Type readType)

@@ -22,7 +22,7 @@ public sealed class Wdc5SparseInlineStringHeuristicTests
 
         var sampleIds = file.EnumerateRows()
             .Take(Math.Min(50, file.Header.RecordsCount))
-            .Select(r => r.Get<int>(Db2VirtualFieldIndex.Id))
+            .Select(r => r.RowId)
             .Where(id => id > 0)
             .Distinct()
             .Take(10);
@@ -32,7 +32,7 @@ public sealed class Wdc5SparseInlineStringHeuristicTests
         foreach (var id in sampleIds)
         {
             file.TryGetRowById(id, out var row).ShouldBeTrue();
-            row.Get<int>(Db2VirtualFieldIndex.Id).ShouldBe(id);
+            row.RowId.ShouldBe(id);
         }
     }
 
@@ -68,11 +68,11 @@ public sealed class Wdc5SparseInlineStringHeuristicTests
 
         foreach (var row in file.EnumerateRows().Take(maxRowsToScan))
         {
-            row.Get<int>(Db2VirtualFieldIndex.Id).ShouldBeGreaterThan(0);
+            row.RowId.ShouldBeGreaterThan(0);
 
-            Should.NotThrow(() => row.Get<uint>(questId.ColumnStartIndex));
+            Should.NotThrow(() => file.ReadField<uint>(row, questId.ColumnStartIndex));
 
-            var coords = row.Get<float[]>(pos.ColumnStartIndex);
+            var coords = file.ReadField<float[]>(row, pos.ColumnStartIndex);
             coords.Length.ShouldBe(3);
         }
     }

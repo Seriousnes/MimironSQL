@@ -46,7 +46,7 @@ public class Db2Table<T> : IQueryable<T>, IDb2Table
 }
 
 internal sealed class Db2Table<T, TRow> : Db2Table<T>
-    where TRow : struct, IDb2Row
+    where TRow : struct
 {
     private readonly IDb2File<TRow> _file;
     private readonly Db2EntityMaterializer<T, TRow> _materializer;
@@ -63,9 +63,9 @@ internal sealed class Db2Table<T, TRow> : Db2Table<T>
         if (!typeof(Db2Entity<TId>).IsAssignableFrom(typeof(T)))
             throw new NotSupportedException($"Entity type {typeof(T).FullName} must derive from {typeof(Db2Entity<TId>).FullName} to use Find with key type {typeof(TId).FullName}.");
 
-        if (!_file.TryGetRowById(id, out var row))
+        if (!_file.TryGetRowHandle(id, out var handle))
             return default;
 
-        return _materializer.Materialize(row);
+        return _materializer.Materialize(_file, handle);
     }
 }

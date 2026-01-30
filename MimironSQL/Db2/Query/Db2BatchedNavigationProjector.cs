@@ -17,7 +17,7 @@ internal static class Db2BatchedNavigationProjector
         Db2NavigationMemberAccessPlan[] accesses,
         Expression<Func<TEntity, TResult>> selector,
         int? take)
-        where TRow : struct, IDb2Row
+        where TRow : struct, IRowHandle
     {
         var accessGroups = accesses
             .GroupBy(a => a.Join.Navigation.NavigationMember)
@@ -79,7 +79,7 @@ internal static class Db2BatchedNavigationProjector
             {
                 foreach (var row in relatedFile.EnumerateRows())
                 {
-                    var rowId = row.Get<int>(Db2VirtualFieldIndex.Id);
+                    var rowId = Db2RowHandleAccess.AsHandle(row).RowId;
                     if (!keys.Contains(rowId))
                         continue;
 
@@ -87,11 +87,45 @@ internal static class Db2BatchedNavigationProjector
                 }
             }
 
-            lookupByNavigation[navMember] = new NavigationLookup<TRow>(rowsByKey, accessorByMember);
+            lookupByNavigation[navMember] = new NavigationLookup<TRow>(relatedFile, rowsByKey, accessorByMember);
         }
 
-        var rewritten = new SelectorRewriter<TRow>(selector.Parameters[0], lookupByNavigation, accessGroups).Visit(selector.Body);
-        var projection = Expression.Lambda<Func<TEntity, TResult>>(rewritten!, selector.Parameters[0]).Compile();
+        var rewriter = new SelectorRewriter<TRow>(selector.Parameters[0], lookupByNavigation);
+        var rewrittenBody = rewriter.Visit(selector.Body)!;
+
+        // Wrap with navigation locals: each navigation gets keyVar, rowVar, foundVar initialized once
+        var navLocals = rewriter.NavigationLocals;
+        if (navLocals is { Count: not 0 })
+        {
+            var variables = new List<ParameterExpression>(navLocals.Count * 3);
+            var assignments = new List<Expression>(navLocals.Count * 3);
+
+            foreach (var (navMember, locals) in navLocals)
+            {
+                var plans = accessGroups[navMember];
+                var join = plans[0].Join;
+                var lookup = lookupByNavigation[navMember];
+
+                variables.Add(locals.KeyVar);
+                variables.Add(locals.RowVar);
+                variables.Add(locals.FoundVar);
+
+                // key = entity.FkMember (converted to int)
+                var keyExpr = join.RootKeyMember.CreateInt32KeyExpression(selector.Parameters[0]);
+                assignments.Add(Expression.Assign(locals.KeyVar, keyExpr));
+
+                // found = lookup.TryGetRow(key, out row)
+                var tryGetMethod = typeof(NavigationLookup<TRow>).GetMethod(nameof(NavigationLookup<TRow>.TryGetRow))!;
+                var lookupExpr = Expression.Constant(lookup);
+                var tryGetCall = Expression.Call(lookupExpr, tryGetMethod, locals.KeyVar, locals.RowVar);
+                assignments.Add(Expression.Assign(locals.FoundVar, tryGetCall));
+            }
+
+            assignments.Add(rewrittenBody);
+            rewrittenBody = Expression.Block(variables, assignments);
+        }
+
+        var projection = Expression.Lambda<Func<TEntity, TResult>>(rewrittenBody, selector.Parameters[0]).Compile();
 
         foreach (var entity in buffered)
             yield return projection(entity);
@@ -132,9 +166,11 @@ internal static class Db2BatchedNavigationProjector
         return Expression.Lambda<Func<TEntity, int>>(key, entity).Compile();
     }
 
-    private sealed class NavigationLookup<TRow>(Dictionary<int, TRow> rowsByKey, Dictionary<MemberInfo, Db2FieldAccessor> accessorByMember)
-        where TRow : struct, IDb2Row
+    private sealed class NavigationLookup<TRow>(IDb2File file, Dictionary<int, TRow> rowsByKey, Dictionary<MemberInfo, Db2FieldAccessor> accessorByMember)
+        where TRow : struct, IRowHandle
     {
+        public IDb2File File { get; } = file;
+
         public bool TryGetRow(int key, out TRow row)
         {
             return rowsByKey.TryGetValue(key, out row);
@@ -142,14 +178,20 @@ internal static class Db2BatchedNavigationProjector
 
         public Db2FieldAccessor GetAccessor(MemberInfo member)
             => accessorByMember[member];
+
+        public T ReadField<T>(TRow row, int fieldIndex)
+            => Db2RowHandleAccess.ReadField<TRow, T>(File, row, fieldIndex);
     }
+
+    internal sealed record NavigationLocalVars(ParameterExpression KeyVar, ParameterExpression RowVar, ParameterExpression FoundVar);
 
     private sealed class SelectorRewriter<TRow>(
         ParameterExpression entityParam,
-        Dictionary<MemberInfo, NavigationLookup<TRow>> lookupByNavigation,
-        Dictionary<MemberInfo, Db2NavigationMemberAccessPlan[]> accessGroups) : ExpressionVisitor
-        where TRow : struct, IDb2Row
+        Dictionary<MemberInfo, NavigationLookup<TRow>> lookupByNavigation) : ExpressionVisitor
+        where TRow : struct, IRowHandle
     {
+        public Dictionary<MemberInfo, NavigationLocalVars> NavigationLocals { get; } = [];
+
         protected override Expression VisitMember(MemberExpression node)
         {
             node = (MemberExpression)base.VisitMember(node);
@@ -160,38 +202,31 @@ internal static class Db2BatchedNavigationProjector
                 if (!lookupByNavigation.TryGetValue(nav.Member, out var lookup))
                     return node;
 
-                var plans = accessGroups[nav.Member];
-                var join = plans[0].Join;
+                // Get or create shared locals for this navigation
+                if (!NavigationLocals.TryGetValue(nav.Member, out var locals))
+                {
+                    var navName = nav.Member.Name;
+                    locals = new NavigationLocalVars(
+                        Expression.Variable(typeof(int), $"{navName}_key"),
+                        Expression.Variable(typeof(TRow), $"{navName}_row"),
+                        Expression.Variable(typeof(bool), $"{navName}_found"));
+                    NavigationLocals[nav.Member] = locals;
+                }
 
-                var keyGetter = CreateKeyExpression(join.RootKeyMember);
                 var accessor = lookup.GetAccessor(node.Member);
+                var lookupExpression = Expression.Constant(lookup);
 
-                var tryGet = typeof(NavigationLookup<TRow>).GetMethod(nameof(NavigationLookup<TRow>.TryGetRow))!;
-
-                var keyVar = Expression.Variable(typeof(int), "key");
-                var relatedRowVar = Expression.Variable(typeof(TRow), "relatedRow");
-
-                var assignKey = Expression.Assign(keyVar, keyGetter);
-                var tryGetCall = Expression.Call(Expression.Constant(lookup), tryGet, keyVar, relatedRowVar);
-
-                var read = BuildReadExpression(relatedRowVar, accessor, node.Type);
+                // Just use the pre-initialized locals: if (found) read else default
+                var read = BuildReadExpression(lookupExpression, locals.RowVar, accessor, node.Type);
                 var defaultValue = Expression.Default(node.Type);
 
-                return Expression.Block(
-                    [keyVar, relatedRowVar],
-                    assignKey,
-                    Expression.Condition(tryGetCall, read, defaultValue));
+                return Expression.Condition(locals.FoundVar, read, defaultValue);
             }
 
             return node;
         }
 
-        private Expression CreateKeyExpression(MemberInfo member)
-        {
-            return member.CreateInt32KeyExpression(entityParam);
-        }
-
-        private static Expression BuildReadExpression(Expression rowExpression, Db2FieldAccessor accessor, Type targetType)
+        private static Expression BuildReadExpression(ConstantExpression lookupExpression, Expression rowExpression, Db2FieldAccessor accessor, Type targetType)
         {
             if (accessor.Field.ElementCount > 1
                 && targetType.IsGenericType
@@ -209,10 +244,11 @@ internal static class Db2BatchedNavigationProjector
                     throw new NotSupportedException($"Unsupported array element type {elementType.FullName}.");
 
                 var arrayType = elementType.MakeArrayType();
-                var getArray = typeof(TRow).GetMethod(nameof(IDb2Row.Get), BindingFlags.Public | BindingFlags.Instance, [typeof(int)])!
+                var readArrayMethod = typeof(NavigationLookup<TRow>)
+                    .GetMethod(nameof(NavigationLookup<TRow>.ReadField), BindingFlags.Public | BindingFlags.Instance)!
                     .MakeGenericMethod(arrayType);
 
-                var readArray = Expression.Call(rowExpression, getArray, Expression.Constant(accessor.Field.ColumnStartIndex));
+                var readArray = Expression.Call(lookupExpression, readArrayMethod, rowExpression, Expression.Constant(accessor.Field.ColumnStartIndex));
                 return Expression.Convert(readArray, targetType);
             }
 
@@ -230,13 +266,11 @@ internal static class Db2BatchedNavigationProjector
                 throw new NotSupportedException($"Virtual field '{accessor.Field.Name}' cannot be materialized as a string.");
 
             var readType = targetType.UnwrapNullable();
-            var methodInfo = typeof(TRow).GetMethod(nameof(IDb2Row.Get), BindingFlags.Public | BindingFlags.Instance, [typeof(int)])!
+            var readMethod = typeof(NavigationLookup<TRow>)
+                .GetMethod(nameof(NavigationLookup<TRow>.ReadField), BindingFlags.Public | BindingFlags.Instance)!
                 .MakeGenericMethod(readType);
 
-            var read = Expression.Call(
-                rowExpression,
-                methodInfo,
-                Expression.Constant(accessor.Field.ColumnStartIndex));
+            var read = Expression.Call(lookupExpression, readMethod, rowExpression, Expression.Constant(accessor.Field.ColumnStartIndex));
 
             return targetType.IsNullable() ? Expression.Convert(read, targetType) : read;
         }        

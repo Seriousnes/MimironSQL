@@ -17,7 +17,7 @@ internal sealed class Db2QueryProvider<TEntity, TRow>(
     Db2TableSchema schema,
     Db2Model model,
     Func<string, (IDb2File<TRow> File, Db2TableSchema Schema)> tableResolver) : IQueryProvider
-    where TRow : struct, IDb2Row
+    where TRow : struct, IRowHandle
 {
     private static readonly ConcurrentDictionary<Type, Func<Db2QueryProvider<TEntity, TRow>, Expression, IEnumerable>> ExecuteEnumerableDelegates = new();
     private static readonly ConcurrentDictionary<Type, Func<Db2QueryProvider<TEntity, TRow>, IEnumerable<TEntity>, LambdaExpression, IEnumerable<TEntity>>> IncludeDelegates = new();
@@ -28,7 +28,7 @@ internal sealed class Db2QueryProvider<TEntity, TRow>(
     private readonly Db2Model _model = model;
     private readonly Func<string, (IDb2File<TRow> File, Db2TableSchema Schema)> _tableResolver = tableResolver;
 
-    internal TEntity Materialize(TRow row) => _materializer.Materialize(row);
+    internal TEntity Materialize(RowHandle handle) => _materializer.Materialize(file, handle);
 
     public IQueryable CreateQuery(Expression expression)
     {
@@ -375,7 +375,7 @@ internal sealed class Db2QueryProvider<TEntity, TRow>(
         if (selector is not Expression<Func<TEntity, TProjected>> typed)
             return null;
 
-        return Db2RowProjectorCompiler.TryCompile<TEntity, TProjected, TRow>(schema, typed, out var projector, out var requirements)
+        return Db2RowProjectorCompiler.TryCompile<TEntity, TProjected, TRow>(file, schema, typed, out var projector, out var requirements)
             ? (projector, requirements)
             : null;
     }
@@ -432,6 +432,7 @@ internal sealed class Db2QueryProvider<TEntity, TRow>(
         }
 
         return Db2NavigationRowProjector.ProjectFromRows<TProjected, TRow>(
+            file,
             FilteredRows(),
             schema,
             _model,
@@ -532,40 +533,71 @@ internal sealed class Db2QueryProvider<TEntity, TRow>(
         }
 
         var yielded = 0;
-        foreach (var row in file.EnumerateRows())
+        
+        if (rowPredicates.Count > 0)
         {
-            var ok = true;
-            foreach (var p in rowPredicates)
+            foreach (var row in file.EnumerateRows())
             {
-                if (!p(row))
+                var ok = true;
+                foreach (var p in rowPredicates)
                 {
-                    ok = false;
-                    break;
+                    if (!p(row))
+                    {
+                        ok = false;
+                        break;
+                    }
                 }
+
+                if (!ok)
+                    continue;
+
+                var handle = Db2RowHandleAccess.AsHandle(row);
+                var entity = _materializer.Materialize(file, handle);
+
+                foreach (var p in entityPredicates)
+                {
+                    if (!p(entity))
+                    {
+                        ok = false;
+                        break;
+                    }
+                }
+
+                if (!ok)
+                    continue;
+
+                yield return entity;
+
+                yielded++;
+                if (take.HasValue && yielded >= take.Value)
+                    yield break;
             }
-
-            if (!ok)
-                continue;
-
-            var entity = _materializer.Materialize(row);
-
-            foreach (var p in entityPredicates)
+        }
+        else
+        {
+            foreach (var handle in file.EnumerateRowHandles())
             {
-                if (!p(entity))
+                var entity = _materializer.Materialize(file, handle);
+
+                var ok = true;
+                foreach (var p in entityPredicates)
                 {
-                    ok = false;
-                    break;
+                    if (!p(entity))
+                    {
+                        ok = false;
+                        break;
+                    }
                 }
+
+                if (!ok)
+                    continue;
+
+                yield return entity;
+
+                yielded++;
+                if (take.HasValue && yielded >= take.Value)
+                    yield break;
             }
-
-            if (!ok)
-                continue;
-
-            yield return entity;
-
-            yielded++;
-            if (take.HasValue && yielded >= take.Value)
-                yield break;
         }
     }
 
@@ -793,11 +825,11 @@ internal sealed class Db2QueryProvider<TEntity, TRow>(
             {
                 foreach (var row in relatedFile.EnumerateRows())
                 {
-                    var rowId = row.Get<int>(Db2VirtualFieldIndex.Id);
+                    var rowId = Db2RowHandleAccess.AsHandle(row).RowId;
                     if (!keys.Contains(rowId))
                         continue;
 
-                    relatedByKey[rowId] = relatedMaterializer.Materialize(row);
+                    relatedByKey[rowId] = relatedMaterializer.Materialize(relatedFile, Db2RowHandleAccess.AsHandle(row));
                 }
             }
 
@@ -913,11 +945,11 @@ internal sealed class Db2QueryProvider<TEntity, TRow>(
         {
             foreach (var row in relatedFile.EnumerateRows())
             {
-                var rowId = row.Get<int>(Db2VirtualFieldIndex.Id);
+                var rowId = Db2RowHandleAccess.AsHandle(row).RowId;
                 if (!keys.Contains(rowId))
                     continue;
 
-                relatedByKey[rowId] = relatedMaterializer.Materialize(row);
+                relatedByKey[rowId] = relatedMaterializer.Materialize(relatedFile, Db2RowHandleAccess.AsHandle(row));
             }
         }
 
@@ -987,11 +1019,11 @@ internal sealed class Db2QueryProvider<TEntity, TRow>(
             var fkFieldIndex = nav.DependentForeignKeyFieldSchema.Value.ColumnStartIndex;
             foreach (var row in relatedFile.EnumerateRows())
             {
-                var fk = row.Get<int>(fkFieldIndex);
+                var fk = Db2RowHandleAccess.ReadField<TRow, int>(relatedFile, row, fkFieldIndex);
                 if (fk == 0 || !keys.Contains(fk))
                     continue;
 
-                var dependent = relatedMaterializer.Materialize(row);
+                var dependent = relatedMaterializer.Materialize(relatedFile, Db2RowHandleAccess.AsHandle(row));
                 if (!dependentsByKey.TryGetValue(fk, out var list))
                 {
                     list = [];

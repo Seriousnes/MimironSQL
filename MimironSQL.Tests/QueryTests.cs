@@ -1,6 +1,7 @@
 using MimironSQL.Db2.Query;
 using MimironSQL.Db2.Schema;
 using MimironSQL.Db2;
+using MimironSQL.Formats;
 using MimironSQL.Formats.Wdc5;
 using MimironSQL.Providers;
 
@@ -40,11 +41,11 @@ public class QueryTests
         var map = context.Map;
         map.Schema.TryGetField("Directory", out var directoryField).ShouldBeTrue();
 
-        var mapFile = context.GetOrOpenTableRawTyped<Wdc5Row>(map.TableName).File;
+        var mapFile = context.GetOrOpenTableRawTyped<RowHandle>(map.TableName).File;
 
         var sample = mapFile.EnumerateRows()
             .Take(Math.Min(200, mapFile.RecordsCount))
-            .Select(r => r.Get<string>(directoryField.ColumnStartIndex))
+            .Select(r => mapFile.ReadField<string>(r, directoryField.ColumnStartIndex))
             .FirstOrDefault(s => !string.IsNullOrWhiteSpace(s));
 
         sample.ShouldNotBeNull();
@@ -94,6 +95,22 @@ public class QueryTests
         results.All(r => r.Id > 0).ShouldBeTrue();
         results.All(r => r.CollectableSourceInfoID > 0).ShouldBeTrue();
         results.All(r => r.QuestID >= 0).ShouldBeTrue();
+    }
+
+    [Fact]
+    public void Query_spell_with_spellname_projection()
+    {
+        var testDataDir = TestDataPaths.GetTestDataDirectory();
+        var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
+        var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
+        var context = new TestDb2Context(dbdProvider, db2Provider);
+
+        var results = context.Spell
+            .Include(s => s.SpellName)
+            .Select(s => new { s.Id, Name = s.SpellName.Name_lang })
+            .ToList();
+
+        results.Count.ShouldBeGreaterThan(0);
     }
 
     [Fact]
@@ -240,7 +257,7 @@ public class QueryTests
         var context = new TestDb2Context(dbdProvider, db2Provider);
 
         var spell = context.Spell;
-        var file = context.GetOrOpenTableRawTyped<Wdc5Row>(spell.TableName).File;
+        var file = context.GetOrOpenTableRawTyped<RowHandle>(spell.TableName).File;
 
         var missing = int.MaxValue;
         for (var i = 0; i < 1_000 && file.TryGetRowById(missing, out _); i++)
@@ -279,10 +296,10 @@ public class QueryTests
         var map = context.Map;
         var parentMapIdField = map.Schema.Fields.First(f => f.Name.Equals("ParentMapID", StringComparison.OrdinalIgnoreCase));
 
-        var mapFile = context.GetOrOpenTableRawTyped<Wdc5Row>(map.TableName).File;
+        var mapFile = context.GetOrOpenTableRawTyped<RowHandle>(map.TableName).File;
 
         var candidate = mapFile.EnumerateRows()
-            .Select(r => (Id: r.Get<int>(Db2VirtualFieldIndex.Id), ParentId: r.Get<int>(parentMapIdField.ColumnStartIndex)))
+            .Select(r => (Id: r.RowId, ParentId: mapFile.ReadField<int>(r, parentMapIdField.ColumnStartIndex)))
             .FirstOrDefault(x => x.ParentId > 0 && mapFile.TryGetRowById(x.ParentId, out _));
 
         candidate.ParentId.ShouldBeGreaterThan(0);
@@ -308,11 +325,11 @@ public class QueryTests
         var spell = context.Spell;
         var spellName = context.SpellName;
 
-        var spellFile = context.GetOrOpenTableRawTyped<Wdc5Row>(spell.TableName).File;
-        var spellNameFile = context.GetOrOpenTableRawTyped<Wdc5Row>(spellName.TableName).File;
+        var spellFile = context.GetOrOpenTableRawTyped<RowHandle>(spell.TableName).File;
+        var spellNameFile = context.GetOrOpenTableRawTyped<RowHandle>(spellName.TableName).File;
 
         var candidateId = spellFile.EnumerateRows()
-            .Select(r => r.Get<int>(Db2VirtualFieldIndex.Id))
+            .Select(r => r.RowId)
             .FirstOrDefault(id => id > 0 && spellNameFile.TryGetRowById(id, out _));
 
         candidateId.ShouldBeGreaterThan(0);
@@ -350,10 +367,10 @@ public class QueryTests
         var map = context.Map;
         var parentMapIdField = map.Schema.Fields.First(f => f.Name.Equals("ParentMapID", StringComparison.OrdinalIgnoreCase));
 
-        var mapFile = context.GetOrOpenTableRawTyped<Wdc5Row>(map.TableName).File;
+        var mapFile = context.GetOrOpenTableRawTyped<RowHandle>(map.TableName).File;
 
         var candidate = mapFile.EnumerateRows()
-            .Select(r => (Id: r.Get<int>(Db2VirtualFieldIndex.Id), ParentId: r.Get<int>(parentMapIdField.ColumnStartIndex)))
+            .Select(r => (Id: r.RowId, ParentId: mapFile.ReadField<int>(r, parentMapIdField.ColumnStartIndex)))
             .FirstOrDefault(x => x.ParentId > 0 && mapFile.TryGetRowById(x.ParentId, out _));
 
         candidate.ParentId.ShouldBeGreaterThan(0);
@@ -518,12 +535,12 @@ public class QueryTests
         var map = context.Map;
         var parentMapIdField = map.Schema.Fields.First(f => f.Name.Equals("ParentMapID", StringComparison.OrdinalIgnoreCase));
 
-        var mapFile = context.GetOrOpenTableRawTyped<Wdc5Row>(map.TableName).File;
+        var mapFile = context.GetOrOpenTableRawTyped<RowHandle>(map.TableName).File;
 
-        var allIds = mapFile.EnumerateRows().Select(r => r.Get<int>(Db2VirtualFieldIndex.Id)).ToHashSet();
+        var allIds = mapFile.EnumerateRows().Select(r => r.RowId).ToHashSet();
 
         var candidate = mapFile.EnumerateRows()
-            .Select(r => (Id: r.Get<int>(Db2VirtualFieldIndex.Id), ParentId: r.Get<int>(parentMapIdField.ColumnStartIndex)))
+            .Select(r => (Id: r.RowId, ParentId: mapFile.ReadField<int>(r, parentMapIdField.ColumnStartIndex)))
             .FirstOrDefault(x => x.ParentId > 0 && allIds.Contains(x.ParentId));
 
         candidate.ParentId.ShouldBeGreaterThan(0);
@@ -559,11 +576,11 @@ public class QueryTests
         var spell = context.Spell;
         var spellName = context.SpellName;
 
-        var spellFile = context.GetOrOpenTableRawTyped<Wdc5Row>(spell.TableName).File;
-        var spellNameFile = context.GetOrOpenTableRawTyped<Wdc5Row>(spellName.TableName).File;
+        var spellFile = context.GetOrOpenTableRawTyped<RowHandle>(spell.TableName).File;
+        var spellNameFile = context.GetOrOpenTableRawTyped<RowHandle>(spellName.TableName).File;
 
-        var spellNameIds = spellNameFile.EnumerateRows().Select(r => r.Get<int>(Db2VirtualFieldIndex.Id)).ToHashSet();
-        var candidateId = spellFile.EnumerateRows().Select(r => r.Get<int>(Db2VirtualFieldIndex.Id)).FirstOrDefault(id => id > 0 && spellNameIds.Contains(id));
+        var spellNameIds = spellNameFile.EnumerateRows().Select(r => r.RowId).ToHashSet();
+        var candidateId = spellFile.EnumerateRows().Select(r => r.RowId).FirstOrDefault(id => id > 0 && spellNameIds.Contains(id));
 
         candidateId.ShouldBeGreaterThan(0);
 
@@ -645,8 +662,8 @@ public class QueryTests
         var ids = mcm.FirstRewardQuestID.ToArray();
         var quests = mcm.FirstRewardQuest.ToArray();
 
-        var questFile = context.GetOrOpenTableRawTyped<Wdc5Row>(nameof(QuestV2)).File;
-        var questIds = questFile.EnumerateRows().Select(r => r.Get<int>(Db2VirtualFieldIndex.Id)).ToHashSet();
+        var questFile = context.GetOrOpenTableRawTyped<RowHandle>(nameof(QuestV2)).File;
+        var questIds = questFile.EnumerateRows().Select(r => r.RowId).ToHashSet();
 
         for (var i = 0; i < ids.Length; i++)
         {
@@ -676,17 +693,17 @@ public class QueryTests
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
         var context = new TestDb2Context(dbdProvider, db2Provider);
 
-        var mapChallengeModeFile = context.GetOrOpenTableRawTyped<Wdc5Row>(nameof(MapChallengeMode)).File;
-        var mapChallengeModeSchema = context.GetOrOpenTableRawTyped<Wdc5Row>(nameof(MapChallengeMode)).Schema;
+        var mapChallengeModeFile = context.GetOrOpenTableRawTyped<RowHandle>(nameof(MapChallengeMode)).File;
+        var mapChallengeModeSchema = context.GetOrOpenTableRawTyped<RowHandle>(nameof(MapChallengeMode)).Schema;
 
         mapChallengeModeSchema.TryGetField("MapID", out var mapIdField).ShouldBeTrue();
         var mapIdsWithChallengeModes = mapChallengeModeFile.EnumerateRows()
-            .Select(r => (int)r.Get<ushort>(mapIdField.ColumnStartIndex))
+            .Select(r => (int)mapChallengeModeFile.ReadField<ushort>(r, mapIdField.ColumnStartIndex))
             .Where(id => id != 0)
             .ToHashSet();
 
-        var mapFile = context.GetOrOpenTableRawTyped<Wdc5Row>(nameof(Map)).File;
-        var mapIds = mapFile.EnumerateRows().Select(r => r.Get<int>(Db2VirtualFieldIndex.Id)).Where(id => id != 0).ToList();
+        var mapFile = context.GetOrOpenTableRawTyped<RowHandle>(nameof(Map)).File;
+        var mapIds = mapFile.EnumerateRows().Select(r => r.RowId).Where(id => id != 0).ToList();
 
         var populatedMapId = mapIds.First(id => mapIdsWithChallengeModes.Contains(id));
         var emptyMapId = mapIds.First(id => !mapIdsWithChallengeModes.Contains(id));
@@ -715,11 +732,11 @@ public class QueryTests
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
         var context = new TestDb2Context(dbdProvider, db2Provider);
 
-        var mapChallengeModeFile = context.GetOrOpenTableRawTyped<Wdc5Row>(nameof(MapChallengeMode)).File;
-        var mapChallengeModeSchema = context.GetOrOpenTableRawTyped<Wdc5Row>(nameof(MapChallengeMode)).Schema;
+        var mapChallengeModeFile = context.GetOrOpenTableRawTyped<RowHandle>(nameof(MapChallengeMode)).File;
+        var mapChallengeModeSchema = context.GetOrOpenTableRawTyped<RowHandle>(nameof(MapChallengeMode)).Schema;
         mapChallengeModeSchema.TryGetField("MapID", out var mapIdField).ShouldBeTrue();
         var expected = mapChallengeModeFile.EnumerateRows()
-            .Select(r => (int)r.Get<ushort>(mapIdField.ColumnStartIndex))
+            .Select(r => (int)mapChallengeModeFile.ReadField<ushort>(r, mapIdField.ColumnStartIndex))
             .Where(id => id != 0)
             .ToHashSet();
 
@@ -740,12 +757,12 @@ public class QueryTests
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
         var context = new TestDb2Context(dbdProvider, db2Provider);
 
-        var mapChallengeModeFile = context.GetOrOpenTableRawTyped<Wdc5Row>(nameof(MapChallengeMode)).File;
-        var mapChallengeModeSchema = context.GetOrOpenTableRawTyped<Wdc5Row>(nameof(MapChallengeMode)).Schema;
+        var mapChallengeModeFile = context.GetOrOpenTableRawTyped<RowHandle>(nameof(MapChallengeMode)).File;
+        var mapChallengeModeSchema = context.GetOrOpenTableRawTyped<RowHandle>(nameof(MapChallengeMode)).Schema;
         mapChallengeModeSchema.TryGetField("MapID", out var mapIdField).ShouldBeTrue();
 
         var first = mapChallengeModeFile.EnumerateRows()
-            .Select(r => (Id: r.Get<int>(Db2VirtualFieldIndex.Id), MapId: (int)r.Get<ushort>(mapIdField.ColumnStartIndex)))
+            .Select(r => (Id: r.RowId, MapId: (int)mapChallengeModeFile.ReadField<ushort>(r, mapIdField.ColumnStartIndex)))
             .First(x => x.Id != 0 && x.MapId != 0);
 
         var result = context.Map
@@ -854,8 +871,8 @@ public class QueryTests
         var context = new TestDb2Context(dbdProvider, db2Provider);
 
         var map = context.Map;
-        var mapFile = context.GetOrOpenTableRawTyped<Wdc5Row>(map.TableName).File;
-        var allMapIds = mapFile.EnumerateRows().Select(r => r.Get<int>(Db2VirtualFieldIndex.Id)).ToHashSet();
+        var mapFile = context.GetOrOpenTableRawTyped<RowHandle>(map.TableName).File;
+        var allMapIds = mapFile.EnumerateRows().Select(r => r.RowId).ToHashSet();
 
         // Ensure the fixture has at least one missing parent navigation (ParentMapID == 0).
         map.Where(m => m.ParentMapID == 0).Take(1).Any().ShouldBeTrue("Fixture should contain at least one Map row with ParentMapID == 0");
@@ -878,8 +895,8 @@ public class QueryTests
         var context = new TestDb2Context(dbdProvider, db2Provider);
 
         var map = context.Map;
-        var mapFile = context.GetOrOpenTableRawTyped<Wdc5Row>(map.TableName).File;
-        var allMapIds = mapFile.EnumerateRows().Select(r => r.Get<int>(Db2VirtualFieldIndex.Id)).ToHashSet();
+        var mapFile = context.GetOrOpenTableRawTyped<RowHandle>(map.TableName).File;
+        var allMapIds = mapFile.EnumerateRows().Select(r => r.RowId).ToHashSet();
 
         var results = map
             .Where(m => m.ParentMap == null)
@@ -899,8 +916,8 @@ public class QueryTests
         var context = new TestDb2Context(dbdProvider, db2Provider);
 
         var map = context.Map;
-        var mapFile = context.GetOrOpenTableRawTyped<Wdc5Row>(map.TableName).File;
-        var allMapIds = mapFile.EnumerateRows().Select(r => r.Get<int>(Db2VirtualFieldIndex.Id)).ToHashSet();
+        var mapFile = context.GetOrOpenTableRawTyped<RowHandle>(map.TableName).File;
+        var allMapIds = mapFile.EnumerateRows().Select(r => r.RowId).ToHashSet();
 
         var results = map
             .Where(m => m.ParentMap != null)

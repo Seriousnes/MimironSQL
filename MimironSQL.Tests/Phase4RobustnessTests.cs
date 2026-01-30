@@ -1,6 +1,6 @@
 using MimironSQL.Db2.Query;
 using MimironSQL.Db2;
-using MimironSQL.Formats.Wdc5;
+using MimironSQL.Formats;
 using MimironSQL.Providers;
 using MimironSQL.Tests.Fixtures;
 
@@ -19,12 +19,12 @@ public sealed class Phase4RobustnessTests
         var context = new TestDb2Context(dbdProvider, db2Provider);
 
         var map = context.Map;
-        var mapFile = context.GetOrOpenTableRawTyped<Wdc5Row>(map.TableName).File;
+        var mapFile = context.GetOrOpenTableRawTyped<RowHandle>(map.TableName).File;
         var parentMapIdField = map.Schema.Fields.First(f => f.Name.Equals("ParentMapID", StringComparison.OrdinalIgnoreCase));
 
         // Find a map with ParentMapID = 0
         var candidate = mapFile.EnumerateRows()
-            .Select(r => (Id: r.Get<int>(Db2VirtualFieldIndex.Id), ParentId: r.Get<int>(parentMapIdField.ColumnStartIndex)))
+            .Select(r => (Id: r.RowId, ParentId: mapFile.ReadField<int>(r, parentMapIdField.ColumnStartIndex)))
             .FirstOrDefault(x => x.ParentId == 0);
 
         candidate.Id.ShouldBeGreaterThan(0, "Test requires a map with ParentMapID=0");

@@ -98,6 +98,22 @@ public class QueryTests
     }
 
     [Fact]
+    public void Query_spell_with_spellname_projection()
+    {
+        var testDataDir = TestDataPaths.GetTestDataDirectory();
+        var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
+        var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
+        var context = new TestDb2Context(dbdProvider, db2Provider);
+
+        var results = context.Spell
+            .Include(s => s.SpellName)
+            .Select(s => new { s.Id, Name = s.SpellName.Name_lang })
+            .ToList();
+
+        results.Count.ShouldBeGreaterThan(0);
+    }
+
+    [Fact]
     public void Can_use_first_or_default_on_a_filtered_query()
     {
         var testDataDir = TestDataPaths.GetTestDataDirectory();

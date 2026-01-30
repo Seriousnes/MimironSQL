@@ -1,6 +1,6 @@
 # MimironSQL
 
-MimironSQL is a C# SQL engine for World of Warcraft's DB2 database files. It supports extracted `.db2` files as well as directly from WoW's CASC storage.
+MimironSQL is a LINQ QueryProvider for World of Warcraft's DB2 database files. It supports extracted `.db2` files as well as directly from WoW's CASC storage.
 
 ## Supported Operations
 

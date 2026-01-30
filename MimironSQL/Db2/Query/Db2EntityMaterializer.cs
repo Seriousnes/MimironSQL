@@ -8,7 +8,7 @@ using System.Reflection;
 namespace MimironSQL.Db2.Query;
 
 internal sealed class Db2EntityMaterializer<TEntity, TRow>
-    where TRow : struct, IDb2Row
+    where TRow : struct
 {
     private readonly Func<TEntity> _factory;
     private readonly IReadOnlyList<IBinding> _bindings;

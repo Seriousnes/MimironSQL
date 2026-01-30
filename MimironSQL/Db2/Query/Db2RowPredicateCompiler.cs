@@ -10,7 +10,7 @@ namespace MimironSQL.Db2.Query;
 internal static class Db2RowPredicateCompiler
 {
     public static bool TryCompile<TEntity, TRow>(IDb2File<TRow> file, Db2TableSchema schema, Expression<Func<TEntity, bool>> predicate, out Func<TRow, bool> rowPredicate)
-        where TRow : struct, IDb2Row
+        where TRow : struct
         => TryCompile(file, schema, predicate, out rowPredicate, out _);
 
     public static bool TryCompile<TEntity, TRow>(
@@ -19,7 +19,7 @@ internal static class Db2RowPredicateCompiler
         Expression<Func<TEntity, bool>> predicate,
         out Func<TRow, bool> rowPredicate,
         out Db2SourceRequirements requirements)
-        where TRow : struct, IDb2Row
+        where TRow : struct
     {
         var fieldsByName = schema.Fields.ToDictionary(f => f.Name, StringComparer.OrdinalIgnoreCase);
 
@@ -69,7 +69,7 @@ internal static class Db2RowPredicateCompiler
         Func<string, Db2FieldAccessor> getAccessor,
         IDb2File<TRow> file,
         Db2SourceRequirements requirements) : ExpressionVisitor
-        where TRow : struct, IDb2Row
+        where TRow : struct
     {
         private readonly IDb2DenseStringTableIndexProvider<TRow>? _denseIndexProvider = file as IDb2DenseStringTableIndexProvider<TRow>;
 

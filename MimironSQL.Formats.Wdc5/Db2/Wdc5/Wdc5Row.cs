@@ -10,7 +10,7 @@ using Security.Cryptography;
 
 namespace MimironSQL.Formats.Wdc5;
 
-public readonly struct Wdc5Row : IDb2Row
+public readonly struct Wdc5Row
 {
     private static readonly UTF8Encoding Utf8Strict = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
 

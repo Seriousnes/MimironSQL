@@ -46,7 +46,7 @@ public class Db2Table<T> : IQueryable<T>, IDb2Table
 }
 
 internal sealed class Db2Table<T, TRow> : Db2Table<T>
-    where TRow : struct, IDb2Row
+    where TRow : struct
 {
     private readonly IDb2File<TRow> _file;
     private readonly Db2EntityMaterializer<T, TRow> _materializer;

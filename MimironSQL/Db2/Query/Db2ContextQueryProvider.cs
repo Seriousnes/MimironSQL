@@ -73,7 +73,7 @@ internal sealed class Db2ContextQueryProvider(Db2Context context) : IQueryProvid
         IDb2File file,
         Db2TableSchema schema,
         Db2Model model)
-        where TRow : struct, IDb2Row
+        where TRow : struct
     {
         var typedFile = (IDb2File<TRow>)file;
         Func<string, (IDb2File<TRow> File, Db2TableSchema Schema)> resolver = tableName => context.GetOrOpenTableRawTyped<TRow>(tableName);

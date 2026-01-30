@@ -1,5 +1,7 @@
 <Solution>
   <Project Path="MimironSQL.Tests/MimironSQL.Tests.csproj" />
   <Project Path="MimironSQL/MimironSQL.csproj" />
+  <Project Path="MimironSQL.Formats.Abstractions/MimironSQL.Formats.Abstractions.csproj" />
+  <Project Path="MimironSQL.Formats.Wdc5/MimironSQL.Formats.Wdc5.csproj" />
   <Project Path="Salsa20/Salsa20.csproj" />
 </Solution>

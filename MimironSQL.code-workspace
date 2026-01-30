@@ -2,18 +2,6 @@
 	"folders": [
 		{
 			"path": "."
-		},
-		{
-			"path": "../DBCD"
-		},
-		{
-			"path": "../CASC.Net"
-		},
-		{
-			"path": "../WoWDBDefs"
-		},
-		{
-			"path": "../CASCExplorer"
 		}
 	],
 	"settings": {}

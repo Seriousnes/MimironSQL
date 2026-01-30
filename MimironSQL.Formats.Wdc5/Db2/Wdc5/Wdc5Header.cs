@@ -1,4 +1,6 @@
-namespace MimironSQL.Db2.Wdc5;
+using MimironSQL.Db2;
+
+namespace MimironSQL.Formats.Wdc5;
 
 public readonly record struct Wdc5Header(
     uint SchemaVersion,

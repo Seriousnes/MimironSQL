@@ -8,6 +8,7 @@ namespace MimironSQL.Db2.Model;
 
 public sealed class Db2ModelBuilder
 {
+    private bool configurationsApplied = false;
     private readonly Dictionary<Type, Db2EntityTypeMetadata> _entityTypes = [];
 
     public Db2EntityTypeBuilder<T> Entity<T>()
@@ -24,48 +25,59 @@ public sealed class Db2ModelBuilder
         return this;
     }
 
-    public Db2ModelBuilder ApplyConfigurationsFromAssembly(Assembly assembly)
+    public Db2ModelBuilder ApplyConfigurationsFromAssembly(params Assembly[] assemblies)
     {
-        ArgumentNullException.ThrowIfNull(assembly);
+        if (configurationsApplied)
+            throw new InvalidOperationException("ApplyConfigurationsFromAssembly can only be called once per model builder.");
 
         var configInterfaceType = typeof(IDb2EntityTypeConfiguration<>);
+        var configurations = new List<(Type ConfigType, Type EntityType)>();
 
-        Type[] types;
-        try
+        foreach (var a in assemblies)
         {
-            types = assembly.GetTypes();
+            configurations.AddRange(a.GetTypes()
+                .Where(t => !t.IsAbstract && !t.IsGenericTypeDefinition)
+                .Select(t => (Type: t, Interface: t.GetInterfaces()
+                    .FirstOrDefault(i => i.IsGenericType && i.GetGenericTypeDefinition() == configInterfaceType)))
+                .Where(x => x.Interface is not null)
+                .Select(x => (ConfigType: x.Type, EntityType: x.Interface!.GetGenericArguments()[0])));
         }
-        catch (ReflectionTypeLoadException ex)
+
+        var duplicates = configurations
+            .GroupBy(x => x.EntityType)
+            .Where(g => g.Count() > 1)
+            .Select(g => new
+            {
+                EntityType = g.Key,
+                ConfigTypes = g.Select(x => x.ConfigType).OrderBy(t => t.FullName, StringComparer.Ordinal).ToArray(),
+            })
+            .OrderBy(x => x.EntityType.FullName, StringComparer.Ordinal)
+            .ToArray();
+
+        if (duplicates is { Length: not 0 })
         {
-            types = ex.Types.OfType<Type>().ToArray();
+            var message = string.Join(
+                Environment.NewLine,
+                duplicates.Select(d =>
+                    $"Multiple entity type configurations found for '{d.EntityType.FullName}': {string.Join(", ", d.ConfigTypes.Select(t => t.FullName))}."));
+
+            throw new InvalidOperationException(message);
         }
 
-        var configurations = types
-            .Where(t => !t.IsAbstract && !t.IsGenericTypeDefinition)
-            .Select(t => (Type: t, Interface: t.GetInterfaces()
-                .FirstOrDefault(i => i.IsGenericType && i.GetGenericTypeDefinition() == configInterfaceType)))
-            .Where(x => x.Interface is not null)
-            .Select(x => (x.Type, EntityType: x.Interface!.GetGenericArguments()[0]))
-            .ToList();
+        var applyMethodDefinition = typeof(Db2ModelBuilder).GetMethod(nameof(ApplyConfiguration)) ?? throw new InvalidOperationException(
+            $"Unable to locate '{nameof(ApplyConfiguration)}' on '{typeof(Db2ModelBuilder).FullName}'.");
 
-        foreach (var (configType, entityType) in configurations)
+        foreach (var (configType, entityType) in configurations.OrderBy(x => x.ConfigType.FullName, StringComparer.Ordinal))
         {
             try
             {
                 if (Activator.CreateInstance(configType) is not { } config)
                     continue;
 
-                var applyMethodDefinition = typeof(Db2ModelBuilder).GetMethod(nameof(ApplyConfiguration));
-                if (applyMethodDefinition is null)
-                {
-                    throw new InvalidOperationException(
-                        $"Unable to locate '{nameof(ApplyConfiguration)}' on '{typeof(Db2ModelBuilder).FullName}'.");
-                }
-
                 var applyMethod = applyMethodDefinition.MakeGenericMethod(entityType);
                 applyMethod.Invoke(this, [config]);
             }
-            catch (Exception ex) when (ex is MissingMethodException or TargetInvocationException)
+            catch (Exception ex) when (ex is MissingMethodException or TargetInvocationException or MemberAccessException or TypeLoadException)
             {
                 throw new InvalidOperationException(
                     $"Unable to instantiate configuration type '{configType.FullName}'. " +
@@ -74,6 +86,7 @@ public sealed class Db2ModelBuilder
             }
         }
 
+        configurationsApplied = true;
         return this;
     }
 
@@ -95,8 +108,17 @@ public sealed class Db2ModelBuilder
     {
         ArgumentNullException.ThrowIfNull(schemaResolver);
 
-        foreach (var (clrType, entityMetadata) in _entityTypes)
+        var pending = new Queue<Type>(_entityTypes.Keys);
+        var visited = new HashSet<Type>();
+
+        while (pending.TryDequeue(out var clrType))
         {
+            if (!visited.Add(clrType))
+                continue;
+
+            if (!_entityTypes.TryGetValue(clrType, out var entityMetadata))
+                continue;
+
             var tableName = entityMetadata.TableName ?? clrType.Name;
             var schema = schemaResolver(tableName);
 
@@ -113,11 +135,28 @@ public sealed class Db2ModelBuilder
                 if (fkMember is null)
                     continue;
 
-                var targetClrType = navMember.GetMemberType();
+                var navMemberType = navMember.GetMemberType();
+                if (navMemberType != typeof(string) && typeof(System.Collections.IEnumerable).IsAssignableFrom(navMemberType))
+                {
+                    // Schema conventions only apply to 1-hop reference navigations.
+                    // Collection navigations are not yet supported here.
+                    continue;
+                }
+
+                var targetClrType = navMemberType;
                 if (targetClrType.IsValueType)
                     continue;
 
-                var targetMetadata = Entity(targetClrType);
+                if (!_entityTypes.TryGetValue(targetClrType, out var targetMetadata))
+                {
+                    targetMetadata = new Db2EntityTypeMetadata(targetClrType)
+                    {
+                        TableName = targetClrType.Name,
+                    };
+
+                    _entityTypes.Add(targetClrType, targetMetadata);
+                    pending.Enqueue(targetClrType);
+                }
 
                 if (!targetMetadata.TableNameWasConfigured && targetMetadata.TableName == targetClrType.Name && targetMetadata.TableName != f.ReferencedTableName)
                     targetMetadata.TableName = f.ReferencedTableName;
@@ -166,6 +205,7 @@ public sealed class Db2ModelBuilder
         var built = new Dictionary<Type, Db2EntityType>(_entityTypes.Count);
 
         var navigations = new Dictionary<(Type SourceClrType, MemberInfo NavigationMember), Db2ReferenceNavigation>();
+        var collectionNavigations = new Dictionary<(Type SourceClrType, MemberInfo NavigationMember), Db2CollectionNavigation>();
 
         foreach (var (clrType, m) in _entityTypes)
         {
@@ -213,9 +253,99 @@ public sealed class Db2ModelBuilder
                     targetKeyFieldSchema: targetKeyFieldSchema,
                     overridesSchema: nav.OverridesSchema);
             }
+
+            foreach (var nav in m.CollectionNavigations)
+            {
+                if (nav.Kind is not { } kind)
+                    throw new NotSupportedException($"Collection navigation '{nav.NavigationMember.Name}' on '{clrType.FullName}' must be configured (e.g., WithForeignKeyArray). ");
+
+                if (kind == Db2CollectionNavigationKind.ForeignKeyArrayToPrimaryKey)
+                {
+                    if (nav.SourceKeyCollectionMember is null)
+                        throw new NotSupportedException($"Collection navigation '{nav.NavigationMember.Name}' on '{clrType.FullName}' must specify a source key collection member (WithForeignKeyArray). ");
+
+                    var sourceKeyCollectionType = nav.SourceKeyCollectionMember.GetMemberType();
+                    if (!IsIntEnumerableType(sourceKeyCollectionType))
+                    {
+                        throw new NotSupportedException(
+                            $"Collection navigation '{clrType.FullName}.{nav.NavigationMember.Name}' expects an int key collection (e.g., int[] or ICollection<int>) but found '{sourceKeyCollectionType.FullName}'.");
+                    }
+
+                    var sourceKeyFieldSchema = ResolveFieldSchema(schema, nav.SourceKeyCollectionMember, $"source key member '{nav.SourceKeyCollectionMember.Name}' in collection navigation '{clrType.FullName}.{nav.NavigationMember.Name}'");
+
+                    collectionNavigations[(clrType, nav.NavigationMember)] = new Db2CollectionNavigation(
+                        sourceClrType: clrType,
+                        navigationMember: nav.NavigationMember,
+                        targetClrType: nav.TargetClrType,
+                        kind: kind,
+                        sourceKeyCollectionMember: nav.SourceKeyCollectionMember,
+                        sourceKeyFieldSchema: sourceKeyFieldSchema,
+                        dependentForeignKeyMember: null,
+                        dependentForeignKeyFieldSchema: null,
+                        principalKeyMember: null,
+                        overridesSchema: nav.OverridesSchema);
+
+                    continue;
+                }
+
+                if (kind == Db2CollectionNavigationKind.DependentForeignKeyToPrimaryKey)
+                {
+                    if (nav.DependentForeignKeyMember is null)
+                        throw new NotSupportedException($"Collection navigation '{nav.NavigationMember.Name}' on '{clrType.FullName}' must specify a dependent foreign key selector (WithForeignKey). ");
+
+                    var principalKeyMember = nav.PrincipalKeyMember ?? ResolvePrimaryKeyMember(m);
+                    var principalKeyType = principalKeyMember.GetMemberType();
+                    if (!principalKeyType.IsScalarType())
+                        throw new NotSupportedException($"Principal key member '{clrType.FullName}.{principalKeyMember.Name}' must be a scalar type.");
+
+                    var dependentMetadata = Entity(nav.TargetClrType);
+                    var dependentTableName = dependentMetadata.TableName ?? nav.TargetClrType.Name;
+                    var dependentSchema = schemaResolver(dependentTableName);
+
+                    var dependentFkFieldSchema = ResolveFieldSchema(dependentSchema, nav.DependentForeignKeyMember, $"dependent FK member '{nav.DependentForeignKeyMember.Name}' in collection navigation '{clrType.FullName}.{nav.NavigationMember.Name}'");
+
+                    collectionNavigations[(clrType, nav.NavigationMember)] = new Db2CollectionNavigation(
+                        sourceClrType: clrType,
+                        navigationMember: nav.NavigationMember,
+                        targetClrType: nav.TargetClrType,
+                        kind: kind,
+                        sourceKeyCollectionMember: null,
+                        sourceKeyFieldSchema: null,
+                        dependentForeignKeyMember: nav.DependentForeignKeyMember,
+                        dependentForeignKeyFieldSchema: dependentFkFieldSchema,
+                        principalKeyMember: principalKeyMember,
+                        overridesSchema: nav.OverridesSchema);
+
+                    continue;
+                }
+
+                throw new NotSupportedException($"Collection navigation '{nav.NavigationMember.Name}' on '{clrType.FullName}' has unsupported kind '{kind}'.");
+            }
         }
 
-        return new Db2Model(built, navigations);
+        return new Db2Model(built, navigations, collectionNavigations);
+    }
+
+    private static bool IsIntEnumerableType(Type type)
+    {
+        if (type == typeof(int[]))
+            return true;
+
+        if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(IEnumerable<>))
+            return type.GetGenericArguments()[0] == typeof(int);
+
+        foreach (var i in type.GetInterfaces())
+        {
+            if (!i.IsGenericType)
+                continue;
+
+            if (i.GetGenericTypeDefinition() != typeof(IEnumerable<>))
+                continue;
+
+            return i.GetGenericArguments()[0] == typeof(int);
+        }
+
+        return false;
     }
 
     private static Db2FieldSchema ResolveFieldSchema(Db2TableSchema schema, MemberInfo member, string context)

@@ -1,7 +1,26 @@
+using System.Reflection;
+
+using MimironSQL.Db2.Query;
+
 namespace MimironSQL.Extensions;
 
 internal static class TypeExtensions
 {
+    private static readonly HashSet<Type> scalarTypes = 
+        [
+            typeof(bool),
+            typeof(byte),
+            typeof(sbyte),
+            typeof(short),
+            typeof(ushort),
+            typeof(int),
+            typeof(uint),
+            typeof(long),
+            typeof(ulong),
+            typeof(float),
+            typeof(double)
+        ];
+
     public static bool IsScalarType(this Type type)
     {
         var underlying = type.UnwrapNullable();
@@ -9,17 +28,7 @@ internal static class TypeExtensions
         if (underlying.IsEnum)
             return true;
 
-        return underlying == typeof(bool)
-               || underlying == typeof(byte)
-               || underlying == typeof(sbyte)
-               || underlying == typeof(short)
-               || underlying == typeof(ushort)
-               || underlying == typeof(int)
-               || underlying == typeof(uint)
-               || underlying == typeof(long)
-               || underlying == typeof(ulong)
-               || underlying == typeof(float)
-               || underlying == typeof(double);
+        return scalarTypes.Contains(underlying);
     }
 
     public static bool IsNullable(this Type type)

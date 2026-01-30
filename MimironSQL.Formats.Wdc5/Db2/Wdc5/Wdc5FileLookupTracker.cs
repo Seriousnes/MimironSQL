@@ -1,10 +1,10 @@
 using System.Threading;
 
-namespace MimironSQL.Db2.Wdc5;
+namespace MimironSQL.Formats.Wdc5;
 
-internal readonly record struct Wdc5FileLookupSnapshot(int TotalTryGetRowByIdCalls);
+public readonly record struct Wdc5FileLookupSnapshot(int TotalTryGetRowByIdCalls);
 
-internal static class Wdc5FileLookupTracker
+public static class Wdc5FileLookupTracker
 {
     private sealed class State
     {

@@ -2,7 +2,7 @@
 
 namespace MimironSQL.Tests.Fixtures;
 
-internal class Spell : Wdc5Entity
+internal class Spell : Db2Entity
 {
     public SpellName? SpellName { get; set; }
 

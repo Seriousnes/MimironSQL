@@ -1,4 +1,5 @@
-using MimironSQL.Db2.Wdc5;
+using MimironSQL.Db2;
+using MimironSQL.Formats.Wdc5;
 using MimironSQL.Providers;
 
 using Shouldly;
@@ -15,7 +16,7 @@ public sealed class Wdc5RowDecodeSmokeTests
         var file = new Wdc5File(stream);
         var firstRow = file.EnumerateRows().First();
 
-        Should.NotThrow(() => firstRow.GetScalar<uint>(0));
+        Should.NotThrow(() => firstRow.Get<uint>(0));
     }
 
     [Fact]
@@ -26,10 +27,11 @@ public sealed class Wdc5RowDecodeSmokeTests
         var file = new Wdc5File(stream);
         var firstRow = file.EnumerateRows().First();
 
-        firstRow.Id.ShouldNotBe(-1);
-        file.TryGetRowById(firstRow.Id, out var byId).ShouldBeTrue();
-        byId.Id.ShouldBe(firstRow.Id);
+        var id = firstRow.Get<int>(Db2VirtualFieldIndex.Id);
+        id.ShouldNotBe(-1);
+        file.TryGetRowById(id, out var byId).ShouldBeTrue();
+        byId.Get<int>(Db2VirtualFieldIndex.Id).ShouldBe(id);
 
-        byId.GetScalar<uint>(0).ShouldBe(firstRow.GetScalar<uint>(0));
+        byId.Get<uint>(0).ShouldBe(firstRow.Get<uint>(0));
     }
 }

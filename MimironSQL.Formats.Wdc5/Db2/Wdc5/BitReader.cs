@@ -1,7 +1,7 @@
 using System.Runtime.CompilerServices;
 using System.Text;
 
-namespace MimironSQL.Db2.Wdc5;
+namespace MimironSQL.Formats.Wdc5;
 
 public struct BitReader(byte[] data)
 {

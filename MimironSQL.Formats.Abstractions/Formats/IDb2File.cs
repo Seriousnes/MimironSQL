@@ -11,6 +11,16 @@ public interface IDb2File
     int RecordsCount { get; }
 
     ReadOnlyMemory<byte> DenseStringTableBytes { get; }
+
+    IEnumerable<RowHandle> EnumerateRowHandles();
+
+    T ReadField<T>(RowHandle handle, int fieldIndex);
+
+    void ReadFields(RowHandle handle, ReadOnlySpan<int> fieldIndices, Span<object> values);
+
+    void ReadAllFields(RowHandle handle, Span<object> values);
+
+    bool TryGetRowHandle<TId>(TId id, out RowHandle handle) where TId : IEquatable<TId>, IComparable<TId>;
 }
 
 public interface IDb2File<TRow> : IDb2File where TRow : struct, IDb2Row

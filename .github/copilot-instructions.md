@@ -26,6 +26,24 @@ This project is a SQL engine for reading and querying World of Warcraft DB2 file
 - Remove any `[MethodImpl(...)]` attributes you encounter.
 - Only add these attributes back after benchmarking demonstrates a real benefit.
 
+## Repository Structure
+- `MimironSQL/`: Main library project with the SQL engine implementation
+- `MimironSQL.Formats.Abstractions/`: Abstract interfaces and base types for DB2 format support
+- `MimironSQL.Formats.Wdc5/`: WDC5 format implementation (World of Warcraft DB2 version 5)
+- `MimironSQL.Tests/`: Unit and integration tests using xUnit, NSubstitute, and Shouldly
+- `Salsa20/`: Salsa20 encryption library used for encrypted DB2 files
+
+## Development Workflow
+
+### Building the Project
+- Build: `dotnet build MimironSQL.slnx`
+- This will restore NuGet packages and compile all projects in the solution
+
+### Running Tests
+- Run all tests: `dotnet test MimironSQL.slnx`
+- Run tests without rebuilding: `dotnet test MimironSQL.slnx --no-build`
+- All tests must pass before committing changes
+
 ## Nuget Packages
 - Install packages using the dotnet CLI. Never edit the .csproj files directly.
 - Prefer using latest stable versions of packages unless a specific version is required for compatibility.

@@ -21,11 +21,11 @@ internal sealed class Db2EntityMaterializer<TEntity, TRow>
         _bindings = CreateBindings(schema);
     }
 
-    public TEntity Materialize(TRow row)
+    public TEntity Materialize(IDb2File<TRow> file, RowHandle handle)
     {
         var entity = _factory();
         foreach (var b in _bindings)
-            b.Apply(entity, row);
+            b.Apply(entity, file, handle);
 
         return entity;
     }
@@ -131,7 +131,8 @@ internal sealed class Db2EntityMaterializer<TEntity, TRow>
     private static IBinding CreateSchemaArrayCollectionBinding(MemberInfo member, Type memberType, Type arrayType, int fieldIndex)
     {
         var entity = Expression.Parameter(typeof(TEntity), "entity");
-        var row = Expression.Parameter(typeof(TRow), "row");
+        var file = Expression.Parameter(typeof(IDb2File<TRow>), "file");
+        var handle = Expression.Parameter(typeof(RowHandle), "handle");
 
         Expression memberAccess;
         if (member is PropertyInfo p)
@@ -150,9 +151,9 @@ internal sealed class Db2EntityMaterializer<TEntity, TRow>
             throw new InvalidOperationException($"Unexpected member type: {member.GetType().FullName}");
         }
 
-        var readArray = BuildReadExpression(row, fieldIndex, arrayType);
+        var readArray = BuildReadExpression(file, handle, fieldIndex, arrayType);
         var assign = Expression.Assign(memberAccess, Expression.Convert(readArray, memberType));
-        var apply = Expression.Lambda<Action<TEntity, TRow>>(assign, entity, row).Compile();
+        var apply = Expression.Lambda<Action<TEntity, IDb2File<TRow>, RowHandle>>(assign, entity, file, handle).Compile();
         return new Binding(apply);
     }
 
@@ -184,7 +185,8 @@ internal sealed class Db2EntityMaterializer<TEntity, TRow>
     private static IBinding CreateBinding(MemberInfo member, Type memberType, int fieldIndex)
     {
         var entity = Expression.Parameter(typeof(TEntity), "entity");
-        var row = Expression.Parameter(typeof(TRow), "row");
+        var file = Expression.Parameter(typeof(IDb2File<TRow>), "file");
+        var handle = Expression.Parameter(typeof(RowHandle), "handle");
 
         Expression memberAccess;
         if (member is PropertyInfo p)
@@ -203,29 +205,29 @@ internal sealed class Db2EntityMaterializer<TEntity, TRow>
             throw new InvalidOperationException($"Unexpected member type: {member.GetType().FullName}");
         }
 
-        var read = BuildReadExpression(row, fieldIndex, memberType);
+        var read = BuildReadExpression(file, handle, fieldIndex, memberType);
         var assign = Expression.Assign(memberAccess, read);
-        var apply = Expression.Lambda<Action<TEntity, TRow>>(assign, entity, row).Compile();
+        var apply = Expression.Lambda<Action<TEntity, IDb2File<TRow>, RowHandle>>(assign, entity, file, handle).Compile();
         return new Binding(apply);
     }
 
-    private static Expression BuildReadExpression(Expression rowExpression, int fieldIndex, Type targetType)
+    private static Expression BuildReadExpression(Expression fileExpression, Expression handleExpression, int fieldIndex, Type targetType)
     {
-        var getMethod = typeof(TRow)
-            .GetMethod(nameof(IDb2Row.Get), BindingFlags.Instance | BindingFlags.Public, [typeof(int)])!
+        var readFieldMethod = typeof(IDb2File)
+            .GetMethod(nameof(IDb2File.ReadField), BindingFlags.Instance | BindingFlags.Public)!
             .MakeGenericMethod(targetType);
 
-        return Expression.Call(rowExpression, getMethod, Expression.Constant(fieldIndex));
+        return Expression.Call(fileExpression, readFieldMethod, handleExpression, Expression.Constant(fieldIndex));
     }
 
     private interface IBinding
     {
-        void Apply(TEntity entity, TRow row);
+        void Apply(TEntity entity, IDb2File<TRow> file, RowHandle handle);
     }
 
-    private sealed record Binding(Action<TEntity, TRow> ApplyAction) : IBinding
+    private sealed record Binding(Action<TEntity, IDb2File<TRow>, RowHandle> ApplyAction) : IBinding
     {
-        public void Apply(TEntity entity, TRow row)
-            => ApplyAction(entity, row);
+        public void Apply(TEntity entity, IDb2File<TRow> file, RowHandle handle)
+            => ApplyAction(entity, file, handle);
     }
 }

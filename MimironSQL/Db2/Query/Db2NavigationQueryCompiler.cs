@@ -427,7 +427,11 @@ internal static class Db2NavigationQueryCompiler
 
         foreach (var row in dependentFile.EnumerateRows())
         {
-            var entity = materializer.Materialize(row);
+            var rowId = row.Get<int>(Db2VirtualFieldIndex.Id);
+            if (!dependentFile.TryGetRowHandle(rowId, out var handle))
+                continue;
+
+            var entity = materializer.Materialize(dependentFile, handle);
             if (!dependentEntityPredicate(entity))
                 continue;
 

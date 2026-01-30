@@ -28,7 +28,7 @@ internal sealed class Db2QueryProvider<TEntity, TRow>(
     private readonly Db2Model _model = model;
     private readonly Func<string, (IDb2File<TRow> File, Db2TableSchema Schema)> _tableResolver = tableResolver;
 
-    internal TEntity Materialize(TRow row) => _materializer.Materialize(row);
+    internal TEntity Materialize(RowHandle handle) => _materializer.Materialize(file, handle);
 
     public IQueryable CreateQuery(Expression expression)
     {
@@ -532,40 +532,74 @@ internal sealed class Db2QueryProvider<TEntity, TRow>(
         }
 
         var yielded = 0;
-        foreach (var row in file.EnumerateRows())
+        
+        if (rowPredicates.Count > 0)
         {
-            var ok = true;
-            foreach (var p in rowPredicates)
+            foreach (var row in file.EnumerateRows())
             {
-                if (!p(row))
+                var ok = true;
+                foreach (var p in rowPredicates)
                 {
-                    ok = false;
-                    break;
+                    if (!p(row))
+                    {
+                        ok = false;
+                        break;
+                    }
                 }
+
+                if (!ok)
+                    continue;
+
+                var id = row.Get<int>(Db2VirtualFieldIndex.Id);
+                if (!file.TryGetRowHandle(id, out var handle))
+                    continue;
+
+                var entity = _materializer.Materialize(file, handle);
+
+                foreach (var p in entityPredicates)
+                {
+                    if (!p(entity))
+                    {
+                        ok = false;
+                        break;
+                    }
+                }
+
+                if (!ok)
+                    continue;
+
+                yield return entity;
+
+                yielded++;
+                if (take.HasValue && yielded >= take.Value)
+                    yield break;
             }
-
-            if (!ok)
-                continue;
-
-            var entity = _materializer.Materialize(row);
-
-            foreach (var p in entityPredicates)
+        }
+        else
+        {
+            foreach (var handle in file.EnumerateRowHandles())
             {
-                if (!p(entity))
+                var entity = _materializer.Materialize(file, handle);
+
+                var ok = true;
+                foreach (var p in entityPredicates)
                 {
-                    ok = false;
-                    break;
+                    if (!p(entity))
+                    {
+                        ok = false;
+                        break;
+                    }
                 }
+
+                if (!ok)
+                    continue;
+
+                yield return entity;
+
+                yielded++;
+                if (take.HasValue && yielded >= take.Value)
+                    yield break;
             }
-
-            if (!ok)
-                continue;
-
-            yield return entity;
-
-            yielded++;
-            if (take.HasValue && yielded >= take.Value)
-                yield break;
         }
     }
 
@@ -797,7 +831,10 @@ internal sealed class Db2QueryProvider<TEntity, TRow>(
                     if (!keys.Contains(rowId))
                         continue;
 
-                    relatedByKey[rowId] = relatedMaterializer.Materialize(row);
+                    if (!relatedFile.TryGetRowHandle(rowId, out var handle))
+                        continue;
+
+                    relatedByKey[rowId] = relatedMaterializer.Materialize(relatedFile, handle);
                 }
             }
 
@@ -917,7 +954,10 @@ internal sealed class Db2QueryProvider<TEntity, TRow>(
                 if (!keys.Contains(rowId))
                     continue;
 
-                relatedByKey[rowId] = relatedMaterializer.Materialize(row);
+                if (!relatedFile.TryGetRowHandle(rowId, out var handle))
+                    continue;
+
+                relatedByKey[rowId] = relatedMaterializer.Materialize(relatedFile, handle);
             }
         }
 
@@ -991,7 +1031,11 @@ internal sealed class Db2QueryProvider<TEntity, TRow>(
                 if (fk == 0 || !keys.Contains(fk))
                     continue;
 
-                var dependent = relatedMaterializer.Materialize(row);
+                var rowId = row.Get<int>(Db2VirtualFieldIndex.Id);
+                if (!relatedFile.TryGetRowHandle(rowId, out var handle))
+                    continue;
+
+                var dependent = relatedMaterializer.Materialize(relatedFile, handle);
                 if (!dependentsByKey.TryGetValue(fk, out var list))
                 {
                     list = [];

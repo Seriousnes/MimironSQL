@@ -209,7 +209,7 @@ internal static class Db2BatchedNavigationProjector
                     throw new NotSupportedException($"Unsupported array element type {elementType.FullName}.");
 
                 var arrayType = elementType.MakeArrayType();
-                var getArray = typeof(TRow).GetMethod(nameof(IDb2Row.Get), BindingFlags.Public | BindingFlags.Instance)!
+                var getArray = typeof(TRow).GetMethod(nameof(IDb2Row.Get), BindingFlags.Public | BindingFlags.Instance, [typeof(int)])!
                     .MakeGenericMethod(arrayType);
 
                 var readArray = Expression.Call(rowExpression, getArray, Expression.Constant(accessor.Field.ColumnStartIndex));
@@ -230,7 +230,7 @@ internal static class Db2BatchedNavigationProjector
                 throw new NotSupportedException($"Virtual field '{accessor.Field.Name}' cannot be materialized as a string.");
 
             var readType = targetType.UnwrapNullable();
-            var methodInfo = typeof(TRow).GetMethod(nameof(IDb2Row.Get), BindingFlags.Public | BindingFlags.Instance)!
+            var methodInfo = typeof(TRow).GetMethod(nameof(IDb2Row.Get), BindingFlags.Public | BindingFlags.Instance, [typeof(int)])!
                 .MakeGenericMethod(readType);
 
             var read = Expression.Call(

@@ -19,7 +19,7 @@ internal sealed class Db2QueryProvider<TEntity, TRow>(
     Func<string, (IDb2File<TRow> File, Db2TableSchema Schema)> tableResolver) : IQueryProvider
     where TRow : struct, IDb2Row
 {
-    private static readonly ConcurrentDictionary<Type, Func<Db2QueryProvider<TEntity, TRow>, Expression, object>> ExecuteEnumerableDelegates = new();
+    private static readonly ConcurrentDictionary<Type, Func<Db2QueryProvider<TEntity, TRow>, Expression, IEnumerable>> ExecuteEnumerableDelegates = new();
     private static readonly ConcurrentDictionary<Type, Func<Db2QueryProvider<TEntity, TRow>, IEnumerable<TEntity>, LambdaExpression, IEnumerable<TEntity>>> IncludeDelegates = new();
     private static readonly ConcurrentDictionary<(Type NavigationType, Type TargetType), Func<Db2QueryProvider<TEntity, TRow>, IEnumerable<TEntity>, MemberInfo, string, Db2CollectionNavigation, IEnumerable<TEntity>>> ForeignKeyArrayToPrimaryKeyIncludeDelegates = new();
     private static readonly ConcurrentDictionary<(Type NavigationType, Type TargetType), Func<Db2QueryProvider<TEntity, TRow>, IEnumerable<TEntity>, MemberInfo, string, Db2CollectionNavigation, IEnumerable<TEntity>>> DependentForeignKeyToPrimaryKeyIncludeDelegates = new();
@@ -34,7 +34,7 @@ internal sealed class Db2QueryProvider<TEntity, TRow>(
     {
         ArgumentNullException.ThrowIfNull(expression);
 
-        var elementType = expression.Type.GetGenericArguments().FirstOrDefault() ?? typeof(object);
+        var elementType = expression.Type.GetGenericArguments().FirstOrDefault() ?? typeof(string).BaseType!;
 
         // Non-generic CreateQuery is not used by the normal strongly-typed Queryable surface.
         // Keep it functional without using reflection invocation.
@@ -56,7 +56,7 @@ internal sealed class Db2QueryProvider<TEntity, TRow>(
     {
         ArgumentNullException.ThrowIfNull(expression);
 
-        // Non-generic Execute returns object, which necessarily boxes scalar value types.
+        // Non-generic Execute returns a boxed scalar for scalar results.
         // This provider expects callers to use Execute<TResult>.
         if (!TryGetEnumerableElementType(expression.Type, out var elementType))
             throw new NotSupportedException("Use Execute<TResult>(...) instead of the non-generic Execute(...) for this provider.");
@@ -82,10 +82,10 @@ internal sealed class Db2QueryProvider<TEntity, TRow>(
     private static Func<IQueryProvider, Expression, IQueryable> CreateQueryableFactory<TElement>()
         => static (provider, expression) => new Db2Queryable<TElement>(provider, expression);
 
-    private static object ExecuteEnumerableForResult<TElement>(Db2QueryProvider<TEntity, TRow> provider, Expression expression)
+    private static IEnumerable ExecuteEnumerableForResult<TElement>(Db2QueryProvider<TEntity, TRow> provider, Expression expression)
         => provider.ExecuteEnumerable<TElement>(expression);
 
-    private static Func<Db2QueryProvider<TEntity, TRow>, Expression, object> GetExecuteEnumerableDelegate(Type elementType)
+    private static Func<Db2QueryProvider<TEntity, TRow>, Expression, IEnumerable> GetExecuteEnumerableDelegate(Type elementType)
         => ExecuteEnumerableDelegates.GetOrAdd(elementType, static elementType =>
         {
             var method = typeof(Db2QueryProvider<TEntity, TRow>).GetMethod(
@@ -93,8 +93,8 @@ internal sealed class Db2QueryProvider<TEntity, TRow>(
                 BindingFlags.Static | BindingFlags.NonPublic)!
                 .MakeGenericMethod(elementType);
 
-            return (Func<Db2QueryProvider<TEntity, TRow>, Expression, object>)method.CreateDelegate(
-                typeof(Func<Db2QueryProvider<TEntity, TRow>, Expression, object>));
+            return (Func<Db2QueryProvider<TEntity, TRow>, Expression, IEnumerable>)method.CreateDelegate(
+                typeof(Func<Db2QueryProvider<TEntity, TRow>, Expression, IEnumerable>));
         });
 
     private IEnumerable<TElement> ExecuteEnumerable<TElement>(Expression expression)
@@ -591,89 +591,89 @@ internal sealed class Db2QueryProvider<TEntity, TRow>(
 
     private static class EnumerableDispatch
     {
-        private static readonly ConcurrentDictionary<Type, Func<object, object, object>> WhereDelegates = new();
-        private static readonly ConcurrentDictionary<(Type Source, Type Result), Func<object, object, object>> SelectDelegates = new();
-        private static readonly ConcurrentDictionary<Type, Func<object, int, object>> TakeDelegates = new();
-        private static readonly ConcurrentDictionary<Type, Func<object, bool>> AnyDelegates = new();
-        private static readonly ConcurrentDictionary<Type, Func<object, int>> CountDelegates = new();
-        private static readonly ConcurrentDictionary<Type, Func<object, object, bool>> AllDelegates = new();
+        private static readonly ConcurrentDictionary<Type, Func<IEnumerable, Delegate, IEnumerable>> WhereDelegates = new();
+        private static readonly ConcurrentDictionary<(Type Source, Type Result), Func<IEnumerable, Delegate, IEnumerable>> SelectDelegates = new();
+        private static readonly ConcurrentDictionary<Type, Func<IEnumerable, int, IEnumerable>> TakeDelegates = new();
+        private static readonly ConcurrentDictionary<Type, Func<IEnumerable, bool>> AnyDelegates = new();
+        private static readonly ConcurrentDictionary<Type, Func<IEnumerable, int>> CountDelegates = new();
+        private static readonly ConcurrentDictionary<Type, Func<IEnumerable, Delegate, bool>> AllDelegates = new();
 
-        public static Func<object, object, object> GetWhere(Type elementType)
+        public static Func<IEnumerable, Delegate, IEnumerable> GetWhere(Type elementType)
             => WhereDelegates.GetOrAdd(elementType, static elementType =>
             {
                 var m = typeof(EnumerableDispatch)
                     .GetMethod(nameof(WhereImpl), BindingFlags.Static | BindingFlags.NonPublic)!
                     .MakeGenericMethod(elementType);
 
-                return (Func<object, object, object>)m.CreateDelegate(typeof(Func<object, object, object>));
+                return (Func<IEnumerable, Delegate, IEnumerable>)m.CreateDelegate(typeof(Func<IEnumerable, Delegate, IEnumerable>));
             });
 
-        public static Func<object, object, object> GetSelect(Type sourceType, Type resultType)
+        public static Func<IEnumerable, Delegate, IEnumerable> GetSelect(Type sourceType, Type resultType)
             => SelectDelegates.GetOrAdd((sourceType, resultType), static key =>
             {
                 var m = typeof(EnumerableDispatch)
                     .GetMethod(nameof(SelectImpl), BindingFlags.Static | BindingFlags.NonPublic)!
                     .MakeGenericMethod(key.Source, key.Result);
 
-                return (Func<object, object, object>)m.CreateDelegate(typeof(Func<object, object, object>));
+                return (Func<IEnumerable, Delegate, IEnumerable>)m.CreateDelegate(typeof(Func<IEnumerable, Delegate, IEnumerable>));
             });
 
-        public static Func<object, int, object> GetTake(Type elementType)
+        public static Func<IEnumerable, int, IEnumerable> GetTake(Type elementType)
             => TakeDelegates.GetOrAdd(elementType, static elementType =>
             {
                 var m = typeof(EnumerableDispatch)
                     .GetMethod(nameof(TakeImpl), BindingFlags.Static | BindingFlags.NonPublic)!
                     .MakeGenericMethod(elementType);
 
-                return (Func<object, int, object>)m.CreateDelegate(typeof(Func<object, int, object>));
+                return (Func<IEnumerable, int, IEnumerable>)m.CreateDelegate(typeof(Func<IEnumerable, int, IEnumerable>));
             });
 
-        public static Func<object, bool> GetAny(Type elementType)
+        public static Func<IEnumerable, bool> GetAny(Type elementType)
             => AnyDelegates.GetOrAdd(elementType, static elementType =>
             {
                 var m = typeof(EnumerableDispatch)
                     .GetMethod(nameof(AnyImpl), BindingFlags.Static | BindingFlags.NonPublic)!
                     .MakeGenericMethod(elementType);
 
-                return (Func<object, bool>)m.CreateDelegate(typeof(Func<object, bool>));
+                return (Func<IEnumerable, bool>)m.CreateDelegate(typeof(Func<IEnumerable, bool>));
             });
 
-        public static Func<object, int> GetCount(Type elementType)
+        public static Func<IEnumerable, int> GetCount(Type elementType)
             => CountDelegates.GetOrAdd(elementType, static elementType =>
             {
                 var m = typeof(EnumerableDispatch)
                     .GetMethod(nameof(CountImpl), BindingFlags.Static | BindingFlags.NonPublic)!
                     .MakeGenericMethod(elementType);
 
-                return (Func<object, int>)m.CreateDelegate(typeof(Func<object, int>));
+                return (Func<IEnumerable, int>)m.CreateDelegate(typeof(Func<IEnumerable, int>));
             });
 
-        public static Func<object, object, bool> GetAll(Type elementType)
+        public static Func<IEnumerable, Delegate, bool> GetAll(Type elementType)
             => AllDelegates.GetOrAdd(elementType, static elementType =>
             {
                 var m = typeof(EnumerableDispatch)
                     .GetMethod(nameof(AllImpl), BindingFlags.Static | BindingFlags.NonPublic)!
                     .MakeGenericMethod(elementType);
 
-                return (Func<object, object, bool>)m.CreateDelegate(typeof(Func<object, object, bool>));
+                return (Func<IEnumerable, Delegate, bool>)m.CreateDelegate(typeof(Func<IEnumerable, Delegate, bool>));
             });
 
-        private static object WhereImpl<T>(object source, object predicate)
+        private static IEnumerable WhereImpl<T>(IEnumerable source, Delegate predicate)
             => Enumerable.Where((IEnumerable<T>)source, (Func<T, bool>)predicate);
 
-        private static object SelectImpl<TSource, TResult>(object source, object selector)
+        private static IEnumerable SelectImpl<TSource, TResult>(IEnumerable source, Delegate selector)
             => Enumerable.Select((IEnumerable<TSource>)source, (Func<TSource, TResult>)selector);
 
-        private static object TakeImpl<T>(object source, int count)
+        private static IEnumerable TakeImpl<T>(IEnumerable source, int count)
             => Enumerable.Take((IEnumerable<T>)source, count);
 
-        private static bool AnyImpl<T>(object source)
+        private static bool AnyImpl<T>(IEnumerable source)
             => Enumerable.Any((IEnumerable<T>)source);
 
-        private static int CountImpl<T>(object source)
+        private static int CountImpl<T>(IEnumerable source)
             => Enumerable.Count((IEnumerable<T>)source);
 
-        private static bool AllImpl<T>(object source, object predicate)
+        private static bool AllImpl<T>(IEnumerable source, Delegate predicate)
             => Enumerable.All((IEnumerable<T>)source, (Func<T, bool>)predicate);
     }
 
@@ -698,7 +698,7 @@ internal sealed class Db2QueryProvider<TEntity, TRow>(
             return true;
         }
 
-        elementType = typeof(object);
+        elementType = typeof(string).BaseType!;
         return false;
     }
 

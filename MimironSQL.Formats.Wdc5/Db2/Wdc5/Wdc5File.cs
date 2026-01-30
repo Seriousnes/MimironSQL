@@ -402,7 +402,7 @@ public sealed class Wdc5File : IDb2File<Wdc5Row>, IDb2DenseStringTableIndexProvi
     public bool TryGetDenseStringTableIndex(Wdc5Row row, int fieldIndex, out int stringTableIndex)
         => row.TryGetDenseStringTableIndex(fieldIndex, out stringTableIndex);
 
-    public bool TryGetRowById<TId>(TId id, out Wdc5Row row) where TId : IBinaryInteger<TId>
+    public bool TryGetRowById<TId>(TId id, out Wdc5Row row) where TId : IEquatable<TId>, IComparable<TId>
     {
         var key = id switch
         {

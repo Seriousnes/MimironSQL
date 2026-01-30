@@ -12,8 +12,9 @@ namespace MimironSQL.Db2.Query;
 public abstract class Db2Context
 {
     private static readonly Type Db2TableOpenGenericType = typeof(Db2Table<>);
-    private static readonly ConcurrentDictionary<Type, Func<Db2Context, string, object>> OpenTableDelegates = new();
-    private static readonly ConcurrentDictionary<PropertyInfo, Action<Db2Context, object>> TablePropertySetters = new();
+    private static readonly ConcurrentDictionary<Type, Func<Db2Context, string, IDb2Table>> OpenTableDelegates = new();
+    private static readonly ConcurrentDictionary<PropertyInfo, Action<Db2Context, IDb2Table>> TablePropertySetters = new();
+    private static readonly ConcurrentDictionary<(Type EntityType, Type RowType), Func<Db2Context, string, Db2TableSchema, IDb2File, IDb2Table>> CreateTypedTableDelegates = new();
 
     private readonly SchemaMapper _schemaMapper;
     private readonly IDb2StreamProvider _db2StreamProvider;
@@ -169,18 +170,18 @@ public abstract class Db2Context
                     .GetMethod(nameof(OpenTableByEntity), BindingFlags.Static | BindingFlags.NonPublic)!;
 
                 var generic = factoryMethod.MakeGenericMethod(entityType);
-                return (Func<Db2Context, string, object>)generic.CreateDelegate(typeof(Func<Db2Context, string, object>));
+                return (Func<Db2Context, string, IDb2Table>)generic.CreateDelegate(typeof(Func<Db2Context, string, IDb2Table>));
             });
 
             var setter = TablePropertySetters.GetOrAdd(p, static p =>
             {
                 var ctx = System.Linq.Expressions.Expression.Parameter(typeof(Db2Context), "ctx");
-                var value = System.Linq.Expressions.Expression.Parameter(typeof(object), "value");
+                var value = System.Linq.Expressions.Expression.Parameter(typeof(IDb2Table), "value");
 
                 var declaring = System.Linq.Expressions.Expression.Convert(ctx, p.DeclaringType!);
                 var typedValue = System.Linq.Expressions.Expression.Convert(value, p.PropertyType);
                 var set = System.Linq.Expressions.Expression.Call(declaring, p.SetMethod!, typedValue);
-                return System.Linq.Expressions.Expression.Lambda<Action<Db2Context, object>>(set, ctx, value).Compile();
+                return System.Linq.Expressions.Expression.Lambda<Action<Db2Context, IDb2Table>>(set, ctx, value).Compile();
             });
 
             var table = openTable(this, tableName);
@@ -198,19 +199,29 @@ public abstract class Db2Context
         return builder.Build(tableName => GetOrOpenTableRaw(tableName).Schema);
     }
 
-    private static object OpenTableByEntity<TEntity>(Db2Context context, string tableName)
+    private static IDb2Table OpenTableByEntity<TEntity>(Db2Context context, string tableName)
         => context.OpenTableGeneric<TEntity>(tableName);
 
     private Db2Table<T> OpenTableGeneric<T>(string tableName)
     {
         var (file, schema) = GetOrOpenTableRaw(tableName);
 
-        var createMethod = typeof(Db2Context)
-            .GetMethod(nameof(CreateTypedTable), BindingFlags.Instance | BindingFlags.NonPublic)!;
+        var create = CreateTypedTableDelegates.GetOrAdd((typeof(T), file.RowType), static types =>
+        {
+            var factoryMethod = typeof(Db2Context)
+                .GetMethod(nameof(CreateTypedTableByTypes), BindingFlags.Static | BindingFlags.NonPublic)!;
 
-        var generic = createMethod.MakeGenericMethod(typeof(T), file.RowType);
-        return (Db2Table<T>)generic.Invoke(this, [tableName, schema, file])!;
+            var generic = factoryMethod.MakeGenericMethod(types.EntityType, types.RowType);
+            return (Func<Db2Context, string, Db2TableSchema, IDb2File, IDb2Table>)generic.CreateDelegate(
+                typeof(Func<Db2Context, string, Db2TableSchema, IDb2File, IDb2Table>));
+        });
+
+        return (Db2Table<T>)create(this, tableName, schema, file);
     }
+
+    private static IDb2Table CreateTypedTableByTypes<TEntity, TRow>(Db2Context context, string tableName, Db2TableSchema schema, IDb2File file)
+        where TRow : struct, IDb2Row
+        => context.CreateTypedTable<TEntity, TRow>(tableName, schema, file);
 
     private Db2Table<TEntity> CreateTypedTable<TEntity, TRow>(string tableName, Db2TableSchema schema, IDb2File file)
         where TRow : struct, IDb2Row

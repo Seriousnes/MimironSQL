@@ -35,13 +35,11 @@ public class Db2Table<T> : IQueryable<T>, IDb2Table
         Expression = Expression.Constant(this);
     }
 
-    public IEnumerator<T> GetEnumerator()
-        => ((IEnumerable<T>)_provider.Execute<IEnumerable<T>>(Expression)).GetEnumerator();
+    public IEnumerator<T> GetEnumerator() => _provider.Execute<IEnumerable<T>>(Expression).GetEnumerator();
 
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 
-    public virtual T? Find<TId>(TId id)
-        where TId : IBinaryInteger<TId>
+    public virtual T? Find<TId>(TId id) where TId : IEquatable<TId>, IComparable<TId>
     {
         throw new NotSupportedException("Find is not supported for this table instance.");
     }
@@ -65,9 +63,7 @@ internal sealed class Db2Table<T, TRow> : Db2Table<T>
         if (!typeof(Db2Entity<TId>).IsAssignableFrom(typeof(T)))
             throw new NotSupportedException($"Entity type {typeof(T).FullName} must derive from {typeof(Db2Entity<TId>).FullName} to use Find with key type {typeof(TId).FullName}.");
 
-        var key = int.CreateChecked(id);
-
-        if (!_file.TryGetRowById(key, out var row))
+        if (!_file.TryGetRowById(id, out var row))
             return default;
 
         return _materializer.Materialize(row);

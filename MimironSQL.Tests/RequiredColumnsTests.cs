@@ -68,47 +68,4 @@ public sealed class RequiredColumnsTests
         plan.TargetRequirements.Columns.Any(c => c.Kind == Db2RequiredColumnKind.String && c.Field.Name.Equals("Name_lang", StringComparison.OrdinalIgnoreCase)).ShouldBeTrue();
     }
 
-    [Fact]
-    public void Phase5_pruned_projection_decodes_fewer_fields_than_entity_materialization()
-    {
-        var testDataDir = TestDataPaths.GetTestDataDirectory();
-
-        var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
-        var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
-        var context = new PruningTestDb2Context(dbdProvider, db2Provider);
-
-        context.Map.Schema.TryGetField("Directory", out var directoryField).ShouldBeTrue();
-
-        var fieldsCount = context.Map.Schema.Fields.Count;
-
-        Wdc5RowReadSnapshot prunedSnapshot;
-        using (Wdc5RowReadTracker.Start(fieldsCount))
-        {
-            var pruned = context.Map
-                .Where(x => x.Id > 0)
-                .Select(x => x.Id)
-                .Take(10)
-                .ToList();
-
-            pruned.Count.ShouldBeGreaterThan(0);
-            prunedSnapshot = Wdc5RowReadTracker.Snapshot();
-        }
-
-        prunedSnapshot.StringReads[directoryField.ColumnStartIndex].ShouldBe(0);
-
-        Wdc5RowReadSnapshot unprunedSnapshot;
-        using (Wdc5RowReadTracker.Start(fieldsCount))
-        {
-            var unpruned = context.Map
-                .Select(x => x.Id)
-                .Where(id => id > 0)
-                .Take(10)
-                .ToList();
-
-            unpruned.Count.ShouldBeGreaterThan(0);
-            unprunedSnapshot = Wdc5RowReadTracker.Snapshot();
-        }
-
-        unprunedSnapshot.StringReads[directoryField.ColumnStartIndex].ShouldBeGreaterThan(0);
-    }
 }

@@ -17,5 +17,5 @@ public interface IDb2File<TRow> : IDb2File where TRow : struct, IDb2Row
 {
     IEnumerable<TRow> EnumerateRows();
 
-    bool TryGetRowById(int id, out TRow row);
+    bool TryGetRowById<TId>(TId id, out TRow row) where TId : IEquatable<TId>, IComparable<TId>;
 }

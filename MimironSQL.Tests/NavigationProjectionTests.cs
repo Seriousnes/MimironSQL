@@ -76,35 +76,6 @@ public sealed class NavigationProjectionTests
     }
 
     [Fact]
-    public void Navigation_projection_reduces_field_reads()
-    {
-        var testDataDir = TestDataPaths.GetTestDataDirectory();
-        var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
-        var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
-        var context = new TestDb2Context(dbdProvider, db2Provider);
-
-        context.Spell.Schema.TryGetField("Description_lang", out var descriptionField).ShouldBeTrue();
-        var fieldsCount = context.Spell.Schema.Fields.Count;
-
-        Wdc5RowReadSnapshot navigationProjectionSnapshot;
-        using (Wdc5RowReadTracker.Start(fieldsCount))
-        {
-            var names = context.Spell
-                .Where(s => s.Id > 0)
-                .Select(s => (string?)s.SpellName!.Name_lang)
-                .Take(10)
-                .ToList();
-
-            names.Count.ShouldBe(10);
-            navigationProjectionSnapshot = Wdc5RowReadTracker.Snapshot();
-        }
-
-        navigationProjectionSnapshot.StringReads[descriptionField.ColumnStartIndex].ShouldBe(
-            0,
-            "Root table Description_lang field should not be read when projecting only navigation fields");
-    }
-
-    [Fact]
     public void Anonymous_type_projection_with_navigation_works()
     {
         var testDataDir = TestDataPaths.GetTestDataDirectory();

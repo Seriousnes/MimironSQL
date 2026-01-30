@@ -212,7 +212,7 @@ internal sealed class Db2EntityMaterializer<TEntity, TRow>
     private static Expression BuildReadExpression(Expression rowExpression, int fieldIndex, Type targetType)
     {
         var getMethod = typeof(TRow)
-            .GetMethod(nameof(IDb2Row.Get), BindingFlags.Instance | BindingFlags.Public)!
+            .GetMethod(nameof(IDb2Row.Get), BindingFlags.Instance | BindingFlags.Public, [typeof(int)])!
             .MakeGenericMethod(targetType);
 
         return Expression.Call(rowExpression, getMethod, Expression.Constant(fieldIndex));

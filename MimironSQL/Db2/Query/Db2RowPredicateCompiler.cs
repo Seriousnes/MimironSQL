@@ -164,7 +164,7 @@ internal static class Db2RowPredicateCompiler
             if (TryMapSchemaArrayCollectionRead(field, targetType, out var readType))
             {
                 var getArray = typeof(TRow)
-                    .GetMethod(nameof(IDb2Row.Get), BindingFlags.Instance | BindingFlags.Public)!
+                    .GetMethod(nameof(IDb2Row.Get), BindingFlags.Instance | BindingFlags.Public, [typeof(int)])!
                     .MakeGenericMethod(readType);
 
                 var readArray = Expression.Call(rowParam, getArray, Expression.Constant(field.ColumnStartIndex));
@@ -172,7 +172,7 @@ internal static class Db2RowPredicateCompiler
             }
 
             var get = typeof(TRow)
-                .GetMethod(nameof(IDb2Row.Get), BindingFlags.Instance | BindingFlags.Public)!
+                .GetMethod(nameof(IDb2Row.Get), BindingFlags.Instance | BindingFlags.Public, [typeof(int)])!
                 .MakeGenericMethod(targetType);
 
             return Expression.Call(rowParam, get, Expression.Constant(field.ColumnStartIndex));

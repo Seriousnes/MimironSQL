@@ -207,7 +207,7 @@ internal static class Db2NavigationRowProjector
             private Expression CreateKeyExpression(int fieldIndex)
             {
                 var get = typeof(TRow)
-                    .GetMethod(nameof(IDb2Row.Get), BindingFlags.Instance | BindingFlags.Public)!
+                    .GetMethod(nameof(IDb2Row.Get), BindingFlags.Instance | BindingFlags.Public, [typeof(int)])!
                     .MakeGenericMethod(typeof(int));
 
                 return Expression.Call(rowParam, get, Expression.Constant(fieldIndex));
@@ -235,7 +235,7 @@ internal static class Db2NavigationRowProjector
 
                     var arrayType = elementType.MakeArrayType();
                     var getArray = typeof(TRow)
-                        .GetMethod(nameof(IDb2Row.Get), BindingFlags.Instance | BindingFlags.Public)!
+                        .GetMethod(nameof(IDb2Row.Get), BindingFlags.Instance | BindingFlags.Public, [typeof(int)])!
                         .MakeGenericMethod(arrayType);
 
                     var readArray = Expression.Call(rowExpression, getArray, Expression.Constant(accessor.Field.ColumnStartIndex));
@@ -257,7 +257,7 @@ internal static class Db2NavigationRowProjector
 
                 var readType = targetType.UnwrapNullable();
                 var get = typeof(TRow)
-                    .GetMethod(nameof(IDb2Row.Get), BindingFlags.Instance | BindingFlags.Public)!
+                    .GetMethod(nameof(IDb2Row.Get), BindingFlags.Instance | BindingFlags.Public, [typeof(int)])!
                     .MakeGenericMethod(readType);
 
                 var read = Expression.Call(rowExpression, get, Expression.Constant(accessor.Field.ColumnStartIndex));

@@ -1,5 +1,5 @@
 using MimironSQL.Db2.Schema;
-using MimironSQL.Db2.Wdc5;
+using MimironSQL.Formats;
 
 using System.Collections;
 using System.Linq.Expressions;
@@ -7,42 +7,63 @@ using System.Numerics;
 
 namespace MimironSQL.Db2.Query;
 
-public sealed class Db2Table<T> : IQueryable<T>
+internal interface IDb2Table
+{
+    Type EntityType { get; }
+    string TableName { get; }
+}
+
+public class Db2Table<T> : IQueryable<T>, IDb2Table
 {
     internal string TableName { get; }
     public Db2TableSchema Schema { get; }
 
     private readonly IQueryProvider _provider;
-    private readonly Db2EntityMaterializer<T> _materializer;
-    private readonly Func<string, Wdc5File> _fileResolver;
 
     public Type ElementType => typeof(T);
     public Expression Expression { get; }
     public IQueryProvider Provider => _provider;
 
-    internal Db2Table(string tableName, Db2TableSchema schema, IQueryProvider provider, Func<string, Wdc5File> fileResolver)
+    Type IDb2Table.EntityType => typeof(T);
+    string IDb2Table.TableName => TableName;
+
+    internal Db2Table(string tableName, Db2TableSchema schema, IQueryProvider provider)
     {
         TableName = tableName;
         Schema = schema;
         _provider = provider;
-        _materializer = new Db2EntityMaterializer<T>(schema);
-        _fileResolver = fileResolver;
         Expression = Expression.Constant(this);
     }
 
-    public IEnumerator<T> GetEnumerator()
-        => ((IEnumerable<T>)_provider.Execute<IEnumerable<T>>(Expression)).GetEnumerator();
+    public IEnumerator<T> GetEnumerator() => _provider.Execute<IEnumerable<T>>(Expression).GetEnumerator();
 
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 
-    public T? Find<TId>(TId id)
-        where TId : IBinaryInteger<TId>
+    public virtual T? Find<TId>(TId id) where TId : IEquatable<TId>, IComparable<TId>
     {
-        if (!typeof(Wdc5Entity<TId>).IsAssignableFrom(typeof(T)))
-            throw new NotSupportedException($"Entity type {typeof(T).FullName} must derive from {typeof(Wdc5Entity<TId>).FullName} to use Find with key type {typeof(TId).FullName}.");
+        throw new NotSupportedException("Find is not supported for this table instance.");
+    }
+}
 
-        var file = _fileResolver(TableName);
-        if (!file.TryGetRowById(id, out var row))
+internal sealed class Db2Table<T, TRow> : Db2Table<T>
+    where TRow : struct, IDb2Row
+{
+    private readonly IDb2File<TRow> _file;
+    private readonly Db2EntityMaterializer<T, TRow> _materializer;
+
+    internal Db2Table(string tableName, Db2TableSchema schema, IQueryProvider provider, IDb2File<TRow> file)
+        : base(tableName, schema, provider)
+    {
+        _file = file;
+        _materializer = new Db2EntityMaterializer<T, TRow>(schema);
+    }
+
+    public override T? Find<TId>(TId id)
+    {
+        if (!typeof(Db2Entity<TId>).IsAssignableFrom(typeof(T)))
+            throw new NotSupportedException($"Entity type {typeof(T).FullName} must derive from {typeof(Db2Entity<TId>).FullName} to use Find with key type {typeof(TId).FullName}.");
+
+        if (!_file.TryGetRowById(id, out var row))
             return default;
 
         return _materializer.Materialize(row);

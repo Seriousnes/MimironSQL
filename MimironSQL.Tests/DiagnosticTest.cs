@@ -1,5 +1,7 @@
+using MimironSQL.Db2;
 using MimironSQL.Db2.Schema;
-using MimironSQL.Db2.Wdc5;
+using MimironSQL.Formats;
+using MimironSQL.Formats.Wdc5;
 using MimironSQL.Providers;
 
 using Xunit.Abstractions;
@@ -18,11 +20,11 @@ public sealed class DiagnosticTest(ITestOutputHelper output)
         output.WriteLine($"Header.StringTableSize = {file.Header.StringTableSize}");
         output.WriteLine($"DenseStringTableBytes.Length = {file.DenseStringTableBytes.Length}");
         output.WriteLine($"RecordsCount = {file.Header.RecordsCount}");
-        output.WriteLine($"Sparse = {file.Header.Flags.HasFlag(Db2.Db2Flags.Sparse)}");
+        output.WriteLine($"Sparse = {file.Header.Flags.HasFlag(Db2Flags.Sparse)}");
 
         var provider = new FileSystemDbdProvider(new FileSystemDbdProviderOptions(TestDataPaths.GetTestDataDirectory()));
         var mapper = new SchemaMapper(provider);
-        var schema = mapper.GetSchema("Map", file);
+        var schema = mapper.GetSchema("Map", new Db2FileLayout(file.Header.LayoutHash, file.Header.FieldsCount));
         schema.TryGetField("Directory", out var directory);
 
         output.WriteLine($"Directory field: ColumnStartIndex={directory.ColumnStartIndex}, IsVirtual={directory.IsVirtual}");
@@ -32,9 +34,23 @@ public sealed class DiagnosticTest(ITestOutputHelper output)
         foreach (var row in file.EnumerateRows().Take(10))
         {
             tryCount++;
-            var success = row.TryGetDenseString(directory.ColumnStartIndex, out var value);
-            if (success) successCount++;
-            output.WriteLine($"Row {row.Id}: TryGetDenseString={success}, value='{value}'");
+            var id = row.Get<int>(Db2VirtualFieldIndex.Id);
+
+            string? value = null;
+            var success = false;
+            try
+            {
+                value = row.Get<string>(directory.ColumnStartIndex);
+                success = !string.IsNullOrEmpty(value);
+            }
+            catch
+            {
+            }
+
+            if (success)
+                successCount++;
+
+            output.WriteLine($"Row {id}: Get<string> success={success}, value='{value}'");
         }
         output.WriteLine($"Tried {tryCount}, succeeded {successCount}");
     }

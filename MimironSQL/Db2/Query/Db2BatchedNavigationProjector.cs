@@ -3,19 +3,21 @@ using System.Reflection;
 
 using MimironSQL.Db2.Model;
 using MimironSQL.Db2.Schema;
-using MimironSQL.Db2.Wdc5;
+using MimironSQL.Formats;
+using MimironSQL.Extensions;
 
 namespace MimironSQL.Db2.Query;
 
 internal static class Db2BatchedNavigationProjector
 {
-    public static IEnumerable<TResult> Project<TEntity, TResult>(
+    public static IEnumerable<TResult> Project<TEntity, TResult, TRow>(
         IEnumerable<TEntity> source,
         Db2Model model,
-        Func<string, (Wdc5File File, Db2TableSchema Schema)> tableResolver,
+        Func<string, (IDb2File<TRow> File, Db2TableSchema Schema)> tableResolver,
         Db2NavigationMemberAccessPlan[] accesses,
         Expression<Func<TEntity, TResult>> selector,
         int? take)
+        where TRow : struct, IDb2Row
     {
         var accessGroups = accesses
             .GroupBy(a => a.Join.Navigation.NavigationMember)
@@ -46,7 +48,7 @@ internal static class Db2BatchedNavigationProjector
                 break;
         }
 
-        var lookupByNavigation = new Dictionary<MemberInfo, NavigationLookup>();
+        var lookupByNavigation = new Dictionary<MemberInfo, NavigationLookup<TRow>>();
 
         foreach (var (navMember, navAccesses) in accessGroups)
         {
@@ -59,11 +61,7 @@ internal static class Db2BatchedNavigationProjector
                 .Distinct()
                 .ToArray();
 
-            var memberIndexes = new Dictionary<MemberInfo, int>();
-            for (var i = 0; i < distinctTargetMembers.Length; i++)
-                memberIndexes[distinctTargetMembers[i]] = i;
-
-            var readers = new Func<Wdc5Row, object?>[distinctTargetMembers.Length];
+            var accessorByMember = new Dictionary<MemberInfo, Db2FieldAccessor>(capacity: distinctTargetMembers.Length);
             for (var i = 0; i < distinctTargetMembers.Length; i++)
             {
                 var member = distinctTargetMembers[i];
@@ -71,32 +69,28 @@ internal static class Db2BatchedNavigationProjector
                 if (!relatedSchema.TryGetField(member.Name, out var field))
                     throw new NotSupportedException($"Field '{member.Name}' was not found in schema '{relatedSchema.TableName}'.");
 
-                var accessor = new Db2FieldAccessor(field);
-                readers[i] = CreateFieldReader(member, accessor);
+                accessorByMember[member] = new Db2FieldAccessor(field);
             }
 
             var keys = keysByNavigation[navMember];
-            Dictionary<int, object?[]> valuesByKey = new(capacity: Math.Min(keys.Count, relatedFile.Header.RecordsCount));
+            Dictionary<int, TRow> rowsByKey = new(capacity: Math.Min(keys.Count, relatedFile.RecordsCount));
 
             if (keys is { Count: not 0 })
             {
                 foreach (var row in relatedFile.EnumerateRows())
                 {
-                    if (!keys.Contains(row.Id))
+                    var rowId = row.Get<int>(Db2VirtualFieldIndex.Id);
+                    if (!keys.Contains(rowId))
                         continue;
 
-                    var values = new object?[readers.Length];
-                    for (var i = 0; i < readers.Length; i++)
-                        values[i] = readers[i](row);
-
-                    valuesByKey[row.Id] = values;
+                    rowsByKey[rowId] = row;
                 }
             }
 
-            lookupByNavigation[navMember] = new NavigationLookup(valuesByKey, memberIndexes);
+            lookupByNavigation[navMember] = new NavigationLookup<TRow>(rowsByKey, accessorByMember);
         }
 
-        var rewritten = new SelectorRewriter(selector.Parameters[0], lookupByNavigation, accessGroups).Visit(selector.Body);
+        var rewritten = new SelectorRewriter<TRow>(selector.Parameters[0], lookupByNavigation, accessGroups).Visit(selector.Body);
         var projection = Expression.Lambda<Func<TEntity, TResult>>(rewritten!, selector.Parameters[0]).Compile();
 
         foreach (var entity in buffered)
@@ -114,57 +108,47 @@ internal static class Db2BatchedNavigationProjector
             _ => throw new InvalidOperationException($"Unexpected member type: {member.GetType().FullName}"),
         };
 
-        var toInt32 = typeof(Convert).GetMethod(nameof(Convert.ToInt32), [typeof(object)])!;
-        var call = Expression.Call(toInt32, Expression.Convert(access, typeof(object)));
-        return Expression.Lambda<Func<TEntity, int>>(call, entity).Compile();
+        var memberType = access.Type;
+        Expression key = memberType == typeof(int)
+            ? access
+            : memberType == typeof(long)
+                ? Expression.Call(typeof(Convert).GetMethod(nameof(Convert.ToInt32), [typeof(long)])!, access)
+                : memberType == typeof(uint)
+                    ? Expression.Call(typeof(Convert).GetMethod(nameof(Convert.ToInt32), [typeof(uint)])!, access)
+                    : memberType == typeof(ulong)
+                        ? Expression.Call(typeof(Convert).GetMethod(nameof(Convert.ToInt32), [typeof(ulong)])!, access)
+                        : memberType == typeof(short)
+                            ? Expression.Convert(access, typeof(int))
+                            : memberType == typeof(ushort)
+                                ? Expression.Convert(access, typeof(int))
+                                : memberType == typeof(byte)
+                                    ? Expression.Convert(access, typeof(int))
+                                    : memberType == typeof(sbyte)
+                                        ? Expression.Convert(access, typeof(int))
+                                        : memberType.IsEnum
+                                            ? Expression.Convert(Expression.Convert(access, Enum.GetUnderlyingType(memberType)), typeof(int))
+                                            : throw new NotSupportedException($"Unsupported key member type {memberType.FullName}.");
+
+        return Expression.Lambda<Func<TEntity, int>>(key, entity).Compile();
     }
 
-    private static Func<Wdc5Row, object?> CreateFieldReader(MemberInfo member, Db2FieldAccessor accessor)
+    private sealed class NavigationLookup<TRow>(Dictionary<int, TRow> rowsByKey, Dictionary<MemberInfo, Db2FieldAccessor> accessorByMember)
+        where TRow : struct, IDb2Row
     {
-        var memberType = member switch
+        public bool TryGetRow(int key, out TRow row)
         {
-            PropertyInfo p => p.PropertyType,
-            FieldInfo f => f.FieldType,
-            _ => throw new InvalidOperationException($"Unexpected member type: {member.GetType().FullName}"),
-        };
-
-        if (memberType == typeof(string) && accessor.Field.IsVirtual)
-            throw new NotSupportedException($"Virtual field '{accessor.Field.Name}' cannot be materialized as a string.");
-
-        var row = Expression.Parameter(typeof(Wdc5Row), "row");
-
-        var read = typeof(Db2RowValue)
-            .GetMethod(nameof(Db2RowValue.Read), BindingFlags.Public | BindingFlags.Static)!
-            .MakeGenericMethod(memberType);
-
-        var call = Expression.Call(read, row, Expression.Constant(accessor));
-        var boxed = Expression.Convert(call, typeof(object));
-
-        return Expression.Lambda<Func<Wdc5Row, object?>>(boxed, row).Compile();
-    }
-
-    private sealed class NavigationLookup(Dictionary<int, object?[]> valuesByKey, Dictionary<MemberInfo, int> memberIndexes)
-    {
-        public bool TryGetValue(int key, int memberIndex, out object? value)
-        {
-            if (valuesByKey.TryGetValue(key, out var arr) && (uint)memberIndex < (uint)arr.Length)
-            {
-                value = arr[memberIndex];
-                return true;
-            }
-
-            value = null;
-            return false;
+            return rowsByKey.TryGetValue(key, out row);
         }
 
-        public int GetMemberIndex(MemberInfo member)
-            => memberIndexes[member];
+        public Db2FieldAccessor GetAccessor(MemberInfo member)
+            => accessorByMember[member];
     }
 
-    private sealed class SelectorRewriter(
+    private sealed class SelectorRewriter<TRow>(
         ParameterExpression entityParam,
-        Dictionary<MemberInfo, NavigationLookup> lookupByNavigation,
+        Dictionary<MemberInfo, NavigationLookup<TRow>> lookupByNavigation,
         Dictionary<MemberInfo, Db2NavigationMemberAccessPlan[]> accessGroups) : ExpressionVisitor
+        where TRow : struct, IDb2Row
     {
         protected override Expression VisitMember(MemberExpression node)
         {
@@ -180,27 +164,23 @@ internal static class Db2BatchedNavigationProjector
                 var join = plans[0].Join;
 
                 var keyGetter = CreateKeyExpression(join.RootKeyMember);
-                var memberIndex = lookup.GetMemberIndex(node.Member);
+                var accessor = lookup.GetAccessor(node.Member);
 
-                var tryGet = typeof(NavigationLookup).GetMethod(nameof(NavigationLookup.TryGetValue))!;
+                var tryGet = typeof(NavigationLookup<TRow>).GetMethod(nameof(NavigationLookup<TRow>.TryGetRow))!;
 
                 var keyVar = Expression.Variable(typeof(int), "key");
-                var valueVar = Expression.Variable(typeof(object), "value");
+                var relatedRowVar = Expression.Variable(typeof(TRow), "relatedRow");
 
                 var assignKey = Expression.Assign(keyVar, keyGetter);
+                var tryGetCall = Expression.Call(Expression.Constant(lookup), tryGet, keyVar, relatedRowVar);
 
-                var tryGetCall = Expression.Call(Expression.Constant(lookup), tryGet, keyVar, Expression.Constant(memberIndex), valueVar);
-
-                var valueAsTarget = Expression.Convert(valueVar, node.Type);
-
+                var read = BuildReadExpression(relatedRowVar, accessor, node.Type);
                 var defaultValue = Expression.Default(node.Type);
 
-                var body = Expression.Block(
-                    [keyVar, valueVar],
+                return Expression.Block(
+                    [keyVar, relatedRowVar],
                     assignKey,
-                    Expression.Condition(tryGetCall, valueAsTarget, defaultValue));
-
-                return body;
+                    Expression.Condition(tryGetCall, read, defaultValue));
             }
 
             return node;
@@ -208,15 +188,57 @@ internal static class Db2BatchedNavigationProjector
 
         private Expression CreateKeyExpression(MemberInfo member)
         {
-            Expression access = member switch
-            {
-                PropertyInfo p => Expression.Property(entityParam, p),
-                FieldInfo f => Expression.Field(entityParam, f),
-                _ => throw new InvalidOperationException($"Unexpected member type: {member.GetType().FullName}"),
-            };
-
-            var toInt32 = typeof(Convert).GetMethod(nameof(Convert.ToInt32), [typeof(object)])!;
-            return Expression.Call(toInt32, Expression.Convert(access, typeof(object)));
+            return member.CreateInt32KeyExpression(entityParam);
         }
+
+        private static Expression BuildReadExpression(Expression rowExpression, Db2FieldAccessor accessor, Type targetType)
+        {
+            if (accessor.Field.ElementCount > 1
+                && targetType.IsGenericType
+                && (targetType.GetGenericTypeDefinition() == typeof(ICollection<>)
+                    || targetType.GetGenericTypeDefinition() == typeof(IList<>)
+                    || targetType.GetGenericTypeDefinition() == typeof(IEnumerable<>)
+                    || targetType.GetGenericTypeDefinition() == typeof(IReadOnlyCollection<>)
+                    || targetType.GetGenericTypeDefinition() == typeof(IReadOnlyList<>)))
+            {
+                var elementType = targetType.GetGenericArguments()[0];
+                if (elementType == typeof(string))
+                    throw new NotSupportedException("String arrays are not supported.");
+
+                if (!elementType.IsPrimitive && elementType != typeof(float) && elementType != typeof(double))
+                    throw new NotSupportedException($"Unsupported array element type {elementType.FullName}.");
+
+                var arrayType = elementType.MakeArrayType();
+                var getArray = typeof(TRow).GetMethod(nameof(IDb2Row.Get), BindingFlags.Public | BindingFlags.Instance, [typeof(int)])!
+                    .MakeGenericMethod(arrayType);
+
+                var readArray = Expression.Call(rowExpression, getArray, Expression.Constant(accessor.Field.ColumnStartIndex));
+                return Expression.Convert(readArray, targetType);
+            }
+
+            if (targetType.IsArray)
+            {
+                var elementType = targetType.GetElementType()!;
+                if (elementType == typeof(string))
+                    throw new NotSupportedException("String arrays are not supported.");
+
+                if (!elementType.IsPrimitive && elementType != typeof(float) && elementType != typeof(double))
+                    throw new NotSupportedException($"Unsupported array element type {elementType.FullName}.");
+            }
+
+            if (targetType == typeof(string) && accessor.Field.IsVirtual)
+                throw new NotSupportedException($"Virtual field '{accessor.Field.Name}' cannot be materialized as a string.");
+
+            var readType = targetType.UnwrapNullable();
+            var methodInfo = typeof(TRow).GetMethod(nameof(IDb2Row.Get), BindingFlags.Public | BindingFlags.Instance, [typeof(int)])!
+                .MakeGenericMethod(readType);
+
+            var read = Expression.Call(
+                rowExpression,
+                methodInfo,
+                Expression.Constant(accessor.Field.ColumnStartIndex));
+
+            return targetType.IsNullable() ? Expression.Convert(read, targetType) : read;
+        }        
     }
 }

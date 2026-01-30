@@ -1,36 +1,39 @@
 using System.Linq.Expressions;
 using System.Reflection;
 
+using MimironSQL.Db2;
 using MimironSQL.Db2.Model;
 using MimironSQL.Db2.Schema;
-using MimironSQL.Db2.Wdc5;
+using MimironSQL.Formats;
+using MimironSQL.Extensions;
 
 namespace MimironSQL.Db2.Query;
 
 internal static class Db2NavigationRowProjector
 {
-    public static IEnumerable<TResult> ProjectFromRows<TResult>(
-        IEnumerable<Wdc5Row> rows,
+    public static IEnumerable<TResult> ProjectFromRows<TResult, TRow>(
+        IEnumerable<TRow> rows,
         Db2TableSchema rootSchema,
         Db2Model model,
-        Func<string, (Wdc5File File, Db2TableSchema Schema)> tableResolver,
+        Func<string, (IDb2File<TRow> File, Db2TableSchema Schema)> tableResolver,
         Db2NavigationMemberAccessPlan[] accesses,
         LambdaExpression selector,
         int? take)
+        where TRow : struct, IDb2Row
     {
         var accessGroups = accesses
             .GroupBy(a => a.Join.Navigation.NavigationMember)
             .ToDictionary(g => g.Key, g => g.ToArray());
 
-        var buffered = new List<Wdc5Row>(take is { } t ? t : 16);
+        var buffered = new List<TRow>(take is { } t ? t : 16);
         var keysByNavigation = new Dictionary<MemberInfo, HashSet<int>>();
-        var rootKeyAccessorByNavigation = new Dictionary<MemberInfo, Db2FieldAccessor>();
+        var rootKeyFieldIndexByNavigation = new Dictionary<MemberInfo, int>();
 
         foreach (var (navMember, navAccesses) in accessGroups)
         {
             keysByNavigation[navMember] = [];
             var keyFieldSchema = navAccesses[0].Join.RootKeyFieldSchema;
-            rootKeyAccessorByNavigation[navMember] = new Db2FieldAccessor(keyFieldSchema);
+            rootKeyFieldIndexByNavigation[navMember] = keyFieldSchema.ColumnStartIndex;
         }
 
         foreach (var row in rows)
@@ -39,14 +42,13 @@ internal static class Db2NavigationRowProjector
 
             foreach (var (navMember, keys) in keysByNavigation)
             {
-                var accessor = rootKeyAccessorByNavigation[navMember];
-                var key = ReadInt32(row, accessor);
+                var key = row.Get<int>(rootKeyFieldIndexByNavigation[navMember]);
                 if (key != 0)
                     keys.Add(key);
             }
         }
 
-        var lookupByNavigation = new Dictionary<MemberInfo, NavigationLookup>();
+        var lookupByNavigation = new Dictionary<MemberInfo, NavigationLookup<TRow>>();
 
         foreach (var (navMember, navAccesses) in accessGroups)
         {
@@ -59,11 +61,7 @@ internal static class Db2NavigationRowProjector
                 .Distinct()
                 .ToArray();
 
-            var memberIndexes = new Dictionary<MemberInfo, int>();
-            for (var i = 0; i < distinctTargetMembers.Length; i++)
-                memberIndexes[distinctTargetMembers[i]] = i;
-
-            var readers = new Func<Wdc5Row, object?>[distinctTargetMembers.Length];
+            var accessorByMember = new Dictionary<MemberInfo, Db2FieldAccessor>(capacity: distinctTargetMembers.Length);
             for (var i = 0; i < distinctTargetMembers.Length; i++)
             {
                 var member = distinctTargetMembers[i];
@@ -71,147 +69,100 @@ internal static class Db2NavigationRowProjector
                 if (!relatedSchema.TryGetField(member.Name, out var field))
                     throw new NotSupportedException($"Field '{member.Name}' was not found in schema '{relatedSchema.TableName}'.");
 
-                var accessor = new Db2FieldAccessor(field);
-                readers[i] = CreateFieldReader(member, accessor);
+                accessorByMember[member] = new Db2FieldAccessor(field);
             }
 
             var keys = keysByNavigation[navMember];
-            Dictionary<int, object?[]> valuesByKey = new(capacity: Math.Min(keys.Count, relatedFile.Header.RecordsCount));
+            Dictionary<int, TRow> rowsByKey = new(capacity: Math.Min(keys.Count, relatedFile.RecordsCount));
 
             if (keys is { Count: not 0 })
             {
-                foreach (var row in relatedFile.EnumerateRows().Where(r => keys.Contains(r.Id)))
+                foreach (var row in relatedFile.EnumerateRows())
                 {
-                    var values = new object?[readers.Length];
-                    for (var i = 0; i < readers.Length; i++)
-                        values[i] = readers[i](row);
+                    var rowId = row.Get<int>(Db2VirtualFieldIndex.Id);
+                    if (!keys.Contains(rowId))
+                        continue;
 
-                    valuesByKey[row.Id] = values;
+                    rowsByKey[rowId] = row;
                 }
             }
 
-            lookupByNavigation[navMember] = new NavigationLookup(valuesByKey, memberIndexes);
+            lookupByNavigation[navMember] = new NavigationLookup<TRow>(rowsByKey, accessorByMember);
         }
 
-        var projectorCompiler = new RowProjectorCompiler(rootSchema, selector, lookupByNavigation, rootKeyAccessorByNavigation);
+        var projectorCompiler = new RowProjectorCompiler<TRow>(rootSchema, selector, lookupByNavigation, rootKeyFieldIndexByNavigation);
         var projector = projectorCompiler.Compile<TResult>();
 
         foreach (var row in buffered)
             yield return projector(row);
     }
 
-    private static int ReadInt32(Wdc5Row row, Db2FieldAccessor accessor)
+    private sealed class NavigationLookup<TRow>(Dictionary<int, TRow> rowsByKey, Dictionary<MemberInfo, Db2FieldAccessor> accessorByMember)
+        where TRow : struct, IDb2Row
     {
-        if (accessor.Field.IsVirtual)
-            return row.Id;
-
-        var index = accessor.Field.ColumnStartIndex;
-        return Convert.ToInt32(row.GetScalar<long>(index));
-    }
-
-    private static Func<Wdc5Row, object?> CreateFieldReader(MemberInfo member, Db2FieldAccessor accessor)
-    {
-        var memberType = member switch
+        public bool TryGetRow(int key, out TRow row)
         {
-            PropertyInfo p => p.PropertyType,
-            FieldInfo f => f.FieldType,
-            _ => throw new InvalidOperationException($"Unexpected member type: {member.GetType().FullName}"),
-        };
-
-        if (memberType == typeof(string) && accessor.Field.IsVirtual)
-            throw new NotSupportedException($"Virtual field '{accessor.Field.Name}' cannot be materialized as a string.");
-
-        var row = Expression.Parameter(typeof(Wdc5Row), "row");
-
-        var read = typeof(Db2RowValue)
-            .GetMethod(nameof(Db2RowValue.Read), BindingFlags.Public | BindingFlags.Static)!
-            .MakeGenericMethod(memberType);
-
-        var call = Expression.Call(read, row, Expression.Constant(accessor));
-        var boxed = Expression.Convert(call, typeof(object));
-
-        return Expression.Lambda<Func<Wdc5Row, object?>>(boxed, row).Compile();
-    }
-
-    private sealed class NavigationLookup(Dictionary<int, object?[]> valuesByKey, Dictionary<MemberInfo, int> memberIndexes)
-    {
-        public bool TryGetValue(int key, int memberIndex, out object? value)
-        {
-            if (valuesByKey.TryGetValue(key, out var arr) && (uint)memberIndex < (uint)arr.Length)
-            {
-                value = arr[memberIndex];
-                return true;
-            }
-
-            value = null;
-            return false;
+            return rowsByKey.TryGetValue(key, out row);
         }
 
-        public int GetMemberIndex(MemberInfo member)
-            => memberIndexes[member];
+        public Db2FieldAccessor GetAccessor(MemberInfo member)
+            => accessorByMember[member];
     }
 
-    private sealed class RowProjectorCompiler(
+    private sealed class RowProjectorCompiler<TRow>(
         Db2TableSchema rootSchema,
         LambdaExpression selector,
-        Dictionary<MemberInfo, NavigationLookup> lookupByNavigation,
-        Dictionary<MemberInfo, Db2FieldAccessor> rootKeyAccessorByNavigation)
+        Dictionary<MemberInfo, NavigationLookup<TRow>> lookupByNavigation,
+        Dictionary<MemberInfo, int> rootKeyFieldIndexByNavigation)
+        where TRow : struct, IDb2Row
     {
         private readonly ParameterExpression _entityParam = selector.Parameters[0];
-        private readonly ParameterExpression _rowParam = Expression.Parameter(typeof(Wdc5Row), "row");
+        private readonly ParameterExpression _rowParam = Expression.Parameter(typeof(TRow), "row");
 
-        public Func<Wdc5Row, TResult> Compile<TResult>()
+        public Func<TRow, TResult> Compile<TResult>()
         {
             var rewriter = new SelectorRewriter(
                 _entityParam,
                 _rowParam,
                 rootSchema,
                 lookupByNavigation,
-                rootKeyAccessorByNavigation);
+                rootKeyFieldIndexByNavigation);
 
-            var rewrittenBody = rewriter.Visit(selector.Body);
-
-            if (rewrittenBody is null)
-                throw new NotSupportedException("Failed to rewrite selector for row-based projection.");
-
-            return Expression.Lambda<Func<Wdc5Row, TResult>>(rewrittenBody, _rowParam).Compile();
+            var rewrittenBody = rewriter.Visit(selector.Body) ?? throw new NotSupportedException("Failed to rewrite selector for row-based projection.");
+            return Expression.Lambda<Func<TRow, TResult>>(rewrittenBody, _rowParam).Compile();
         }
 
         private sealed class SelectorRewriter(
             ParameterExpression entityParam,
             ParameterExpression rowParam,
             Db2TableSchema rootSchema,
-            Dictionary<MemberInfo, NavigationLookup> lookupByNavigation,
-            Dictionary<MemberInfo, Db2FieldAccessor> rootKeyAccessorByNavigation) : ExpressionVisitor
+            Dictionary<MemberInfo, NavigationLookup<TRow>> lookupByNavigation,
+            Dictionary<MemberInfo, int> rootKeyFieldIndexByNavigation) : ExpressionVisitor
         {
             protected override Expression VisitMember(MemberExpression node)
             {
                 // x.Nav.Member - handle navigation member access BEFORE visiting base
                 if (node.Expression is MemberExpression { Member: PropertyInfo or FieldInfo } nav && nav.Expression == entityParam && lookupByNavigation.TryGetValue(nav.Member, out var lookup))
                 {
-                    var keyAccessor = rootKeyAccessorByNavigation[nav.Member];
-                    var keyExpression = CreateKeyExpression(keyAccessor);
-                    var memberIndex = lookup.GetMemberIndex(node.Member);
+                    var keyFieldIndex = rootKeyFieldIndexByNavigation[nav.Member];
+                    var keyExpression = CreateKeyExpression(keyFieldIndex);
+                    var accessor = lookup.GetAccessor(node.Member);
 
-                    var tryGet = typeof(NavigationLookup).GetMethod(nameof(NavigationLookup.TryGetValue))!;
+                    var tryGet = typeof(NavigationLookup<TRow>).GetMethod(nameof(NavigationLookup<TRow>.TryGetRow))!;
 
                     var keyVar = Expression.Variable(typeof(int), "key");
-                    var valueVar = Expression.Variable(typeof(object), "value");
+                    var relatedRowVar = Expression.Variable(typeof(TRow), "relatedRow");
 
                     var assignKey = Expression.Assign(keyVar, keyExpression);
+                    var tryGetCall = Expression.Call(Expression.Constant(lookup), tryGet, keyVar, relatedRowVar);
 
-                    var tryGetCall = Expression.Call(Expression.Constant(lookup), tryGet, keyVar, Expression.Constant(memberIndex), valueVar);
-
-                    var valueAsTarget = Expression.Convert(valueVar, node.Type);
-
+                    var read = BuildReadExpression(relatedRowVar, accessor, node.Type);
                     var defaultValue = Expression.Default(node.Type);
 
-                    var body = Expression.Block(
-                        [keyVar, valueVar],
+                    return Expression.Block(
+                        [keyVar, relatedRowVar],
                         assignKey,
-                        Expression.Condition(tryGetCall, valueAsTarget, defaultValue));
-
-                    return body;
+                        Expression.Condition(tryGetCall, read, defaultValue));
                 }
 
                 // Visit children first
@@ -253,23 +204,44 @@ internal static class Db2NavigationRowProjector
                 return node;
             }
 
-            private Expression CreateKeyExpression(Db2FieldAccessor accessor)
+            private Expression CreateKeyExpression(int fieldIndex)
             {
-                if (accessor.Field.IsVirtual)
-                {
-                    var idProperty = typeof(Wdc5Row).GetProperty(nameof(Wdc5Row.Id))!;
-                    return Expression.Property(rowParam, idProperty);
-                }
+                var get = typeof(TRow)
+                    .GetMethod(nameof(IDb2Row.Get), BindingFlags.Instance | BindingFlags.Public, [typeof(int)])!
+                    .MakeGenericMethod(typeof(int));
 
-                var index = accessor.Field.ColumnStartIndex;
-                var getScalar = typeof(Wdc5Row).GetMethod(nameof(Wdc5Row.GetScalar))!.MakeGenericMethod(typeof(long));
-                var scalar = Expression.Call(rowParam, getScalar, Expression.Constant(index));
-                var toInt32 = typeof(Convert).GetMethod(nameof(Convert.ToInt32), [typeof(long)])!;
-                return Expression.Call(toInt32, scalar);
+                return Expression.Call(rowParam, get, Expression.Constant(fieldIndex));
             }
 
             private Expression BuildReadExpression(Db2FieldAccessor accessor, Type targetType)
+                => BuildReadExpression(rowParam, accessor, targetType);
+
+            private static Expression BuildReadExpression(Expression rowExpression, Db2FieldAccessor accessor, Type targetType)
             {
+                if (accessor.Field.ElementCount > 1
+                    && targetType.IsGenericType
+                    && (targetType.GetGenericTypeDefinition() == typeof(ICollection<>)
+                        || targetType.GetGenericTypeDefinition() == typeof(IList<>)
+                        || targetType.GetGenericTypeDefinition() == typeof(IEnumerable<>)
+                        || targetType.GetGenericTypeDefinition() == typeof(IReadOnlyCollection<>)
+                        || targetType.GetGenericTypeDefinition() == typeof(IReadOnlyList<>)))
+                {
+                    var elementType = targetType.GetGenericArguments()[0];
+                    if (elementType == typeof(string))
+                        throw new NotSupportedException("String arrays are not supported.");
+
+                    if (!elementType.IsPrimitive && elementType != typeof(float) && elementType != typeof(double))
+                        throw new NotSupportedException($"Unsupported array element type {elementType.FullName}.");
+
+                    var arrayType = elementType.MakeArrayType();
+                    var getArray = typeof(TRow)
+                        .GetMethod(nameof(IDb2Row.Get), BindingFlags.Instance | BindingFlags.Public, [typeof(int)])!
+                        .MakeGenericMethod(arrayType);
+
+                    var readArray = Expression.Call(rowExpression, getArray, Expression.Constant(accessor.Field.ColumnStartIndex));
+                    return Expression.Convert(readArray, targetType);
+                }
+
                 if (targetType.IsArray)
                 {
                     var elementType = targetType.GetElementType()!;
@@ -278,31 +250,19 @@ internal static class Db2NavigationRowProjector
 
                     if (!elementType.IsPrimitive && elementType != typeof(float) && elementType != typeof(double))
                         throw new NotSupportedException($"Unsupported array element type {elementType.FullName}.");
-
-                    var method = typeof(Db2RowValue).GetMethod(nameof(Db2RowValue.ReadArray), BindingFlags.Public | BindingFlags.Static)!;
-                    var generic = method.MakeGenericMethod(elementType);
-                    return Expression.Call(generic, rowParam, Expression.Constant(accessor));
                 }
 
                 if (targetType == typeof(string) && accessor.Field.IsVirtual)
                     throw new NotSupportedException($"Virtual field '{accessor.Field.Name}' cannot be materialized as a string.");
 
-                var methodInfo = typeof(Db2RowValue).GetMethod(nameof(Db2RowValue.Read), BindingFlags.Public | BindingFlags.Static)!;
-                var readType = UnwrapNullable(targetType);
-                var genericRead = methodInfo.MakeGenericMethod(readType);
-                var read = Expression.Call(genericRead, rowParam, Expression.Constant(accessor));
+                var readType = targetType.UnwrapNullable();
+                var get = typeof(TRow)
+                    .GetMethod(nameof(IDb2Row.Get), BindingFlags.Instance | BindingFlags.Public, [typeof(int)])!
+                    .MakeGenericMethod(readType);
 
-                if (IsNullable(targetType))
-                    return Expression.Convert(read, targetType);
-
-                return read;
+                var read = Expression.Call(rowExpression, get, Expression.Constant(accessor.Field.ColumnStartIndex));
+                return targetType.IsNullable() ? Expression.Convert(read, targetType) : read;
             }
-
-            private static bool IsNullable(Type t)
-                => t.IsGenericType && t.GetGenericTypeDefinition() == typeof(Nullable<>);
-
-            private static Type UnwrapNullable(Type t)
-                => IsNullable(t) ? Nullable.GetUnderlyingType(t)! : t;
         }
     }
 }

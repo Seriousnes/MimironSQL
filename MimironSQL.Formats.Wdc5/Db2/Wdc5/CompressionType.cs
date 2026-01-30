@@ -1,4 +1,4 @@
-namespace MimironSQL.Db2.Wdc5;
+namespace MimironSQL.Formats.Wdc5;
 
 public enum CompressionType : uint
 {

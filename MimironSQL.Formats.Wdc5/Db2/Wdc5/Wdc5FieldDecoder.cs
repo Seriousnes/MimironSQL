@@ -1,6 +1,6 @@
 using System.Runtime.CompilerServices;
 
-namespace MimironSQL.Db2.Wdc5;
+namespace MimironSQL.Formats.Wdc5;
 
 internal static class Wdc5FieldDecoder
 {

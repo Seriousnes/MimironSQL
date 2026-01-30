@@ -1,6 +1,7 @@
 using MimironSQL.Db2.Schema;
 using MimironSQL.Db2.Schema.Dbd;
-using MimironSQL.Db2.Wdc5;
+using MimironSQL.Formats;
+using MimironSQL.Formats.Wdc5;
 using MimironSQL.Providers;
 
 using Shouldly;
@@ -71,7 +72,7 @@ public sealed class SchemaMapperTests
 
             var provider = new FileSystemDbdProvider(new FileSystemDbdProviderOptions(temp.FullName));
             var mapper = new SchemaMapper(provider);
-            var schema = mapper.GetSchema("Map", file);
+            var schema = mapper.GetSchema("Map", new Db2FileLayout(file.Header.LayoutHash, file.Header.FieldsCount));
 
             schema.LayoutHash.ShouldBe(file.Header.LayoutHash);
             schema.PhysicalColumnCount.ShouldBe(file.Header.FieldsCount);
@@ -120,7 +121,7 @@ public sealed class SchemaMapperTests
 
         var provider = new FileSystemDbdProvider(new FileSystemDbdProviderOptions(TestDataPaths.GetTestDataDirectory()));
         var mapper = new SchemaMapper(provider);
-        var schema = mapper.GetSchema("CollectableSourceQuestSparse", file);
+        var schema = mapper.GetSchema("CollectableSourceQuestSparse", new Db2FileLayout(file.Header.LayoutHash, file.Header.FieldsCount));
 
         schema.TryGetField("QuestID", out var questId).ShouldBeTrue();
         questId.IsRelation.ShouldBeFalse();
@@ -143,7 +144,7 @@ public sealed class SchemaMapperTests
 
         var provider = new FileSystemDbdProvider(new FileSystemDbdProviderOptions(TestDataPaths.GetTestDataDirectory()));
         var mapper = new SchemaMapper(provider);
-        var schema = mapper.GetSchema("AccountStoreCategory", file);
+        var schema = mapper.GetSchema("AccountStoreCategory", new Db2FileLayout(file.Header.LayoutHash, file.Header.FieldsCount));
 
         schema.LayoutHash.ShouldBe(file.Header.LayoutHash);
         schema.PhysicalColumnCount.ShouldBe(file.Header.FieldsCount);
@@ -174,7 +175,7 @@ public sealed class SchemaMapperTests
 
             var provider = new FileSystemDbdProvider(new FileSystemDbdProviderOptions(temp.FullName));
             var mapper = new SchemaMapper(provider);
-            var schema = mapper.GetSchema("Map", file);
+            var schema = mapper.GetSchema("Map", new Db2FileLayout(file.Header.LayoutHash, file.Header.FieldsCount));
 
             schema.PhysicalColumnCount.ShouldBe(file.Header.FieldsCount);
             schema.TryGetField("LastField", out var last).ShouldBeTrue();
@@ -201,7 +202,7 @@ public sealed class SchemaMapperTests
 
             var provider = new FileSystemDbdProvider(new FileSystemDbdProviderOptions(temp.FullName));
             var mapper = new SchemaMapper(provider);
-            var schema = mapper.GetSchema("Map", file);
+            var schema = mapper.GetSchema("Map", new Db2FileLayout(file.Header.LayoutHash, file.Header.FieldsCount));
 
             schema.TryGetField("Unverified", out var unverified).ShouldBeTrue();
             unverified.IsVerified.ShouldBeFalse();

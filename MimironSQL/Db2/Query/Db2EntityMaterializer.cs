@@ -1,5 +1,5 @@
 using MimironSQL.Db2.Schema;
-using MimironSQL.Db2.Wdc5;
+using MimironSQL.Formats;
 using MimironSQL.Extensions;
 
 using System.Linq.Expressions;
@@ -7,10 +7,11 @@ using System.Reflection;
 
 namespace MimironSQL.Db2.Query;
 
-internal sealed class Db2EntityMaterializer<TEntity>
+internal sealed class Db2EntityMaterializer<TEntity, TRow>
+    where TRow : struct, IDb2Row
 {
     private readonly Func<TEntity> _factory;
-    private readonly IReadOnlyList<Binding> _bindings;
+    private readonly IReadOnlyList<IBinding> _bindings;
 
     public Db2EntityMaterializer(Db2TableSchema schema)
     {
@@ -20,30 +21,27 @@ internal sealed class Db2EntityMaterializer<TEntity>
         _bindings = CreateBindings(schema);
     }
 
-    public TEntity Materialize(Wdc5Row row)
+    public TEntity Materialize(TRow row)
     {
         var entity = _factory();
         foreach (var b in _bindings)
-            b.Setter(entity, b.Getter(row));
+            b.Apply(entity, row);
 
         return entity;
     }
 
     private static Func<TEntity> CreateFactory()
     {
-        var ctor = typeof(TEntity).GetConstructor(Type.EmptyTypes);
-        if (ctor is null)
-            throw new NotSupportedException($"Entity type {typeof(TEntity).FullName} must have a public parameterless constructor for reflection-based materialization.");
-
+        var ctor = typeof(TEntity).GetConstructor(Type.EmptyTypes) ?? throw new NotSupportedException($"Entity type {typeof(TEntity).FullName} must have a public parameterless constructor for reflection-based materialization.");
         var body = Expression.New(ctor);
         return Expression.Lambda<Func<TEntity>>(body).Compile();
     }
 
-    private static IReadOnlyList<Binding> CreateBindings(Db2TableSchema schema)
+    private static IReadOnlyList<IBinding> CreateBindings(Db2TableSchema schema)
     {
         var fields = schema.Fields.ToDictionary(f => f.Name, StringComparer.OrdinalIgnoreCase);
 
-        var memberBindings = new List<Binding>();
+        var memberBindings = new List<IBinding>();
 
         var members = typeof(TEntity)
             .GetMembers(BindingFlags.Instance | BindingFlags.Public)
@@ -68,66 +66,78 @@ internal sealed class Db2EntityMaterializer<TEntity>
                 if (elementType == typeof(string))
                     continue;
 
-                if (!TryCreateArrayGetter(field, elementType, out var getter))
-                    continue;
-
-                if (TryCreateSetter(member, memberType, out var value) && value is { } setter)
-                    memberBindings.Add(new Binding(getter, setter));
+                if (TryCreateArrayBinding(member, field, elementType, out var binding))
+                    memberBindings.Add(binding);
 
                 continue;
             }
 
-            if (!TryCreateScalarGetter(field, memberType, out var scalarGetter))
+            if (TryCreateSchemaArrayCollectionBinding(member, field, memberType, out var collectionBinding))
+            {
+                memberBindings.Add(collectionBinding);
                 continue;
+            }
 
-            if (TryCreateSetter(member, memberType, out var scalarValue) && scalarValue is { } scalarSetter)
-                memberBindings.Add(new Binding(scalarGetter, scalarSetter));
+            if (TryCreateScalarBinding(member, field, memberType, out var scalarBinding))
+                memberBindings.Add(scalarBinding);
         }
 
         return memberBindings;
     }
 
-    private static bool TryCreateScalarGetter(Db2FieldSchema field, Type memberType, out Func<Wdc5Row, object?> getter)
+    private static bool TryCreateSchemaArrayCollectionBinding(MemberInfo member, Db2FieldSchema field, Type memberType, out IBinding binding)
     {
-        var accessor = new Db2FieldAccessor(field);
-
-        var method = typeof(Db2RowValue).GetMethod(nameof(Db2RowValue.Read), BindingFlags.Public | BindingFlags.Static);
-        var generic = method!.MakeGenericMethod(memberType.UnwrapNullable());
-
-        getter = row => generic.Invoke(null, [row, accessor]);
-        return true;
-    }
-
-    private static bool TryCreateArrayGetter(Db2FieldSchema field, Type elementType, out Func<Wdc5Row, object?> getter)
-    {
-        var accessor = new Db2FieldAccessor(field);
-
-        if (!elementType.IsPrimitive && elementType != typeof(float) && elementType != typeof(double))
+        if (!memberType.IsGenericType)
         {
-            getter = _ => null;
+            binding = null!;
             return false;
         }
 
-        var method = typeof(Db2RowValue).GetMethod(nameof(Db2RowValue.ReadArray), BindingFlags.Public | BindingFlags.Static);
-        var generic = method!.MakeGenericMethod(elementType);
+        if (field.ElementCount <= 1)
+        {
+            binding = null!;
+            return false;
+        }
 
-        getter = row => generic.Invoke(null, [row, accessor]);
+        var genericDefinition = memberType.GetGenericTypeDefinition();
+        if (genericDefinition != typeof(ICollection<>)
+            && genericDefinition != typeof(IList<>)
+            && genericDefinition != typeof(IEnumerable<>)
+            && genericDefinition != typeof(IReadOnlyCollection<>)
+            && genericDefinition != typeof(IReadOnlyList<>))
+        {
+            binding = null!;
+            return false;
+        }
+
+        var elementType = memberType.GetGenericArguments()[0];
+        if (elementType == typeof(string))
+        {
+            binding = null!;
+            return false;
+        }
+
+        if (!elementType.IsPrimitive && elementType != typeof(float) && elementType != typeof(double))
+        {
+            binding = null!;
+            return false;
+        }
+
+        var arrayType = elementType.MakeArrayType();
+        binding = CreateSchemaArrayCollectionBinding(member, memberType, arrayType, field.ColumnStartIndex);
         return true;
     }
 
-    private static bool TryCreateSetter(MemberInfo member, Type memberType, out Action<TEntity, object?>? setter)
+    private static IBinding CreateSchemaArrayCollectionBinding(MemberInfo member, Type memberType, Type arrayType, int fieldIndex)
     {
         var entity = Expression.Parameter(typeof(TEntity), "entity");
-        var value = Expression.Parameter(typeof(object), "value");
+        var row = Expression.Parameter(typeof(TRow), "row");
 
         Expression memberAccess;
         if (member is PropertyInfo p)
         {
             if (!p.CanWrite)
-            {
-                setter = null;
-                return false;
-            }
+                throw new NotSupportedException($"Property '{p.Name}' must be writable for materialization.");
 
             memberAccess = Expression.Property(entity, p);
         }
@@ -137,23 +147,85 @@ internal sealed class Db2EntityMaterializer<TEntity>
         }
         else
         {
-            setter = null;
+            throw new InvalidOperationException($"Unexpected member type: {member.GetType().FullName}");
+        }
+
+        var readArray = BuildReadExpression(row, fieldIndex, arrayType);
+        var assign = Expression.Assign(memberAccess, Expression.Convert(readArray, memberType));
+        var apply = Expression.Lambda<Action<TEntity, TRow>>(assign, entity, row).Compile();
+        return new Binding(apply);
+    }
+
+    private static bool TryCreateScalarBinding(MemberInfo member, Db2FieldSchema field, Type memberType, out IBinding binding)
+    {
+        if (memberType == typeof(string) && field.IsVirtual)
+        {
+            binding = null!;
             return false;
         }
 
-        var targetType = memberType.UnwrapNullable();
-        var converted = Expression.Convert(value, targetType);
-
-        Expression assign = Expression.Assign(memberAccess, converted);
-        if (memberType.IsNullable())
-        {
-            var nullableTarget = Expression.Convert(value, memberType);
-            assign = Expression.Assign(memberAccess, nullableTarget);
-        }
-
-        setter = Expression.Lambda<Action<TEntity, object?>>(assign, entity, value).Compile();
+        binding = CreateBinding(member, memberType, field.ColumnStartIndex);
         return true;
     }
 
-    private sealed record Binding(Func<Wdc5Row, object?> Getter, Action<TEntity, object?> Setter);
+    private static bool TryCreateArrayBinding(MemberInfo member, Db2FieldSchema field, Type elementType, out IBinding binding)
+    {
+        if (!elementType.IsPrimitive && elementType != typeof(float) && elementType != typeof(double))
+        {
+            binding = null!;
+            return false;
+        }
+
+        var arrayType = elementType.MakeArrayType();
+        binding = CreateBinding(member, arrayType, field.ColumnStartIndex);
+        return true;
+    }
+
+    private static IBinding CreateBinding(MemberInfo member, Type memberType, int fieldIndex)
+    {
+        var entity = Expression.Parameter(typeof(TEntity), "entity");
+        var row = Expression.Parameter(typeof(TRow), "row");
+
+        Expression memberAccess;
+        if (member is PropertyInfo p)
+        {
+            if (!p.CanWrite)
+                throw new NotSupportedException($"Property '{p.Name}' must be writable for materialization.");
+
+            memberAccess = Expression.Property(entity, p);
+        }
+        else if (member is FieldInfo f)
+        {
+            memberAccess = Expression.Field(entity, f);
+        }
+        else
+        {
+            throw new InvalidOperationException($"Unexpected member type: {member.GetType().FullName}");
+        }
+
+        var read = BuildReadExpression(row, fieldIndex, memberType);
+        var assign = Expression.Assign(memberAccess, read);
+        var apply = Expression.Lambda<Action<TEntity, TRow>>(assign, entity, row).Compile();
+        return new Binding(apply);
+    }
+
+    private static Expression BuildReadExpression(Expression rowExpression, int fieldIndex, Type targetType)
+    {
+        var getMethod = typeof(TRow)
+            .GetMethod(nameof(IDb2Row.Get), BindingFlags.Instance | BindingFlags.Public, [typeof(int)])!
+            .MakeGenericMethod(targetType);
+
+        return Expression.Call(rowExpression, getMethod, Expression.Constant(fieldIndex));
+    }
+
+    private interface IBinding
+    {
+        void Apply(TEntity entity, TRow row);
+    }
+
+    private sealed record Binding(Action<TEntity, TRow> ApplyAction) : IBinding
+    {
+        public void Apply(TEntity entity, TRow row)
+            => ApplyAction(entity, row);
+    }
 }

@@ -1,6 +1,6 @@
 using MimironSQL.Providers;
 
-namespace MimironSQL.Db2.Wdc5;
+namespace MimironSQL.Formats.Wdc5;
 
 public sealed record Wdc5FileOptions(
     ITactKeyProvider? TactKeyProvider = null,

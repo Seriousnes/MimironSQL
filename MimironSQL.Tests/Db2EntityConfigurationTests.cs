@@ -48,30 +48,17 @@ public sealed class Db2EntityConfigurationTests
     }
 
     [Fact]
-    public void ApplyConfigurationsFromAssembly_throws_on_configuration_without_parameterless_constructor()
+    public void ApplyConfigurationsFromAssembly_throws_on_multiple_configurations_for_same_entity_type()
     {
         var testDataDir = TestDataPaths.GetTestDataDirectory();
         var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
 
         var ex = Should.Throw<InvalidOperationException>(() =>
-            _ = new NoParameterlessConstructorTestContext(dbdProvider, db2Provider));
+            _ = new DuplicateEntityConfigurationTestContext(dbdProvider, db2Provider));
 
-        ex.Message.ShouldContain("Unable to instantiate configuration type");
-        ex.Message.ShouldContain("parameterless constructor");
-    }
-
-    [Fact]
-    public void ApplyConfigurationsFromAssembly_throws_on_configuration_configure_exception()
-    {
-        var testDataDir = TestDataPaths.GetTestDataDirectory();
-        var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
-        var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
-
-        var ex = Should.Throw<InvalidOperationException>(() =>
-            _ = new ConfigureThrowsTestContext(dbdProvider, db2Provider));
-
-        ex.Message.ShouldContain("Unable to instantiate configuration type");
+        ex.Message.ShouldContain("Multiple entity type configurations found");
+        ex.Message.ShouldContain(typeof(Map).FullName ?? nameof(Map));
     }
 
     [Fact]
@@ -251,16 +238,7 @@ internal sealed class ConflictTestContext(IDbdProvider dbdProvider, IDb2StreamPr
             .WithSharedPrimaryKey(m => m.ParentMapID, pm => pm.Id);
 }
 
-internal sealed class NoParameterlessConstructorTestContext(IDbdProvider dbdProvider, IDb2StreamProvider db2StreamProvider)
-    : Db2Context(dbdProvider, db2StreamProvider)
-{
-    public Db2Table<Map> Maps { get; init; } = null!;
-
-    protected override void OnModelCreating(Db2ModelBuilder modelBuilder)
-        => modelBuilder.ApplyConfigurationsFromAssembly(typeof(ErrorTestConfigurations.ConfigWithoutParameterlessConstructor).Assembly);
-}
-
-internal sealed class ConfigureThrowsTestContext(IDbdProvider dbdProvider, IDb2StreamProvider db2StreamProvider)
+internal sealed class DuplicateEntityConfigurationTestContext(IDbdProvider dbdProvider, IDb2StreamProvider db2StreamProvider)
     : Db2Context(dbdProvider, db2StreamProvider)
 {
     public Db2Table<Map> Maps { get; init; } = null!;

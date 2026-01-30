@@ -1,29 +1,31 @@
 using MimironSQL.Db2.Schema;
-using MimironSQL.Db2.Wdc5;
 
 using System.Linq.Expressions;
 using System.Reflection;
 using MimironSQL.Extensions;
+using MimironSQL.Formats;
 
 namespace MimironSQL.Db2.Query;
 
 internal static class Db2RowProjectorCompiler
 {
-    public static bool TryCompile<TEntity, TResult>(Db2TableSchema schema, Expression<Func<TEntity, TResult>> selector, out Func<Wdc5Row, TResult> projector)
-        => TryCompile(schema, selector, out projector, out _);
+    public static bool TryCompile<TEntity, TResult, TRow>(Db2TableSchema schema, Expression<Func<TEntity, TResult>> selector, out Func<TRow, TResult> projector)
+        where TRow : struct, IDb2Row
+        => TryCompile<TEntity, TResult, TRow>(schema, selector, out projector, out _);
 
-    public static bool TryCompile<TEntity, TResult>(
+    public static bool TryCompile<TEntity, TResult, TRow>(
         Db2TableSchema schema,
         Expression<Func<TEntity, TResult>> selector,
-        out Func<Wdc5Row, TResult> projector,
+        out Func<TRow, TResult> projector,
         out Db2SourceRequirements requirements)
+        where TRow : struct, IDb2Row
     {
         var fieldsByName = schema.Fields.ToDictionary(f => f.Name, StringComparer.OrdinalIgnoreCase);
 
         requirements = new Db2SourceRequirements(schema, typeof(TEntity));
 
         var entityParam = selector.Parameters[0];
-        var rowParam = Expression.Parameter(typeof(Wdc5Row), "row");
+        var rowParam = Expression.Parameter(typeof(TRow), "row");
 
         var accessors = new Dictionary<string, Db2FieldAccessor>(StringComparer.OrdinalIgnoreCase);
 
@@ -42,7 +44,7 @@ internal static class Db2RowProjectorCompiler
 
         try
         {
-            var rewriter = new SelectorRewriter(entityParam, rowParam, GetAccessor, requirements);
+            var rewriter = new SelectorRewriter<TRow>(entityParam, rowParam, GetAccessor, requirements);
             var rewrittenBody = rewriter.Visit(selector.Body);
 
             if (rewrittenBody is null)
@@ -51,7 +53,7 @@ internal static class Db2RowProjectorCompiler
                 return false;
             }
 
-            projector = Expression.Lambda<Func<Wdc5Row, TResult>>(rewrittenBody, rowParam).Compile();
+            projector = Expression.Lambda<Func<TRow, TResult>>(rewrittenBody, rowParam).Compile();
             return true;
         }
         catch (NotSupportedException)
@@ -61,11 +63,12 @@ internal static class Db2RowProjectorCompiler
         }
     }
 
-    private sealed class SelectorRewriter(
+    private sealed class SelectorRewriter<TRow>(
         ParameterExpression entityParam,
         ParameterExpression rowParam,
         Func<string, Db2FieldAccessor> getAccessor,
         Db2SourceRequirements requirements) : ExpressionVisitor
+        where TRow : struct, IDb2Row
     {
         protected override Expression VisitParameter(ParameterExpression node)
         {
@@ -81,7 +84,7 @@ internal static class Db2RowProjectorCompiler
             {
                 var accessor = getAccessor(node.Member.Name);
                 requirements.RequireField(accessor.Field, node.Type == typeof(string) ? Db2RequiredColumnKind.String : Db2RequiredColumnKind.Scalar);
-                return BuildReadExpression(accessor, node.Type);
+                return BuildReadExpression(accessor.Field, node.Type);
             }
 
             return base.VisitMember(node);
@@ -93,7 +96,7 @@ internal static class Db2RowProjectorCompiler
             {
                 var accessor = getAccessor(m.Member.Name);
                 requirements.RequireField(accessor.Field, m.Type == typeof(string) ? Db2RequiredColumnKind.String : Db2RequiredColumnKind.Scalar);
-                var read = BuildReadExpression(accessor, m.Type);
+                var read = BuildReadExpression(accessor.Field, m.Type);
                 return Expression.Convert(read, node.Type);
             }
 
@@ -112,34 +115,65 @@ internal static class Db2RowProjectorCompiler
         protected override Expression VisitNewArray(NewArrayExpression node)
             => throw new NotSupportedException("Array creation in selectors is not supported in Phase 3.5.");
 
-        private Expression BuildReadExpression(Db2FieldAccessor accessor, Type targetType)
+        private Expression BuildReadExpression(Db2FieldSchema field, Type targetType)
         {
-            if (targetType.IsArray)
+            if (TryMapSchemaArrayCollectionRead(field, targetType, out var readType))
             {
-                var elementType = targetType.GetElementType()!;
-                if (elementType == typeof(string))
-                    throw new NotSupportedException("String arrays are not supported.");
+                var getArray = typeof(TRow)
+                    .GetMethod(nameof(IDb2Row.Get), BindingFlags.Instance | BindingFlags.Public, [typeof(int)])!
+                    .MakeGenericMethod(readType);
 
-                if (!elementType.IsPrimitive && elementType != typeof(float) && elementType != typeof(double))
-                    throw new NotSupportedException($"Unsupported array element type {elementType.FullName}.");
-
-                var method = typeof(Db2RowValue).GetMethod(nameof(Db2RowValue.ReadArray), BindingFlags.Public | BindingFlags.Static)!;
-                var generic = method.MakeGenericMethod(elementType);
-                return Expression.Call(generic, rowParam, Expression.Constant(accessor));
+                var readArray = Expression.Call(rowParam, getArray, Expression.Constant(field.ColumnStartIndex));
+                return Expression.Convert(readArray, targetType);
             }
 
-            if (targetType == typeof(string) && accessor.Field.IsVirtual)
-                throw new NotSupportedException($"Virtual field '{accessor.Field.Name}' cannot be materialized as a string.");
+            var get = typeof(TRow)
+                .GetMethod(nameof(IDb2Row.Get), BindingFlags.Instance | BindingFlags.Public, [typeof(int)])!
+                .MakeGenericMethod(targetType);
 
-            var methodInfo = typeof(Db2RowValue).GetMethod(nameof(Db2RowValue.Read), BindingFlags.Public | BindingFlags.Static)!;
-            var readType = targetType.UnwrapNullable();
-            var genericRead = methodInfo.MakeGenericMethod(readType);
-            var read = Expression.Call(genericRead, rowParam, Expression.Constant(accessor));
+            return Expression.Call(rowParam, get, Expression.Constant(field.ColumnStartIndex));
+        }
 
-            if (targetType.IsNullable())
-                return Expression.Convert(read, targetType);
+        private static bool TryMapSchemaArrayCollectionRead(Db2FieldSchema field, Type targetType, out Type readType)
+        {
+            if (field.ElementCount <= 1)
+            {
+                readType = null!;
+                return false;
+            }
 
-            return read;
+            if (!targetType.IsGenericType)
+            {
+                readType = null!;
+                return false;
+            }
+
+            var genericDefinition = targetType.GetGenericTypeDefinition();
+            if (genericDefinition != typeof(ICollection<>)
+                && genericDefinition != typeof(IList<>)
+                && genericDefinition != typeof(IEnumerable<>)
+                && genericDefinition != typeof(IReadOnlyCollection<>)
+                && genericDefinition != typeof(IReadOnlyList<>))
+            {
+                readType = null!;
+                return false;
+            }
+
+            var elementType = targetType.GetGenericArguments()[0];
+            if (elementType == typeof(string))
+            {
+                readType = null!;
+                return false;
+            }
+
+            if (!elementType.IsPrimitive && elementType != typeof(float) && elementType != typeof(double))
+            {
+                readType = null!;
+                return false;
+            }
+
+            readType = elementType.MakeArrayType();
+            return true;
         }
     }
 }

@@ -134,46 +134,82 @@ internal static class Db2NavigationRowProjector
                 _rowParam,
                 _rootFileExpression,
                 rootSchema,
-                lookupByNavigation,
-                rootKeyFieldIndexByNavigation);
+                lookupByNavigation);
 
             var rewrittenBody = rewriter.Visit(selector.Body) ?? throw new NotSupportedException("Failed to rewrite selector for row-based projection.");
+
+            // Wrap with navigation locals: each navigation gets keyVar, rowVar, foundVar initialized once
+            var navLocals = rewriter.NavigationLocals;
+            if (navLocals is { Count: not 0 })
+            {
+                var variables = new List<ParameterExpression>(navLocals.Count * 3);
+                var assignments = new List<Expression>(navLocals.Count * 3);
+
+                foreach (var (navMember, locals) in navLocals)
+                {
+                    var lookup = lookupByNavigation[navMember];
+                    var keyFieldIndex = rootKeyFieldIndexByNavigation[navMember];
+
+                    variables.Add(locals.KeyVar);
+                    variables.Add(locals.RowVar);
+                    variables.Add(locals.FoundVar);
+
+                    // key = ReadField<int>(file, row, keyFieldIndex)
+                    var readKeyMethod = typeof(Db2RowHandleAccess)
+                        .GetMethod(nameof(Db2RowHandleAccess.ReadField), BindingFlags.Public | BindingFlags.Static)!
+                        .MakeGenericMethod(typeof(TRow), typeof(int));
+                    var readKey = Expression.Call(readKeyMethod, _rootFileExpression, _rowParam, Expression.Constant(keyFieldIndex));
+                    assignments.Add(Expression.Assign(locals.KeyVar, readKey));
+
+                    // found = lookup.TryGetRow(key, out row)
+                    var tryGetMethod = typeof(NavigationLookup<TRow>).GetMethod(nameof(NavigationLookup<TRow>.TryGetRow))!;
+                    var lookupExpr = Expression.Constant(lookup);
+                    var tryGetCall = Expression.Call(lookupExpr, tryGetMethod, locals.KeyVar, locals.RowVar);
+                    assignments.Add(Expression.Assign(locals.FoundVar, tryGetCall));
+                }
+
+                assignments.Add(rewrittenBody);
+                rewrittenBody = Expression.Block(variables, assignments);
+            }
+
             return Expression.Lambda<Func<TRow, TResult>>(rewrittenBody, _rowParam).Compile();
         }
+
+        internal sealed record NavigationLocalVars(ParameterExpression KeyVar, ParameterExpression RowVar, ParameterExpression FoundVar);
 
         private sealed class SelectorRewriter(
             ParameterExpression entityParam,
             ParameterExpression rowParam,
             ConstantExpression rootFileExpression,
             Db2TableSchema rootSchema,
-            Dictionary<MemberInfo, NavigationLookup<TRow>> lookupByNavigation,
-            Dictionary<MemberInfo, int> rootKeyFieldIndexByNavigation) : ExpressionVisitor
+            Dictionary<MemberInfo, NavigationLookup<TRow>> lookupByNavigation) : ExpressionVisitor
         {
+            public Dictionary<MemberInfo, NavigationLocalVars> NavigationLocals { get; } = [];
+
             protected override Expression VisitMember(MemberExpression node)
             {
                 // x.Nav.Member - handle navigation member access BEFORE visiting base
                 if (node.Expression is MemberExpression { Member: PropertyInfo or FieldInfo } nav && nav.Expression == entityParam && lookupByNavigation.TryGetValue(nav.Member, out var lookup))
                 {
-                    var keyFieldIndex = rootKeyFieldIndexByNavigation[nav.Member];
-                    var keyExpression = CreateKeyExpression(keyFieldIndex);
-                    var accessor = lookup.GetAccessor(node.Member);
+                    // Get or create shared locals for this navigation
+                    if (!NavigationLocals.TryGetValue(nav.Member, out var locals))
+                    {
+                        var navName = nav.Member.Name;
+                        locals = new NavigationLocalVars(
+                            Expression.Variable(typeof(int), $"{navName}_key"),
+                            Expression.Variable(typeof(TRow), $"{navName}_row"),
+                            Expression.Variable(typeof(bool), $"{navName}_found"));
+                        NavigationLocals[nav.Member] = locals;
+                    }
 
-                    var tryGet = typeof(NavigationLookup<TRow>).GetMethod(nameof(NavigationLookup<TRow>.TryGetRow))!;
+                    var accessor = lookup.GetAccessor(node.Member);
                     var lookupExpression = Expression.Constant(lookup);
 
-                    var keyVar = Expression.Variable(typeof(int), "key");
-                    var relatedRowVar = Expression.Variable(typeof(TRow), "relatedRow");
-
-                    var assignKey = Expression.Assign(keyVar, keyExpression);
-                    var tryGetCall = Expression.Call(lookupExpression, tryGet, keyVar, relatedRowVar);
-
-                    var read = BuildLookupReadExpression(lookupExpression, relatedRowVar, accessor, node.Type);
+                    // Just use the pre-initialized locals: if (found) read else default
+                    var read = BuildLookupReadExpression(lookupExpression, locals.RowVar, accessor, node.Type);
                     var defaultValue = Expression.Default(node.Type);
 
-                    return Expression.Block(
-                        [keyVar, relatedRowVar],
-                        assignKey,
-                        Expression.Condition(tryGetCall, read, defaultValue));
+                    return Expression.Condition(locals.FoundVar, read, defaultValue);
                 }
 
                 // Visit children first
@@ -213,15 +249,6 @@ internal static class Db2NavigationRowProjector
                 }
 
                 return node;
-            }
-
-            private Expression CreateKeyExpression(int fieldIndex)
-            {
-                var readMethod = typeof(Db2RowHandleAccess)
-                    .GetMethod(nameof(Db2RowHandleAccess.ReadField), BindingFlags.Public | BindingFlags.Static)!
-                    .MakeGenericMethod(typeof(TRow), typeof(int));
-
-                return Expression.Call(readMethod, rootFileExpression, rowParam, Expression.Constant(fieldIndex));
             }
 
             private static Expression BuildReadExpression(ConstantExpression rootFileExpression, Expression rowExpression, Db2FieldAccessor accessor, Type targetType)

@@ -16,10 +16,6 @@ public interface IDb2File
 
     T ReadField<T>(RowHandle handle, int fieldIndex);
 
-    void ReadFields(RowHandle handle, ReadOnlySpan<int> fieldIndices, Span<object> values);
-
-    void ReadAllFields(RowHandle handle, Span<object> values);
-
     bool TryGetRowHandle<TId>(TId id, out RowHandle handle) where TId : IEquatable<TId>, IComparable<TId>;
 }
 

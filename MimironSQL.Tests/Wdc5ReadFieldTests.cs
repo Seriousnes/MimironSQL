@@ -63,21 +63,18 @@ public sealed class Wdc5ReadFieldTests
     }
 
     [Fact]
-    public void ReadFields_returns_multiple_fields()
+    public void ReadField_returns_multiple_fields_without_boxing()
     {
         var db2Provider = new FileSystemDb2StreamProvider(new(TestDataPaths.GetTestDataDirectory()));
         using var stream = db2Provider.OpenDb2Stream("Map");
         var file = new Wdc5File(stream);
         var handle = file.EnumerateRowHandles().First();
 
-        var fieldIndices = new[] { Db2VirtualFieldIndex.Id, Db2VirtualFieldIndex.ParentRelation };
-        var values = new object[2];
+        var id = file.ReadField<int>(handle, Db2VirtualFieldIndex.Id);
+        var parentRelation = file.ReadField<int>(handle, Db2VirtualFieldIndex.ParentRelation);
         
-        file.ReadFields(handle, fieldIndices, values);
-        
-        values[0].ShouldBeOfType<int>();
-        values[1].ShouldBeOfType<int>();
-        ((int)values[0]).ShouldNotBe(-1);
+        id.ShouldNotBe(-1);
+        parentRelation.ShouldBeGreaterThanOrEqualTo(0);
     }
 
     [Fact]

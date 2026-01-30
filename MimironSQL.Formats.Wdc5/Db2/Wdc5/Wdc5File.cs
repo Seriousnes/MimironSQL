@@ -590,17 +590,6 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
 
     public T ReadField<T>(RowHandle handle, int fieldIndex)
     {
-        var type = typeof(T);
-        if (type.IsEnum)
-            return (T)ReadFieldBoxed(handle, Enum.GetUnderlyingType(type), fieldIndex);
-        return (T)ReadFieldBoxed(handle, type, fieldIndex);
-    }
-
-    public void ReadFields(RowHandle handle, ReadOnlySpan<int> fieldIndices, Span<object> values)
-    {
-        if (fieldIndices.Length != values.Length)
-            throw new ArgumentException("Field indices and values spans must have the same length.");
-
         if ((uint)handle.SectionIndex >= (uint)ParsedSections.Count)
             throw new ArgumentException("Invalid section index in RowHandle.", nameof(handle));
 
@@ -625,16 +614,171 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
         {
             using var decrypted = DecryptRowBytes(section, rowStartByte, rowSizeBytes, nonceId);
             var decryptedReaderAtStart = decrypted.CreateReaderAtRowStart();
-
-            for (var i = 0; i < fieldIndices.Length; i++)
-                values[i] = ReadFieldBoxedFromPrepared(section, decryptedReaderAtStart, decrypted.Bytes, rowEndExclusive: rowSizeBytes, globalRowIndex, sourceId, destinationId, parentRelationId, type: typeof(object), fieldIndex: fieldIndices[i]);
-
-            return;
+            return ReadFieldTyped<T>(section, decryptedReaderAtStart, decrypted.Bytes, rowEndExclusive: rowSizeBytes, globalRowIndex, sourceId, destinationId, parentRelationId, fieldIndex);
         }
 
         var rowEndExclusive = rowStartByte + rowSizeBytes;
-        for (var i = 0; i < fieldIndices.Length; i++)
-            values[i] = ReadFieldBoxedFromPrepared(section, readerAtStart, recordBytes, rowEndExclusive, globalRowIndex, sourceId, destinationId, parentRelationId, type: typeof(object), fieldIndex: fieldIndices[i]);
+        return ReadFieldTyped<T>(section, readerAtStart, recordBytes, rowEndExclusive, globalRowIndex, sourceId, destinationId, parentRelationId, fieldIndex);
+    }
+
+    private T ReadFieldTyped<T>(
+        Wdc5Section section,
+        Wdc5RowReader readerAtStart,
+        ReadOnlySpan<byte> recordBytes,
+        int rowEndExclusive,
+        int globalRowIndex,
+        int sourceId,
+        int destinationId,
+        int parentRelationId,
+        int fieldIndex)
+    {
+        var type = typeof(T);
+
+        if (type.IsEnum)
+            return (T)ReadFieldBoxedFromPrepared(section, readerAtStart, recordBytes, rowEndExclusive, globalRowIndex, sourceId, destinationId, parentRelationId, Enum.GetUnderlyingType(type), fieldIndex);
+
+        if (fieldIndex < 0)
+        {
+            if (fieldIndex == Db2VirtualFieldIndex.Id)
+                return CastVirtualField<T>(destinationId);
+
+            if (fieldIndex == Db2VirtualFieldIndex.ParentRelation)
+                return CastVirtualField<T>(parentRelationId);
+
+            throw new NotSupportedException($"Unsupported virtual field index {fieldIndex}.");
+        }
+
+        if ((uint)fieldIndex >= (uint)Header.FieldsCount)
+            throw new ArgumentOutOfRangeException(nameof(fieldIndex));
+
+        if (type == typeof(string))
+        {
+            _ = TryGetString(section, globalRowIndex, readerAtStart, recordBytes, rowEndExclusive, sourceId, fieldIndex, out var s);
+            return Unsafe.As<string, T>(ref s);
+        }
+
+        if (type.IsArray)
+        {
+            var elementType = type.GetElementType()!;
+            if (elementType == typeof(double))
+            {
+                var floats = ReadArray<float>(readerAtStart, fieldIndex);
+                var doubles = new double[floats.Length];
+                for (var i = 0; i < floats.Length; i++)
+                    doubles[i] = floats[i];
+                return Unsafe.As<double[], T>(ref doubles);
+            }
+
+            return (T)GetArrayBoxed(readerAtStart, elementType, fieldIndex);
+        }
+
+        var localReader = MoveToFieldStart(fieldIndex, readerAtStart);
+        ref readonly var fieldMeta = ref FieldMeta[fieldIndex];
+        ref readonly var columnMeta = ref ColumnMeta[fieldIndex];
+        var palletData = PalletData[fieldIndex];
+        var commonData = CommonData[fieldIndex];
+
+        return ReadScalarTyped<T>(sourceId, ref localReader, fieldMeta, columnMeta, palletData, commonData);
+    }
+
+    private static T CastVirtualField<T>(int value)
+    {
+        if (typeof(T) == typeof(int))
+            return Unsafe.As<int, T>(ref value);
+        if (typeof(T) == typeof(uint))
+        {
+            var u = unchecked((uint)value);
+            return Unsafe.As<uint, T>(ref u);
+        }
+        if (typeof(T) == typeof(long))
+        {
+            var l = (long)value;
+            return Unsafe.As<long, T>(ref l);
+        }
+        if (typeof(T) == typeof(ulong))
+        {
+            var ul = unchecked((ulong)(uint)value);
+            return Unsafe.As<ulong, T>(ref ul);
+        }
+        if (typeof(T) == typeof(short))
+        {
+            var s = checked((short)value);
+            return Unsafe.As<short, T>(ref s);
+        }
+        if (typeof(T) == typeof(ushort))
+        {
+            var us = checked((ushort)value);
+            return Unsafe.As<ushort, T>(ref us);
+        }
+        if (typeof(T) == typeof(byte))
+        {
+            var b = checked((byte)value);
+            return Unsafe.As<byte, T>(ref b);
+        }
+        if (typeof(T) == typeof(sbyte))
+        {
+            var sb = checked((sbyte)value);
+            return Unsafe.As<sbyte, T>(ref sb);
+        }
+
+        return (T)Convert.ChangeType(value, typeof(T));
+    }
+
+    private static T ReadScalarTyped<T>(int id, ref Wdc5RowReader reader, FieldMetaData fieldMeta, ColumnMetaData columnMeta, uint[] palletData, Dictionary<int, uint> commonData)
+    {
+        if (typeof(T) == typeof(byte))
+        {
+            var v = Wdc5FieldDecoder.ReadScalar<byte>(id, ref reader, fieldMeta, columnMeta, palletData, commonData);
+            return Unsafe.As<byte, T>(ref v);
+        }
+        if (typeof(T) == typeof(sbyte))
+        {
+            var v = Wdc5FieldDecoder.ReadScalar<sbyte>(id, ref reader, fieldMeta, columnMeta, palletData, commonData);
+            return Unsafe.As<sbyte, T>(ref v);
+        }
+        if (typeof(T) == typeof(short))
+        {
+            var v = Wdc5FieldDecoder.ReadScalar<short>(id, ref reader, fieldMeta, columnMeta, palletData, commonData);
+            return Unsafe.As<short, T>(ref v);
+        }
+        if (typeof(T) == typeof(ushort))
+        {
+            var v = Wdc5FieldDecoder.ReadScalar<ushort>(id, ref reader, fieldMeta, columnMeta, palletData, commonData);
+            return Unsafe.As<ushort, T>(ref v);
+        }
+        if (typeof(T) == typeof(int))
+        {
+            var v = Wdc5FieldDecoder.ReadScalar<int>(id, ref reader, fieldMeta, columnMeta, palletData, commonData);
+            return Unsafe.As<int, T>(ref v);
+        }
+        if (typeof(T) == typeof(uint))
+        {
+            var v = Wdc5FieldDecoder.ReadScalar<uint>(id, ref reader, fieldMeta, columnMeta, palletData, commonData);
+            return Unsafe.As<uint, T>(ref v);
+        }
+        if (typeof(T) == typeof(long))
+        {
+            var v = Wdc5FieldDecoder.ReadScalar<long>(id, ref reader, fieldMeta, columnMeta, palletData, commonData);
+            return Unsafe.As<long, T>(ref v);
+        }
+        if (typeof(T) == typeof(ulong))
+        {
+            var v = Wdc5FieldDecoder.ReadScalar<ulong>(id, ref reader, fieldMeta, columnMeta, palletData, commonData);
+            return Unsafe.As<ulong, T>(ref v);
+        }
+        if (typeof(T) == typeof(float))
+        {
+            var v = Wdc5FieldDecoder.ReadScalar<float>(id, ref reader, fieldMeta, columnMeta, palletData, commonData);
+            return Unsafe.As<float, T>(ref v);
+        }
+        if (typeof(T) == typeof(double))
+        {
+            var f = Wdc5FieldDecoder.ReadScalar<float>(id, ref reader, fieldMeta, columnMeta, palletData, commonData);
+            var d = (double)f;
+            return Unsafe.As<double, T>(ref d);
+        }
+
+        throw new NotSupportedException($"Unsupported scalar type {typeof(T).FullName}.");
     }
 
     public void ReadAllFields(RowHandle handle, Span<object> values)

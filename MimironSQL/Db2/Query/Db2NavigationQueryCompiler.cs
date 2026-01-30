@@ -19,7 +19,7 @@ internal static class Db2NavigationQueryCompiler
         Func<string, (IDb2File<TRow> File, Db2TableSchema Schema)> tableResolver,
         Expression<Func<TEntity, bool>> predicate,
         out Func<TRow, bool> rowPredicate)
-        where TRow : struct
+        where TRow : struct, IRowHandle
     {
         rowPredicate = _ => true;
 
@@ -350,7 +350,7 @@ internal static class Db2NavigationQueryCompiler
         Func<string, (IDb2File<TRow> File, Db2TableSchema Schema)> tableResolver,
         Db2CollectionNavigation navigation,
         LambdaExpression? dependentPredicate)
-        where TRow : struct
+        where TRow : struct, IRowHandle
     {
         if (navigation.Kind != Db2CollectionNavigationKind.DependentForeignKeyToPrimaryKey)
             return [];
@@ -379,7 +379,7 @@ internal static class Db2NavigationQueryCompiler
         Db2CollectionNavigation navigation,
         LambdaExpression? dependentPredicate)
         where TDependent : class
-        where TRow : struct
+        where TRow : struct, IRowHandle
     {
         if (navigation.Kind != Db2CollectionNavigationKind.DependentForeignKeyToPrimaryKey)
             return [];
@@ -442,7 +442,7 @@ internal static class Db2NavigationQueryCompiler
     private static HashSet<int> FindMatchingIds<TRow>(
         Func<string, (IDb2File<TRow> File, Db2TableSchema Schema)> tableResolver,
         Db2NavigationStringPredicatePlan plan)
-        where TRow : struct
+        where TRow : struct, IRowHandle
     {
         var (relatedFile, relatedSchema) = tableResolver(plan.Join.Target.TableName);
 
@@ -518,7 +518,7 @@ internal static class Db2NavigationQueryCompiler
     private static HashSet<int> FindMatchingIdsScalar<TRow>(
         Func<string, (IDb2File<TRow> File, Db2TableSchema Schema)> tableResolver,
         Db2NavigationScalarPredicatePlan plan)
-        where TRow : struct
+        where TRow : struct, IRowHandle
     {
         return plan switch
         {
@@ -540,7 +540,7 @@ internal static class Db2NavigationQueryCompiler
     private static HashSet<int> FindMatchingIdsScalar<TRow, T>(
         Func<string, (IDb2File<TRow> File, Db2TableSchema Schema)> tableResolver,
         Db2NavigationScalarPredicatePlan<T> plan)
-        where TRow : struct
+        where TRow : struct, IRowHandle
         where T : unmanaged, IComparable<T>, IEquatable<T>
     {
         var (relatedFile, relatedSchema) = tableResolver(plan.Join.Target.TableName);
@@ -578,7 +578,7 @@ internal static class Db2NavigationQueryCompiler
     private static HashSet<int> FindExistingTargetIds<TRow>(
         Func<string, (IDb2File<TRow> File, Db2TableSchema Schema)> tableResolver,
         Db2NavigationNullCheckPlan plan)
-        where TRow : struct
+        where TRow : struct, IRowHandle
     {
         var (relatedFile, _) = tableResolver(plan.Join.Target.TableName);
         HashSet<int> existingIds = [];
@@ -610,7 +610,7 @@ internal static class Db2NavigationQueryCompiler
     }
 
     private static Func<TRow, bool> CompileNavigationSemiJoin<TRow>(IDb2File rootFile, Db2NavigationJoinPlan join, HashSet<int> matchingIds)
-        where TRow : struct
+        where TRow : struct, IRowHandle
     {
         return join.Kind switch
         {
@@ -621,7 +621,7 @@ internal static class Db2NavigationQueryCompiler
     }
 
     private static Func<TRow, bool> CompileNullCheckForeignKey<TRow>(IDb2File rootFile, Db2FieldSchema fkFieldSchema, HashSet<int> existingTargetIds, bool isNotNull)
-        where TRow : struct
+        where TRow : struct, IRowHandle
     {
         if (fkFieldSchema.IsVirtual)
             throw new NotSupportedException($"Virtual foreign key field '{fkFieldSchema.Name}' is not supported for navigation predicates.");
@@ -636,7 +636,7 @@ internal static class Db2NavigationQueryCompiler
     }
 
     private static Func<TRow, bool> CompileForeignKeySemiJoin<TRow>(IDb2File rootFile, Db2FieldSchema fkFieldSchema, HashSet<int> ids)
-        where TRow : struct
+        where TRow : struct, IRowHandle
     {
         if (fkFieldSchema.IsVirtual)
             throw new NotSupportedException($"Virtual foreign key field '{fkFieldSchema.Name}' is not supported for navigation predicates.");
@@ -650,7 +650,7 @@ internal static class Db2NavigationQueryCompiler
     }
 
     private static Func<TRow, bool> CompileSharedPrimaryKeySemiJoin<TRow>(HashSet<int> matchingIds)
-        where TRow : struct
+        where TRow : struct, IRowHandle
         => row =>
         {
             var id = Db2RowHandleAccess.AsHandle(row).RowId;

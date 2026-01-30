@@ -17,7 +17,7 @@ internal static class Db2BatchedNavigationProjector
         Db2NavigationMemberAccessPlan[] accesses,
         Expression<Func<TEntity, TResult>> selector,
         int? take)
-        where TRow : struct
+        where TRow : struct, IRowHandle
     {
         var accessGroups = accesses
             .GroupBy(a => a.Join.Navigation.NavigationMember)
@@ -133,7 +133,7 @@ internal static class Db2BatchedNavigationProjector
     }
 
     private sealed class NavigationLookup<TRow>(IDb2File file, Dictionary<int, TRow> rowsByKey, Dictionary<MemberInfo, Db2FieldAccessor> accessorByMember)
-        where TRow : struct
+        where TRow : struct, IRowHandle
     {
         public IDb2File File { get; } = file;
 
@@ -153,7 +153,7 @@ internal static class Db2BatchedNavigationProjector
         ParameterExpression entityParam,
         Dictionary<MemberInfo, NavigationLookup<TRow>> lookupByNavigation,
         Dictionary<MemberInfo, Db2NavigationMemberAccessPlan[]> accessGroups) : ExpressionVisitor
-        where TRow : struct
+        where TRow : struct, IRowHandle
     {
         protected override Expression VisitMember(MemberExpression node)
         {

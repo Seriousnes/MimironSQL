@@ -10,7 +10,7 @@ namespace MimironSQL.Db2.Query;
 internal static class Db2RowProjectorCompiler
 {
     public static bool TryCompile<TEntity, TResult, TRow>(Db2TableSchema schema, Expression<Func<TEntity, TResult>> selector, out Func<TRow, TResult> projector)
-        where TRow : struct
+        where TRow : struct, IRowHandle
         => TryCompile<TEntity, TResult, TRow>(file: null, schema, selector, out projector, out _);
 
     public static bool TryCompile<TEntity, TResult, TRow>(
@@ -19,7 +19,7 @@ internal static class Db2RowProjectorCompiler
         Expression<Func<TEntity, TResult>> selector,
         out Func<TRow, TResult> projector,
         out Db2SourceRequirements requirements)
-        where TRow : struct
+        where TRow : struct, IRowHandle
     {
         var fieldsByName = schema.Fields.ToDictionary(f => f.Name, StringComparer.OrdinalIgnoreCase);
 
@@ -70,7 +70,7 @@ internal static class Db2RowProjectorCompiler
         Func<string, Db2FieldAccessor> getAccessor,
         Db2SourceRequirements requirements,
         IDb2File? file) : ExpressionVisitor
-        where TRow : struct
+        where TRow : struct, IRowHandle
     {
         private readonly ConstantExpression? _fileExpression = file is null ? null : Expression.Constant(file, typeof(IDb2File));
         protected override Expression VisitParameter(ParameterExpression node)

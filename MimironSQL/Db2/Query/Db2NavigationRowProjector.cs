@@ -20,7 +20,7 @@ internal static class Db2NavigationRowProjector
         Db2NavigationMemberAccessPlan[] accesses,
         LambdaExpression selector,
         int? take)
-        where TRow : struct
+        where TRow : struct, IRowHandle
     {
         var accessGroups = accesses
             .GroupBy(a => a.Join.Navigation.NavigationMember)
@@ -99,7 +99,7 @@ internal static class Db2NavigationRowProjector
     }
 
     private sealed class NavigationLookup<TRow>(IDb2File file, Dictionary<int, TRow> rowsByKey, Dictionary<MemberInfo, Db2FieldAccessor> accessorByMember)
-        where TRow : struct
+        where TRow : struct, IRowHandle
     {
         public IDb2File File { get; } = file;
 
@@ -121,7 +121,7 @@ internal static class Db2NavigationRowProjector
         LambdaExpression selector,
         Dictionary<MemberInfo, NavigationLookup<TRow>> lookupByNavigation,
         Dictionary<MemberInfo, int> rootKeyFieldIndexByNavigation)
-        where TRow : struct
+        where TRow : struct, IRowHandle
     {
         private readonly ParameterExpression _entityParam = selector.Parameters[0];
         private readonly ParameterExpression _rowParam = Expression.Parameter(typeof(TRow), "row");

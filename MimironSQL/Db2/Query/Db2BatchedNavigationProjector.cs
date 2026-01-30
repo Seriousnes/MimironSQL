@@ -79,7 +79,7 @@ internal static class Db2BatchedNavigationProjector
             {
                 foreach (var row in relatedFile.EnumerateRows())
                 {
-                    var rowId = row.Get<int>(Db2VirtualFieldIndex.Id);
+                    var rowId = Db2RowHandleAccess.AsHandle(row).RowId;
                     if (!keys.Contains(rowId))
                         continue;
 
@@ -87,7 +87,7 @@ internal static class Db2BatchedNavigationProjector
                 }
             }
 
-            lookupByNavigation[navMember] = new NavigationLookup<TRow>(rowsByKey, accessorByMember);
+            lookupByNavigation[navMember] = new NavigationLookup<TRow>(relatedFile, rowsByKey, accessorByMember);
         }
 
         var rewritten = new SelectorRewriter<TRow>(selector.Parameters[0], lookupByNavigation, accessGroups).Visit(selector.Body);
@@ -132,9 +132,11 @@ internal static class Db2BatchedNavigationProjector
         return Expression.Lambda<Func<TEntity, int>>(key, entity).Compile();
     }
 
-    private sealed class NavigationLookup<TRow>(Dictionary<int, TRow> rowsByKey, Dictionary<MemberInfo, Db2FieldAccessor> accessorByMember)
+    private sealed class NavigationLookup<TRow>(IDb2File file, Dictionary<int, TRow> rowsByKey, Dictionary<MemberInfo, Db2FieldAccessor> accessorByMember)
         where TRow : struct
     {
+        public IDb2File File { get; } = file;
+
         public bool TryGetRow(int key, out TRow row)
         {
             return rowsByKey.TryGetValue(key, out row);
@@ -142,6 +144,9 @@ internal static class Db2BatchedNavigationProjector
 
         public Db2FieldAccessor GetAccessor(MemberInfo member)
             => accessorByMember[member];
+
+        public T ReadField<T>(TRow row, int fieldIndex)
+            => Db2RowHandleAccess.ReadField<TRow, T>(File, row, fieldIndex);
     }
 
     private sealed class SelectorRewriter<TRow>(
@@ -168,13 +173,15 @@ internal static class Db2BatchedNavigationProjector
 
                 var tryGet = typeof(NavigationLookup<TRow>).GetMethod(nameof(NavigationLookup<TRow>.TryGetRow))!;
 
+                var lookupExpression = Expression.Constant(lookup);
+
                 var keyVar = Expression.Variable(typeof(int), "key");
                 var relatedRowVar = Expression.Variable(typeof(TRow), "relatedRow");
 
                 var assignKey = Expression.Assign(keyVar, keyGetter);
-                var tryGetCall = Expression.Call(Expression.Constant(lookup), tryGet, keyVar, relatedRowVar);
+                var tryGetCall = Expression.Call(lookupExpression, tryGet, keyVar, relatedRowVar);
 
-                var read = BuildReadExpression(relatedRowVar, accessor, node.Type);
+                var read = BuildReadExpression(lookupExpression, relatedRowVar, accessor, node.Type);
                 var defaultValue = Expression.Default(node.Type);
 
                 return Expression.Block(
@@ -191,7 +198,7 @@ internal static class Db2BatchedNavigationProjector
             return member.CreateInt32KeyExpression(entityParam);
         }
 
-        private static Expression BuildReadExpression(Expression rowExpression, Db2FieldAccessor accessor, Type targetType)
+        private static Expression BuildReadExpression(ConstantExpression lookupExpression, Expression rowExpression, Db2FieldAccessor accessor, Type targetType)
         {
             if (accessor.Field.ElementCount > 1
                 && targetType.IsGenericType
@@ -209,10 +216,11 @@ internal static class Db2BatchedNavigationProjector
                     throw new NotSupportedException($"Unsupported array element type {elementType.FullName}.");
 
                 var arrayType = elementType.MakeArrayType();
-                var getArray = typeof(TRow).GetMethod(nameof(IDb2Row.Get), BindingFlags.Public | BindingFlags.Instance, [typeof(int)])!
+                var readArrayMethod = typeof(NavigationLookup<TRow>)
+                    .GetMethod(nameof(NavigationLookup<TRow>.ReadField), BindingFlags.Public | BindingFlags.Instance)!
                     .MakeGenericMethod(arrayType);
 
-                var readArray = Expression.Call(rowExpression, getArray, Expression.Constant(accessor.Field.ColumnStartIndex));
+                var readArray = Expression.Call(lookupExpression, readArrayMethod, rowExpression, Expression.Constant(accessor.Field.ColumnStartIndex));
                 return Expression.Convert(readArray, targetType);
             }
 
@@ -230,13 +238,11 @@ internal static class Db2BatchedNavigationProjector
                 throw new NotSupportedException($"Virtual field '{accessor.Field.Name}' cannot be materialized as a string.");
 
             var readType = targetType.UnwrapNullable();
-            var methodInfo = typeof(TRow).GetMethod(nameof(IDb2Row.Get), BindingFlags.Public | BindingFlags.Instance, [typeof(int)])!
+            var readMethod = typeof(NavigationLookup<TRow>)
+                .GetMethod(nameof(NavigationLookup<TRow>.ReadField), BindingFlags.Public | BindingFlags.Instance)!
                 .MakeGenericMethod(readType);
 
-            var read = Expression.Call(
-                rowExpression,
-                methodInfo,
-                Expression.Constant(accessor.Field.ColumnStartIndex));
+            var read = Expression.Call(lookupExpression, readMethod, rowExpression, Expression.Constant(accessor.Field.ColumnStartIndex));
 
             return targetType.IsNullable() ? Expression.Convert(read, targetType) : read;
         }        

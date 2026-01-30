@@ -375,7 +375,7 @@ internal sealed class Db2QueryProvider<TEntity, TRow>(
         if (selector is not Expression<Func<TEntity, TProjected>> typed)
             return null;
 
-        return Db2RowProjectorCompiler.TryCompile<TEntity, TProjected, TRow>(schema, typed, out var projector, out var requirements)
+        return Db2RowProjectorCompiler.TryCompile<TEntity, TProjected, TRow>(file, schema, typed, out var projector, out var requirements)
             ? (projector, requirements)
             : null;
     }
@@ -432,6 +432,7 @@ internal sealed class Db2QueryProvider<TEntity, TRow>(
         }
 
         return Db2NavigationRowProjector.ProjectFromRows<TProjected, TRow>(
+            file,
             FilteredRows(),
             schema,
             _model,
@@ -550,10 +551,7 @@ internal sealed class Db2QueryProvider<TEntity, TRow>(
                 if (!ok)
                     continue;
 
-                var id = row.Get<int>(Db2VirtualFieldIndex.Id);
-                if (!file.TryGetRowHandle(id, out var handle))
-                    continue;
-
+                var handle = Db2RowHandleAccess.AsHandle(row);
                 var entity = _materializer.Materialize(file, handle);
 
                 foreach (var p in entityPredicates)
@@ -827,14 +825,11 @@ internal sealed class Db2QueryProvider<TEntity, TRow>(
             {
                 foreach (var row in relatedFile.EnumerateRows())
                 {
-                    var rowId = row.Get<int>(Db2VirtualFieldIndex.Id);
+                    var rowId = Db2RowHandleAccess.AsHandle(row).RowId;
                     if (!keys.Contains(rowId))
                         continue;
 
-                    if (!relatedFile.TryGetRowHandle(rowId, out var handle))
-                        continue;
-
-                    relatedByKey[rowId] = relatedMaterializer.Materialize(relatedFile, handle);
+                    relatedByKey[rowId] = relatedMaterializer.Materialize(relatedFile, Db2RowHandleAccess.AsHandle(row));
                 }
             }
 
@@ -950,14 +945,11 @@ internal sealed class Db2QueryProvider<TEntity, TRow>(
         {
             foreach (var row in relatedFile.EnumerateRows())
             {
-                var rowId = row.Get<int>(Db2VirtualFieldIndex.Id);
+                var rowId = Db2RowHandleAccess.AsHandle(row).RowId;
                 if (!keys.Contains(rowId))
                     continue;
 
-                if (!relatedFile.TryGetRowHandle(rowId, out var handle))
-                    continue;
-
-                relatedByKey[rowId] = relatedMaterializer.Materialize(relatedFile, handle);
+                relatedByKey[rowId] = relatedMaterializer.Materialize(relatedFile, Db2RowHandleAccess.AsHandle(row));
             }
         }
 
@@ -1027,15 +1019,11 @@ internal sealed class Db2QueryProvider<TEntity, TRow>(
             var fkFieldIndex = nav.DependentForeignKeyFieldSchema.Value.ColumnStartIndex;
             foreach (var row in relatedFile.EnumerateRows())
             {
-                var fk = row.Get<int>(fkFieldIndex);
+                var fk = Db2RowHandleAccess.ReadField<TRow, int>(relatedFile, row, fkFieldIndex);
                 if (fk == 0 || !keys.Contains(fk))
                     continue;
 
-                var rowId = row.Get<int>(Db2VirtualFieldIndex.Id);
-                if (!relatedFile.TryGetRowHandle(rowId, out var handle))
-                    continue;
-
-                var dependent = relatedMaterializer.Materialize(relatedFile, handle);
+                var dependent = relatedMaterializer.Materialize(relatedFile, Db2RowHandleAccess.AsHandle(row));
                 if (!dependentsByKey.TryGetValue(fk, out var list))
                 {
                     list = [];

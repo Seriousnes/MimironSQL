@@ -72,6 +72,7 @@ internal static class Db2RowPredicateCompiler
         where TRow : struct
     {
         private readonly IDb2DenseStringTableIndexProvider<TRow>? _denseIndexProvider = file as IDb2DenseStringTableIndexProvider<TRow>;
+        private readonly ConstantExpression _fileExpression = Expression.Constant(file, typeof(IDb2File));
 
         protected override Expression VisitParameter(ParameterExpression node)
         {
@@ -163,19 +164,19 @@ internal static class Db2RowPredicateCompiler
         {
             if (TryMapSchemaArrayCollectionRead(field, targetType, out var readType))
             {
-                var getArray = typeof(TRow)
-                    .GetMethod(nameof(IDb2Row.Get), BindingFlags.Instance | BindingFlags.Public, [typeof(int)])!
-                    .MakeGenericMethod(readType);
+                var readArrayMethod = typeof(Db2RowHandleAccess)
+                    .GetMethod(nameof(Db2RowHandleAccess.ReadField), BindingFlags.Public | BindingFlags.Static)!
+                    .MakeGenericMethod(typeof(TRow), readType);
 
-                var readArray = Expression.Call(rowParam, getArray, Expression.Constant(field.ColumnStartIndex));
+                var readArray = Expression.Call(readArrayMethod, _fileExpression, rowParam, Expression.Constant(field.ColumnStartIndex));
                 return Expression.Convert(readArray, targetType);
             }
 
-            var get = typeof(TRow)
-                .GetMethod(nameof(IDb2Row.Get), BindingFlags.Instance | BindingFlags.Public, [typeof(int)])!
-                .MakeGenericMethod(targetType);
+            var readMethod = typeof(Db2RowHandleAccess)
+                .GetMethod(nameof(Db2RowHandleAccess.ReadField), BindingFlags.Public | BindingFlags.Static)!
+                .MakeGenericMethod(typeof(TRow), targetType);
 
-            return Expression.Call(rowParam, get, Expression.Constant(field.ColumnStartIndex));
+            return Expression.Call(readMethod, _fileExpression, rowParam, Expression.Constant(field.ColumnStartIndex));
         }
 
         private static bool TryMapSchemaArrayCollectionRead(Db2FieldSchema field, Type targetType, out Type readType)

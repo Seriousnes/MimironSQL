@@ -34,7 +34,7 @@ public sealed class Wdc5DenseStringHeuristicTests
             string value;
             try
             {
-                value = row.Get<string>(directory.ColumnStartIndex);
+                value = file.ReadField<string>(row, directory.ColumnStartIndex);
             }
             catch
             {

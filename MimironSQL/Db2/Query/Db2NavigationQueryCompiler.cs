@@ -87,7 +87,7 @@ internal static class Db2NavigationQueryCompiler
 
                 rowPredicate = nullCheckLeft.Join.Kind switch
                 {
-                    Db2ReferenceNavigationKind.ForeignKeyToPrimaryKey => CompileForeignKeySemiJoin<TRow>(nullCheckLeft.Join.RootKeyFieldSchema, existingIds),
+                    Db2ReferenceNavigationKind.ForeignKeyToPrimaryKey => CompileForeignKeySemiJoin<TRow>(rootFile, nullCheckLeft.Join.RootKeyFieldSchema, existingIds),
                     Db2ReferenceNavigationKind.SharedPrimaryKeyOneToOne => CompileSharedPrimaryKeySemiJoin<TRow>(existingIds),
                     _ => _ => false,
                 };
@@ -106,7 +106,7 @@ internal static class Db2NavigationQueryCompiler
 
                 rowPredicate = scalarLeft.Join.Kind switch
                 {
-                    Db2ReferenceNavigationKind.ForeignKeyToPrimaryKey => CompileForeignKeySemiJoin<TRow>(scalarLeft.Join.RootKeyFieldSchema, scalarIds),
+                    Db2ReferenceNavigationKind.ForeignKeyToPrimaryKey => CompileForeignKeySemiJoin<TRow>(rootFile, scalarLeft.Join.RootKeyFieldSchema, scalarIds),
                     Db2ReferenceNavigationKind.SharedPrimaryKeyOneToOne => CompileSharedPrimaryKeySemiJoin<TRow>(scalarIds),
                     _ => _ => false,
                 };
@@ -125,7 +125,7 @@ internal static class Db2NavigationQueryCompiler
 
                 rowPredicate = leftStringScalar.Join.Kind switch
                 {
-                    Db2ReferenceNavigationKind.ForeignKeyToPrimaryKey => CompileForeignKeySemiJoin<TRow>(leftStringScalar.Join.RootKeyFieldSchema, leftIds),
+                    Db2ReferenceNavigationKind.ForeignKeyToPrimaryKey => CompileForeignKeySemiJoin<TRow>(rootFile, leftStringScalar.Join.RootKeyFieldSchema, leftIds),
                     Db2ReferenceNavigationKind.SharedPrimaryKeyOneToOne => CompileSharedPrimaryKeySemiJoin<TRow>(leftIds),
                     _ => _ => false,
                 };
@@ -144,7 +144,7 @@ internal static class Db2NavigationQueryCompiler
 
                 rowPredicate = leftScalarString2.Join.Kind switch
                 {
-                    Db2ReferenceNavigationKind.ForeignKeyToPrimaryKey => CompileForeignKeySemiJoin<TRow>(leftScalarString2.Join.RootKeyFieldSchema, leftIds),
+                    Db2ReferenceNavigationKind.ForeignKeyToPrimaryKey => CompileForeignKeySemiJoin<TRow>(rootFile, leftScalarString2.Join.RootKeyFieldSchema, leftIds),
                     Db2ReferenceNavigationKind.SharedPrimaryKeyOneToOne => CompileSharedPrimaryKeySemiJoin<TRow>(leftIds),
                     _ => _ => false,
                 };
@@ -163,7 +163,7 @@ internal static class Db2NavigationQueryCompiler
 
                 rowPredicate = leftScalarPlan.Join.Kind switch
                 {
-                    Db2ReferenceNavigationKind.ForeignKeyToPrimaryKey => CompileForeignKeySemiJoin<TRow>(leftScalarPlan.Join.RootKeyFieldSchema, leftIds),
+                    Db2ReferenceNavigationKind.ForeignKeyToPrimaryKey => CompileForeignKeySemiJoin<TRow>(rootFile, leftScalarPlan.Join.RootKeyFieldSchema, leftIds),
                     Db2ReferenceNavigationKind.SharedPrimaryKeyOneToOne => CompileSharedPrimaryKeySemiJoin<TRow>(leftIds),
                     _ => _ => false,
                 };
@@ -179,8 +179,8 @@ internal static class Db2NavigationQueryCompiler
                 var leftIds = FindMatchingIdsScalar<TRow>(tableResolver, leftScalarCross);
                 var rightIds = FindMatchingIdsScalar<TRow>(tableResolver, rightScalarCross);
 
-                var leftNav = CompileNavigationSemiJoin<TRow>(leftScalarCross.Join, leftIds);
-                var rightNav = CompileNavigationSemiJoin<TRow>(rightScalarCross.Join, rightIds);
+                var leftNav = CompileNavigationSemiJoin<TRow>(rootFile, leftScalarCross.Join, leftIds);
+                var rightNav = CompileNavigationSemiJoin<TRow>(rootFile, rightScalarCross.Join, rightIds);
 
                 rowPredicate = row => leftNav(row) && rightNav(row);
                 return true;
@@ -194,8 +194,8 @@ internal static class Db2NavigationQueryCompiler
                 var leftIds = FindMatchingIds<TRow>(tableResolver, leftStringCross);
                 var rightIds = FindMatchingIdsScalar<TRow>(tableResolver, rightScalarCross2);
 
-                var leftNav = CompileNavigationSemiJoin<TRow>(leftStringCross.Join, leftIds);
-                var rightNav = CompileNavigationSemiJoin<TRow>(rightScalarCross2.Join, rightIds);
+                var leftNav = CompileNavigationSemiJoin<TRow>(rootFile, leftStringCross.Join, leftIds);
+                var rightNav = CompileNavigationSemiJoin<TRow>(rootFile, rightScalarCross2.Join, rightIds);
 
                 rowPredicate = row => leftNav(row) && rightNav(row);
                 return true;
@@ -209,8 +209,8 @@ internal static class Db2NavigationQueryCompiler
                 var leftIds = FindMatchingIdsScalar<TRow>(tableResolver, leftScalarCross3);
                 var rightIds = FindMatchingIds<TRow>(tableResolver, rightStringCross);
 
-                var leftNav = CompileNavigationSemiJoin<TRow>(leftScalarCross3.Join, leftIds);
-                var rightNav = CompileNavigationSemiJoin<TRow>(rightStringCross.Join, rightIds);
+                var leftNav = CompileNavigationSemiJoin<TRow>(rootFile, leftScalarCross3.Join, leftIds);
+                var rightNav = CompileNavigationSemiJoin<TRow>(rootFile, rightStringCross.Join, rightIds);
 
                 rowPredicate = row => leftNav(row) && rightNav(row);
                 return true;
@@ -226,7 +226,7 @@ internal static class Db2NavigationQueryCompiler
 
                 rowPredicate = leftPlan.Join.Kind switch
                 {
-                    Db2ReferenceNavigationKind.ForeignKeyToPrimaryKey => CompileForeignKeySemiJoin<TRow>(leftPlan.Join.RootKeyFieldSchema, leftIds),
+                    Db2ReferenceNavigationKind.ForeignKeyToPrimaryKey => CompileForeignKeySemiJoin<TRow>(rootFile, leftPlan.Join.RootKeyFieldSchema, leftIds),
                     Db2ReferenceNavigationKind.SharedPrimaryKeyOneToOne => CompileSharedPrimaryKeySemiJoin<TRow>(leftIds),
                     _ => _ => false,
                 };
@@ -240,7 +240,7 @@ internal static class Db2NavigationQueryCompiler
                 var ids = FindMatchingIds<TRow>(tableResolver, navPlanLeft);
                 var nav = navPlanLeft.Join.Kind switch
                 {
-                    Db2ReferenceNavigationKind.ForeignKeyToPrimaryKey => CompileForeignKeySemiJoin<TRow>(navPlanLeft.Join.RootKeyFieldSchema, ids),
+                    Db2ReferenceNavigationKind.ForeignKeyToPrimaryKey => CompileForeignKeySemiJoin<TRow>(rootFile, navPlanLeft.Join.RootKeyFieldSchema, ids),
                     Db2ReferenceNavigationKind.SharedPrimaryKeyOneToOne => CompileSharedPrimaryKeySemiJoin<TRow>(ids),
                     _ => _ => false,
                 };
@@ -255,7 +255,7 @@ internal static class Db2NavigationQueryCompiler
                 var ids = FindMatchingIdsScalar<TRow>(tableResolver, scalarPlanLeft);
                 var nav = scalarPlanLeft.Join.Kind switch
                 {
-                    Db2ReferenceNavigationKind.ForeignKeyToPrimaryKey => CompileForeignKeySemiJoin<TRow>(scalarPlanLeft.Join.RootKeyFieldSchema, ids),
+                    Db2ReferenceNavigationKind.ForeignKeyToPrimaryKey => CompileForeignKeySemiJoin<TRow>(rootFile, scalarPlanLeft.Join.RootKeyFieldSchema, ids),
                     Db2ReferenceNavigationKind.SharedPrimaryKeyOneToOne => CompileSharedPrimaryKeySemiJoin<TRow>(ids),
                     _ => _ => false,
                 };
@@ -270,7 +270,7 @@ internal static class Db2NavigationQueryCompiler
                 var ids = FindMatchingIds<TRow>(tableResolver, navPlanRight);
                 var nav = navPlanRight.Join.Kind switch
                 {
-                    Db2ReferenceNavigationKind.ForeignKeyToPrimaryKey => CompileForeignKeySemiJoin<TRow>(navPlanRight.Join.RootKeyFieldSchema, ids),
+                    Db2ReferenceNavigationKind.ForeignKeyToPrimaryKey => CompileForeignKeySemiJoin<TRow>(rootFile, navPlanRight.Join.RootKeyFieldSchema, ids),
                     Db2ReferenceNavigationKind.SharedPrimaryKeyOneToOne => CompileSharedPrimaryKeySemiJoin<TRow>(ids),
                     _ => _ => false,
                 };
@@ -285,7 +285,7 @@ internal static class Db2NavigationQueryCompiler
                 var ids = FindMatchingIdsScalar<TRow>(tableResolver, scalarPlanRight);
                 var nav = scalarPlanRight.Join.Kind switch
                 {
-                    Db2ReferenceNavigationKind.ForeignKeyToPrimaryKey => CompileForeignKeySemiJoin<TRow>(scalarPlanRight.Join.RootKeyFieldSchema, ids),
+                    Db2ReferenceNavigationKind.ForeignKeyToPrimaryKey => CompileForeignKeySemiJoin<TRow>(rootFile, scalarPlanRight.Join.RootKeyFieldSchema, ids),
                     Db2ReferenceNavigationKind.SharedPrimaryKeyOneToOne => CompileSharedPrimaryKeySemiJoin<TRow>(ids),
                     _ => _ => false,
                 };
@@ -308,7 +308,7 @@ internal static class Db2NavigationQueryCompiler
 
             rowPredicate = scalarPlan.Join.Kind switch
             {
-                Db2ReferenceNavigationKind.ForeignKeyToPrimaryKey => CompileForeignKeySemiJoin<TRow>(scalarPlan.Join.RootKeyFieldSchema, scalarMatchingIds),
+                Db2ReferenceNavigationKind.ForeignKeyToPrimaryKey => CompileForeignKeySemiJoin<TRow>(rootFile, scalarPlan.Join.RootKeyFieldSchema, scalarMatchingIds),
                 Db2ReferenceNavigationKind.SharedPrimaryKeyOneToOne => CompileSharedPrimaryKeySemiJoin<TRow>(scalarMatchingIds),
                 _ => _ => false,
             };
@@ -322,8 +322,8 @@ internal static class Db2NavigationQueryCompiler
 
             rowPredicate = nullCheckPlan.Join.Kind switch
             {
-                Db2ReferenceNavigationKind.ForeignKeyToPrimaryKey => CompileNullCheckForeignKey<TRow>(nullCheckPlan.Join.RootKeyFieldSchema, existingIds, nullCheckPlan.IsNotNull),
-                Db2ReferenceNavigationKind.SharedPrimaryKeyOneToOne => row => existingIds.MatchesSharedPrimaryKeyNullCheck(row.Get<int>(Db2VirtualFieldIndex.Id), nullCheckPlan.IsNotNull),
+                Db2ReferenceNavigationKind.ForeignKeyToPrimaryKey => CompileNullCheckForeignKey<TRow>(rootFile, nullCheckPlan.Join.RootKeyFieldSchema, existingIds, nullCheckPlan.IsNotNull),
+                Db2ReferenceNavigationKind.SharedPrimaryKeyOneToOne => row => existingIds.MatchesSharedPrimaryKeyNullCheck(Db2RowHandleAccess.AsHandle(row).RowId, nullCheckPlan.IsNotNull),
                 _ => _ => false,
             };
 
@@ -337,7 +337,7 @@ internal static class Db2NavigationQueryCompiler
 
         rowPredicate = plan.Join.Kind switch
         {
-            Db2ReferenceNavigationKind.ForeignKeyToPrimaryKey => CompileForeignKeySemiJoin<TRow>(plan.Join.RootKeyFieldSchema, stringMatchingIds),
+            Db2ReferenceNavigationKind.ForeignKeyToPrimaryKey => CompileForeignKeySemiJoin<TRow>(rootFile, plan.Join.RootKeyFieldSchema, stringMatchingIds),
             Db2ReferenceNavigationKind.SharedPrimaryKeyOneToOne => CompileSharedPrimaryKeySemiJoin<TRow>(stringMatchingIds),
             _ => _ => false,
         };
@@ -397,7 +397,7 @@ internal static class Db2NavigationQueryCompiler
         {
             foreach (var row in dependentFile.EnumerateRows())
             {
-                var fk = row.Get<int>(fkIndex);
+                var fk = Db2RowHandleAccess.ReadField<TRow, int>(dependentFile, row, fkIndex);
                 if (fk != 0)
                     matchingRootIds.Add(fk);
             }
@@ -414,7 +414,7 @@ internal static class Db2NavigationQueryCompiler
                 if (!dependentRowPredicate(row))
                     continue;
 
-                var fk = row.Get<int>(fkIndex);
+                var fk = Db2RowHandleAccess.ReadField<TRow, int>(dependentFile, row, fkIndex);
                 if (fk != 0)
                     matchingRootIds.Add(fk);
             }
@@ -427,15 +427,11 @@ internal static class Db2NavigationQueryCompiler
 
         foreach (var row in dependentFile.EnumerateRows())
         {
-            var rowId = row.Get<int>(Db2VirtualFieldIndex.Id);
-            if (!dependentFile.TryGetRowHandle(rowId, out var handle))
-                continue;
-
-            var entity = materializer.Materialize(dependentFile, handle);
+            var entity = materializer.Materialize(dependentFile, Db2RowHandleAccess.AsHandle(row));
             if (!dependentEntityPredicate(entity))
                 continue;
 
-            var fk = row.Get<int>(fkIndex);
+            var fk = Db2RowHandleAccess.ReadField<TRow, int>(dependentFile, row, fkIndex);
             if (fk != 0)
                 matchingRootIds.Add(fk);
         }
@@ -484,7 +480,7 @@ internal static class Db2NavigationQueryCompiler
                     if (!ok)
                         continue;
 
-                    matchingIds.Add(relatedRow.Get<int>(Db2VirtualFieldIndex.Id));
+                    matchingIds.Add(Db2RowHandleAccess.AsHandle(relatedRow).RowId);
                 }
 
                 return matchingIds;
@@ -492,7 +488,7 @@ internal static class Db2NavigationQueryCompiler
 
             foreach (var relatedRow in relatedFile.EnumerateRows())
             {
-                var s = relatedRow.Get<string>(relatedFieldIndex);
+                var s = Db2RowHandleAccess.ReadField<TRow, string>(relatedFile, relatedRow, relatedFieldIndex);
 
                 var ok = plan.MatchKind switch
                 {
@@ -503,7 +499,7 @@ internal static class Db2NavigationQueryCompiler
                 };
 
                 if (ok)
-                    matchingIds.Add(relatedRow.Get<int>(Db2VirtualFieldIndex.Id));
+                    matchingIds.Add(Db2RowHandleAccess.AsHandle(relatedRow).RowId);
             }
 
             return matchingIds;
@@ -511,9 +507,9 @@ internal static class Db2NavigationQueryCompiler
 
         foreach (var relatedRow in relatedFile.EnumerateRows())
         {
-            var s = relatedRow.Get<string>(relatedFieldIndex);
+            var s = Db2RowHandleAccess.ReadField<TRow, string>(relatedFile, relatedRow, relatedFieldIndex);
             if (s == plan.Needle)
-                matchingIds.Add(relatedRow.Get<int>(Db2VirtualFieldIndex.Id));
+                matchingIds.Add(Db2RowHandleAccess.AsHandle(relatedRow).RowId);
         }
 
         return matchingIds;
@@ -556,9 +552,9 @@ internal static class Db2NavigationQueryCompiler
 
         foreach (var relatedRow in relatedFile.EnumerateRows())
         {
-            var value = relatedRow.Get<T>(relatedFieldIndex);
+            var value = Db2RowHandleAccess.ReadField<TRow, T>(relatedFile, relatedRow, relatedFieldIndex);
             if (EvaluateComparison(value, plan.ComparisonValue, plan.ComparisonKind))
-                matchingIds.Add(relatedRow.Get<int>(Db2VirtualFieldIndex.Id));
+                matchingIds.Add(Db2RowHandleAccess.AsHandle(relatedRow).RowId);
         }
 
         return matchingIds;
@@ -589,7 +585,7 @@ internal static class Db2NavigationQueryCompiler
 
         foreach (var relatedRow in relatedFile.EnumerateRows())
         {
-            var id = relatedRow.Get<int>(Db2VirtualFieldIndex.Id);
+            var id = Db2RowHandleAccess.AsHandle(relatedRow).RowId;
             if (id != 0)
                 existingIds.Add(id);
         }
@@ -613,18 +609,18 @@ internal static class Db2NavigationQueryCompiler
         };
     }
 
-    private static Func<TRow, bool> CompileNavigationSemiJoin<TRow>(Db2NavigationJoinPlan join, HashSet<int> matchingIds)
+    private static Func<TRow, bool> CompileNavigationSemiJoin<TRow>(IDb2File rootFile, Db2NavigationJoinPlan join, HashSet<int> matchingIds)
         where TRow : struct
     {
         return join.Kind switch
         {
-            Db2ReferenceNavigationKind.ForeignKeyToPrimaryKey => CompileForeignKeySemiJoin<TRow>(join.RootKeyFieldSchema, matchingIds),
+            Db2ReferenceNavigationKind.ForeignKeyToPrimaryKey => CompileForeignKeySemiJoin<TRow>(rootFile, join.RootKeyFieldSchema, matchingIds),
             Db2ReferenceNavigationKind.SharedPrimaryKeyOneToOne => CompileSharedPrimaryKeySemiJoin<TRow>(matchingIds),
             _ => _ => false,
         };
     }
 
-    private static Func<TRow, bool> CompileNullCheckForeignKey<TRow>(Db2FieldSchema fkFieldSchema, HashSet<int> existingTargetIds, bool isNotNull)
+    private static Func<TRow, bool> CompileNullCheckForeignKey<TRow>(IDb2File rootFile, Db2FieldSchema fkFieldSchema, HashSet<int> existingTargetIds, bool isNotNull)
         where TRow : struct
     {
         if (fkFieldSchema.IsVirtual)
@@ -633,13 +629,13 @@ internal static class Db2NavigationQueryCompiler
         var rootFkIndex = fkFieldSchema.ColumnStartIndex;
         return row =>
         {
-            var fk = row.Get<int>(rootFkIndex);
+            var fk = Db2RowHandleAccess.ReadField<TRow, int>(rootFile, row, rootFkIndex);
             var exists = fk != 0 && existingTargetIds.Contains(fk);
             return isNotNull ? exists : !exists;
         };
     }
 
-    private static Func<TRow, bool> CompileForeignKeySemiJoin<TRow>(Db2FieldSchema fkFieldSchema, HashSet<int> ids)
+    private static Func<TRow, bool> CompileForeignKeySemiJoin<TRow>(IDb2File rootFile, Db2FieldSchema fkFieldSchema, HashSet<int> ids)
         where TRow : struct
     {
         if (fkFieldSchema.IsVirtual)
@@ -648,7 +644,7 @@ internal static class Db2NavigationQueryCompiler
         var rootFkIndex = fkFieldSchema.ColumnStartIndex;
         return row =>
         {
-            var fk = row.Get<int>(rootFkIndex);
+            var fk = Db2RowHandleAccess.ReadField<TRow, int>(rootFile, row, rootFkIndex);
             return fk != 0 && ids.Contains(fk);
         };
     }
@@ -657,7 +653,7 @@ internal static class Db2NavigationQueryCompiler
         where TRow : struct
         => row =>
         {
-            var id = row.Get<int>(Db2VirtualFieldIndex.Id);
+            var id = Db2RowHandleAccess.AsHandle(row).RowId;
             return id != 0 && matchingIds.Contains(id);
         };
 }

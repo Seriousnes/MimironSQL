@@ -12,7 +12,7 @@ using Security.Cryptography;
 
 namespace MimironSQL.Formats.Wdc5;
 
-public sealed class Wdc5File : IDb2File<Wdc5Row>, IDb2DenseStringTableIndexProvider<Wdc5Row>
+public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexProvider<RowHandle>
 {
     private const int HeaderSize = 200;
     private const uint Wdc5Magic = 0x35434457; // "WDC5"
@@ -22,13 +22,13 @@ public sealed class Wdc5File : IDb2File<Wdc5Row>, IDb2DenseStringTableIndexProvi
     public IReadOnlyList<Wdc5Section> ParsedSections { get; }
     public FieldMetaData[] FieldMeta { get; }
     public ColumnMetaData[] ColumnMeta { get; }
-    public Value32[][] PalletData { get; }
-    public Dictionary<int, Value32>[] CommonData { get; }
+    public uint[][] PalletData { get; }
+    public Dictionary<int, uint>[] CommonData { get; }
 
     public ReadOnlyMemory<byte> DenseStringTableBytes { get; } = ReadOnlyMemory<byte>.Empty;
     public int RecordsBlobSizeBytes { get; }
 
-    public Type RowType => typeof(Wdc5Row);
+    public Type RowType => typeof(RowHandle);
 
     public Db2Flags Flags => Header.Flags;
 
@@ -144,15 +144,15 @@ public sealed class Wdc5File : IDb2File<Wdc5Row>, IDb2DenseStringTableIndexProvi
         var metaBytes = reader.ReadBytes(Unsafe.SizeOf<ColumnMetaData>() * fieldsCount);
         MemoryMarshal.Cast<byte, ColumnMetaData>(metaBytes).CopyTo(columnMeta);
 
-        var palletData = new Value32[columnMeta.Length][];
+        var palletData = new uint[columnMeta.Length][];
         for (var i = 0; i < columnMeta.Length; i++)
         {
             if (columnMeta[i].CompressionType is CompressionType.Pallet or CompressionType.PalletArray)
             {
                 var count = checked((int)columnMeta[i].AdditionalDataSize / 4);
                 var bytes = reader.ReadBytes(count * 4);
-                var values = new Value32[count];
-                MemoryMarshal.Cast<byte, Value32>(bytes).CopyTo(values);
+                var values = new uint[count];
+                MemoryMarshal.Cast<byte, uint>(bytes).CopyTo(values);
                 palletData[i] = values;
             }
             else
@@ -161,24 +161,24 @@ public sealed class Wdc5File : IDb2File<Wdc5Row>, IDb2DenseStringTableIndexProvi
             }
         }
 
-        var commonData = new Dictionary<int, Value32>[columnMeta.Length];
+        var commonData = new Dictionary<int, uint>[columnMeta.Length];
         for (var i = 0; i < columnMeta.Length; i++)
         {
             if (columnMeta[i] is { CompressionType: CompressionType.Common })
             {
                 var count = checked((int)columnMeta[i].AdditionalDataSize / 8);
-                var dict = new Dictionary<int, Value32>(count);
+                var dict = new Dictionary<int, uint>(count);
                 for (var j = 0; j < count; j++)
                 {
                     var id = reader.ReadInt32();
-                    var valueBytes = reader.ReadBytes(4);
-                    dict[id] = MemoryMarshal.Read<Value32>(valueBytes);
+                    var value = reader.ReadUInt32();
+                    dict[id] = value;
                 }
                 commonData[i] = dict;
             }
             else
             {
-                commonData[i] = new Dictionary<int, Value32>();
+                commonData[i] = new Dictionary<int, uint>();
             }
         }
 
@@ -215,6 +215,7 @@ public sealed class Wdc5File : IDb2File<Wdc5Row>, IDb2DenseStringTableIndexProvi
                 {
                     recordDataSizeBytes = section.OffsetRecordsEndOffset - section.FileOffset;
                     recordsData = reader.ReadBytes(recordDataSizeBytes);
+                    Array.Resize(ref recordsData, recordsData.Length + 8);
                     stringTableBytes = [];
 
                     if (reader.BaseStream.Position != section.OffsetRecordsEndOffset)
@@ -360,7 +361,7 @@ public sealed class Wdc5File : IDb2File<Wdc5Row>, IDb2DenseStringTableIndexProvi
             var section = ParsedSections[sectionIndex];
             for (var rowIndex = 0; rowIndex < section.NumRecords; rowIndex++)
             {
-                var reader = CreateReaderAtRowStart(section, rowIndex);
+                var reader = CreateReaderAtRowStart(section, rowIndex, out _, out _, out _);
                 var id = GetVirtualId(section, rowIndex, reader);
                 yield return new RowHandle
                 {
@@ -372,55 +373,6 @@ public sealed class Wdc5File : IDb2File<Wdc5Row>, IDb2DenseStringTableIndexProvi
         }
     }
 
-    public IEnumerable<Wdc5Row> EnumerateRows()
-    {
-        var globalIndex = 0;
-        for (var sectionIndex = 0; sectionIndex < ParsedSections.Count; sectionIndex++)
-        {
-            var section = ParsedSections[sectionIndex];
-            for (var rowIndex = 0; rowIndex < section.NumRecords; rowIndex++)
-            {
-                var reader = CreateReaderAtRowStart(section, rowIndex);
-                var id = GetVirtualId(section, rowIndex, reader);
-                var referenceKey = Header.Flags.HasFlag(Db2Flags.SecondaryKey) && section.IndexData is { Length: not 0 }
-                    ? section.IndexData[rowIndex]
-                    : rowIndex;
-
-                _ = section.ParentLookupEntries.TryGetValue(referenceKey, out var parentRelationId);
-                yield return new Wdc5Row(this, section, reader, globalIndex, rowIndex, id, sourceId: id, parentRelationId);
-                globalIndex++;
-            }
-        }
-    }
-
-    public bool TryGetRowById(int id, out Wdc5Row row)
-    {
-        Wdc5FileLookupTracker.OnTryGetRowById();
-
-        EnsureIndexesBuilt();
-
-        var requestedId = id;
-
-        if (_copyMap!.TryGetValue(id, out var sourceId))
-            id = sourceId;
-
-        if (!_idIndex!.TryGetValue(id, out var location))
-        {
-            row = default;
-            return false;
-        }
-
-        var section = ParsedSections[location.SectionIndex];
-        var reader = CreateReaderAtRowStart(section, location.RowIndexInSection);
-
-        var referenceKey = Header.Flags.HasFlag(Db2Flags.SecondaryKey) && section.IndexData is { Length: not 0 }
-            ? section.IndexData[location.RowIndexInSection]
-            : location.RowIndexInSection;
-
-        _ = section.ParentLookupEntries.TryGetValue(referenceKey, out var parentRelationId);
-        row = new Wdc5Row(this, section, reader, globalRowIndex: location.GlobalRecordIndex, rowIndexInSection: location.RowIndexInSection, id: requestedId, sourceId: id, parentRelationId);
-        return true;
-    }
 
     public bool TryGetRowHandle<TId>(TId id, out RowHandle handle) where TId : IEquatable<TId>, IComparable<TId>
     {
@@ -461,28 +413,78 @@ public sealed class Wdc5File : IDb2File<Wdc5Row>, IDb2DenseStringTableIndexProvi
         return true;
     }
 
-    public bool TryGetDenseStringTableIndex(Wdc5Row row, int fieldIndex, out int stringTableIndex)
-        => row.TryGetDenseStringTableIndex(fieldIndex, out stringTableIndex);
-
-    public bool TryGetRowById<TId>(TId id, out Wdc5Row row) where TId : IEquatable<TId>, IComparable<TId>
+    public bool TryGetDenseStringTableIndex(RowHandle row, int fieldIndex, out int stringTableIndex)
     {
-        var key = id switch
+        // For dense-mode strings, the stored value is an int offset into the string block.
+        // For non-string fields (or sparse mode), this should fail so callers fall back.
+        if (Header.Flags.HasFlag(Db2Flags.Sparse))
         {
-            int x => x,
-            uint x => unchecked((int)x),
-            short x => x,
-            ushort x => x,
-            sbyte x => x,
-            byte x => x,
-            long x => checked((int)x),
-            ulong x => x <= uint.MaxValue ? unchecked((int)(uint)x) : throw new OverflowException("DB2 ID is larger than 32-bit; this engine currently indexes rows by 32-bit ID."),
-            nint x => checked((int)x),
-            nuint x => x <= uint.MaxValue ? unchecked((int)(uint)x) : throw new OverflowException("DB2 ID is larger than 32-bit; this engine currently indexes rows by 32-bit ID."),
-            _ => throw new NotSupportedException($"Unsupported ID type {typeof(TId).FullName}.")
-        };
+            stringTableIndex = 0;
+            return false;
+        }
 
-        return TryGetRowById(key, out row);
+        if (fieldIndex < 0)
+        {
+            stringTableIndex = 0;
+            return false;
+        }
+
+        if ((uint)fieldIndex >= (uint)Header.FieldsCount)
+            throw new ArgumentOutOfRangeException(nameof(fieldIndex));
+
+        if ((uint)row.SectionIndex >= (uint)ParsedSections.Count)
+            throw new ArgumentException("Invalid section index in RowHandle.", nameof(row));
+
+        var section = ParsedSections[row.SectionIndex];
+        if ((uint)row.RowIndexInSection >= (uint)section.NumRecords)
+            throw new ArgumentException("Invalid row index in RowHandle.", nameof(row));
+
+        var globalRowIndex = section.FirstGlobalRecordIndex + row.RowIndexInSection;
+
+        var offset = ReadField<int>(row, fieldIndex);
+        if (offset < 0)
+        {
+            stringTableIndex = 0;
+            return false;
+        }
+
+        if (offset == 0)
+        {
+            // Empty string (points to the section's string-table base null terminator).
+            stringTableIndex = (int)section.StringTableBaseOffset;
+            return true;
+        }
+
+        var recordOffset = (long)(globalRowIndex * Header.RecordSize) - RecordsBlobSizeBytes;
+        var fieldStartBytes = (long)(ColumnMeta[fieldIndex].RecordOffset >> 3);
+        var stringIndex = recordOffset + fieldStartBytes + offset;
+
+        if (stringIndex < 0)
+            stringIndex = 0;
+
+        if (stringIndex < section.StringTableBaseOffset)
+        {
+            stringTableIndex = 0;
+            return false;
+        }
+
+        var sectionEndExclusive = section.StringTableBaseOffset + section.Header.StringTableSize;
+        if (stringIndex >= sectionEndExclusive || stringIndex is > int.MaxValue)
+        {
+            stringTableIndex = 0;
+            return false;
+        }
+
+        // Db2DenseStringScanner works in terms of start indices into DenseStringTableBytes.
+        stringTableIndex = (int)stringIndex;
+        return true;
     }
+
+    public bool TryGetRowById<TId>(TId id, out RowHandle row) where TId : IEquatable<TId>, IComparable<TId>
+        => TryGetRowHandle(id, out row);
+
+    public IEnumerable<RowHandle> EnumerateRows()
+        => EnumerateRowHandles();
 
     private void EnsureIndexesBuilt()
     {
@@ -500,7 +502,7 @@ public sealed class Wdc5File : IDb2File<Wdc5Row>, IDb2DenseStringTableIndexProvi
 
             for (var rowIndex = 0; rowIndex < section.NumRecords; rowIndex++)
             {
-                var reader = CreateReaderAtRowStart(section, rowIndex);
+                var reader = CreateReaderAtRowStart(section, rowIndex, out _, out _, out _);
                 var id = GetVirtualId(section, rowIndex, reader);
                 if (id != -1)
                     idIndex.TryAdd(id, (sectionIndex, rowIndex, section.FirstGlobalRecordIndex + rowIndex));
@@ -511,18 +513,14 @@ public sealed class Wdc5File : IDb2File<Wdc5Row>, IDb2DenseStringTableIndexProvi
         _copyMap = copyMap;
     }
 
-    private BitReader CreateReaderAtRowStart(Wdc5Section section, int rowIndex)
+    private Wdc5RowReader CreateReaderAtRowStart(Wdc5Section section, int rowIndex, out ReadOnlySpan<byte> recordBytes, out int rowStartByte, out int rowSizeBytes)
     {
-        var reader = new BitReader(section.RecordsData)
-        {
-            OffsetBytes = 0,
-            PositionBits = 0,
-        };
-
         if (!Header.Flags.HasFlag(Db2Flags.Sparse))
         {
-            reader.OffsetBytes = rowIndex * Header.RecordSize;
-            return reader;
+            recordBytes = section.RecordsData;
+            rowStartByte = rowIndex * Header.RecordSize;
+            rowSizeBytes = Header.RecordSize;
+            return new Wdc5RowReader(recordBytes, positionBits: rowStartByte * 8);
         }
 
         if (section.SparseRecordStartBits is { Length: 0 })
@@ -535,11 +533,13 @@ public sealed class Wdc5File : IDb2File<Wdc5Row>, IDb2DenseStringTableIndexProvi
         if (startBytes < 0 || endExclusive < 0 || endExclusive > section.RecordsData.Length)
             throw new InvalidDataException("Sparse WDC5 row points outside section record data.");
 
-        reader.PositionBits = startBits;
-        return reader;
+        recordBytes = section.RecordsData;
+        rowStartByte = startBytes;
+        rowSizeBytes = sizeBytes;
+        return new Wdc5RowReader(recordBytes, positionBits: startBits);
     }
 
-    private int GetVirtualId(Wdc5Section section, int rowIndex, BitReader readerAtStart)
+    private int GetVirtualId(Wdc5Section section, int rowIndex, Wdc5RowReader readerAtStart)
     {
         // A) Prefer IndexData when present.
         if (section.IndexData is { Length: not 0 })
@@ -626,7 +626,7 @@ public sealed class Wdc5File : IDb2File<Wdc5Row>, IDb2DenseStringTableIndexProvi
         if ((uint)handle.RowIndexInSection >= (uint)section.NumRecords)
             throw new ArgumentException("Invalid row index in RowHandle.", nameof(handle));
 
-        var reader = CreateReaderAtRowStart(section, handle.RowIndexInSection);
+        var reader = CreateReaderAtRowStart(section, handle.RowIndexInSection, out _, out var rowStartByte, out var rowSizeBytes);
         var sourceId = GetVirtualId(section, handle.RowIndexInSection, reader);
         var id = handle.RowId;
         var globalRowIndex = section.FirstGlobalRecordIndex + handle.RowIndexInSection;
@@ -656,7 +656,7 @@ public sealed class Wdc5File : IDb2File<Wdc5Row>, IDb2DenseStringTableIndexProvi
 
         if (type == typeof(string))
         {
-            _ = TryGetString(section, handle.RowIndexInSection, globalRowIndex, reader, sourceId, fieldIndex, out var s);
+            _ = TryGetString(section, handle.RowIndexInSection, globalRowIndex, reader, rowStartByte, rowSizeBytes, sourceId, fieldIndex, out var s);
             return s;
         }
 
@@ -665,7 +665,7 @@ public sealed class Wdc5File : IDb2File<Wdc5Row>, IDb2DenseStringTableIndexProvi
             ref readonly var fieldMeta = ref FieldMeta[fieldIndex];
             if (fieldMeta.Bits == 0)
             {
-                _ = TryGetString(section, handle.RowIndexInSection, globalRowIndex, reader, sourceId, fieldIndex, out var s);
+                _ = TryGetString(section, handle.RowIndexInSection, globalRowIndex, reader, rowStartByte, rowSizeBytes, sourceId, fieldIndex, out var s);
                 return s;
             }
 
@@ -677,27 +677,22 @@ public sealed class Wdc5File : IDb2File<Wdc5Row>, IDb2DenseStringTableIndexProvi
             var elementType = type.GetElementType()!;
             if (elementType == typeof(double))
             {
-                var floats = GetArray<float>(section, handle.RowIndexInSection, reader, sourceId, fieldIndex);
+                var floats = GetArray<float>(section, handle.RowIndexInSection, reader, rowStartByte, rowSizeBytes, sourceId, fieldIndex);
                 var doubles = new double[floats.Length];
                 for (var i = 0; i < floats.Length; i++)
                     doubles[i] = floats[i];
                 return doubles;
             }
-            return GetArrayBoxed(section, handle.RowIndexInSection, reader, sourceId, elementType, fieldIndex);
+            return GetArrayBoxed(section, handle.RowIndexInSection, reader, rowStartByte, rowSizeBytes, sourceId, elementType, fieldIndex);
         }
 
         var fieldBitOffset = ColumnMeta[fieldIndex].RecordOffset;
 
-        DecryptedRowLease decrypted = default;
-        try
+        if (section.IsDecryptable)
         {
-            var isDecrypted = section.IsDecryptable;
-            var localReader = isDecrypted
-                ? (decrypted = DecryptRowBytes(section, handle.RowIndexInSection, reader, sourceId)).Reader
-                : MoveToFieldStart(fieldIndex, reader);
-
-            if (isDecrypted)
-                localReader.PositionBits = fieldBitOffset;
+            using var decrypted = DecryptRowBytes(section, rowStartByte, rowSizeBytes, nonceId: sourceId);
+            var localReader = decrypted.CreateReaderAtRowStart();
+            localReader.PositionBits = fieldBitOffset;
 
             ref readonly var fieldMeta = ref FieldMeta[fieldIndex];
             ref readonly var columnMeta = ref ColumnMeta[fieldIndex];
@@ -706,13 +701,17 @@ public sealed class Wdc5File : IDb2File<Wdc5Row>, IDb2DenseStringTableIndexProvi
 
             return ReadScalarBoxed(type, sourceId, ref localReader, fieldMeta, columnMeta, palletData, commonData);
         }
-        finally
-        {
-            decrypted.Dispose();
-        }
+
+        var localReader2 = MoveToFieldStart(fieldIndex, reader);
+        ref readonly var fieldMeta2 = ref FieldMeta[fieldIndex];
+        ref readonly var columnMeta2 = ref ColumnMeta[fieldIndex];
+        var palletData2 = PalletData[fieldIndex];
+        var commonData2 = CommonData[fieldIndex];
+
+        return ReadScalarBoxed(type, sourceId, ref localReader2, fieldMeta2, columnMeta2, palletData2, commonData2);
     }
 
-    private static object ReadScalarBoxed(Type type, int id, ref BitReader reader, FieldMetaData fieldMeta, ColumnMetaData columnMeta, Value32[] palletData, Dictionary<int, Value32> commonData)
+    private static object ReadScalarBoxed(Type type, int id, ref Wdc5RowReader reader, FieldMetaData fieldMeta, ColumnMetaData columnMeta, uint[] palletData, Dictionary<int, uint> commonData)
     {
         if (type == typeof(byte))
             return Wdc5FieldDecoder.ReadScalar<byte>(id, ref reader, fieldMeta, columnMeta, palletData, commonData);
@@ -738,39 +737,39 @@ public sealed class Wdc5File : IDb2File<Wdc5Row>, IDb2DenseStringTableIndexProvi
         throw new NotSupportedException($"Unsupported scalar type {type.FullName}.");
     }
 
-    private object GetArrayBoxed(Wdc5Section section, int rowIndexInSection, BitReader reader, int id, Type elementType, int fieldIndex)
+    private object GetArrayBoxed(Wdc5Section section, int rowIndexInSection, Wdc5RowReader reader, int rowStartByte, int rowSizeBytes, int id, Type elementType, int fieldIndex)
     {
         if (elementType == typeof(byte))
-            return GetArray<byte>(section, rowIndexInSection, reader, id, fieldIndex);
+            return GetArray<byte>(section, rowIndexInSection, reader, rowStartByte, rowSizeBytes, id, fieldIndex);
         if (elementType == typeof(sbyte))
-            return GetArray<sbyte>(section, rowIndexInSection, reader, id, fieldIndex);
+            return GetArray<sbyte>(section, rowIndexInSection, reader, rowStartByte, rowSizeBytes, id, fieldIndex);
         if (elementType == typeof(short))
-            return GetArray<short>(section, rowIndexInSection, reader, id, fieldIndex);
+            return GetArray<short>(section, rowIndexInSection, reader, rowStartByte, rowSizeBytes, id, fieldIndex);
         if (elementType == typeof(ushort))
-            return GetArray<ushort>(section, rowIndexInSection, reader, id, fieldIndex);
+            return GetArray<ushort>(section, rowIndexInSection, reader, rowStartByte, rowSizeBytes, id, fieldIndex);
         if (elementType == typeof(int))
-            return GetArray<int>(section, rowIndexInSection, reader, id, fieldIndex);
+            return GetArray<int>(section, rowIndexInSection, reader, rowStartByte, rowSizeBytes, id, fieldIndex);
         if (elementType == typeof(uint))
-            return GetArray<uint>(section, rowIndexInSection, reader, id, fieldIndex);
+            return GetArray<uint>(section, rowIndexInSection, reader, rowStartByte, rowSizeBytes, id, fieldIndex);
         if (elementType == typeof(long))
-            return GetArray<long>(section, rowIndexInSection, reader, id, fieldIndex);
+            return GetArray<long>(section, rowIndexInSection, reader, rowStartByte, rowSizeBytes, id, fieldIndex);
         if (elementType == typeof(ulong))
-            return GetArray<ulong>(section, rowIndexInSection, reader, id, fieldIndex);
+            return GetArray<ulong>(section, rowIndexInSection, reader, rowStartByte, rowSizeBytes, id, fieldIndex);
         if (elementType == typeof(float))
-            return GetArray<float>(section, rowIndexInSection, reader, id, fieldIndex);
+            return GetArray<float>(section, rowIndexInSection, reader, rowStartByte, rowSizeBytes, id, fieldIndex);
 
         throw new NotSupportedException($"Unsupported array element type {elementType.FullName}.");
     }
 
-    private T[] GetArray<T>(Wdc5Section section, int rowIndexInSection, BitReader reader, int id, int fieldIndex) where T : unmanaged
+    private T[] GetArray<T>(Wdc5Section section, int rowIndexInSection, Wdc5RowReader reader, int rowStartByte, int rowSizeBytes, int id, int fieldIndex) where T : unmanaged
     {
         if ((uint)fieldIndex >= (uint)Header.FieldsCount)
             throw new ArgumentOutOfRangeException(nameof(fieldIndex));
 
         if (section.IsDecryptable)
         {
-            using var decrypted = DecryptRowBytes(section, rowIndexInSection, reader, id);
-            var localReader = decrypted.Reader;
+            using var decrypted = DecryptRowBytes(section, rowStartByte, rowSizeBytes, nonceId: id);
+            var localReader = decrypted.CreateReaderAtRowStart();
             localReader.PositionBits = ColumnMeta[fieldIndex].RecordOffset;
             ref readonly var fieldMeta = ref FieldMeta[fieldIndex];
             ref readonly var columnMeta = ref ColumnMeta[fieldIndex];
@@ -797,14 +796,15 @@ public sealed class Wdc5File : IDb2File<Wdc5Row>, IDb2DenseStringTableIndexProvi
         };
     }
 
-    private bool TryGetString(Wdc5Section section, int rowIndexInSection, int globalRowIndex, BitReader reader, int id, int fieldIndex, out string value)
+    private bool TryGetString(Wdc5Section section, int rowIndexInSection, int globalRowIndex, Wdc5RowReader reader, int rowStartByte, int rowSizeBytes, int id, int fieldIndex, out string value)
     {
         if ((uint)fieldIndex >= (uint)Header.FieldsCount)
             throw new ArgumentOutOfRangeException(nameof(fieldIndex));
-        return TryGetDenseString(section, globalRowIndex, reader, id, fieldIndex, out value) || TryGetInlineString(section, rowIndexInSection, reader, id, fieldIndex, out value);
+        return TryGetDenseString(section, globalRowIndex, reader, rowStartByte, rowSizeBytes, id, fieldIndex, out value)
+            || TryGetInlineString(section, rowIndexInSection, reader, rowStartByte, rowSizeBytes, id, fieldIndex, out value);
     }
 
-    private bool TryGetDenseString(Wdc5Section section, int globalRowIndex, BitReader reader, int id, int fieldIndex, out string value)
+    private bool TryGetDenseString(Wdc5Section section, int globalRowIndex, Wdc5RowReader reader, int rowStartByte, int rowSizeBytes, int id, int fieldIndex, out string value)
     {
         if (Header.Flags.HasFlag(Db2Flags.Sparse))
         {
@@ -817,16 +817,11 @@ public sealed class Wdc5File : IDb2File<Wdc5Row>, IDb2DenseStringTableIndexProvi
 
         var fieldBitOffset = ColumnMeta[fieldIndex].RecordOffset;
 
-        DecryptedRowLease decrypted = default;
-        try
+        if (section.IsDecryptable)
         {
-            var isDecrypted = section.IsDecryptable;
-            var localReader = isDecrypted
-                ? (decrypted = DecryptRowBytes(section, -1, reader, id)).Reader
-                : MoveToFieldStart(fieldIndex, reader);
-
-            if (isDecrypted)
-                localReader.PositionBits = fieldBitOffset;
+            using var decrypted = DecryptRowBytes(section, rowStartByte, rowSizeBytes, nonceId: id);
+            var localReader = decrypted.CreateReaderAtRowStart();
+            localReader.PositionBits = fieldBitOffset;
 
             ref readonly var fieldMeta = ref FieldMeta[fieldIndex];
             ref readonly var columnMeta = ref ColumnMeta[fieldIndex];
@@ -872,13 +867,54 @@ public sealed class Wdc5File : IDb2File<Wdc5Row>, IDb2DenseStringTableIndexProvi
 
             return TryReadNullTerminatedUtf8(DenseStringTableBytes.Span, startIndex: (int)stringIndex, endExclusive: sectionEndExclusive, out value);
         }
-        finally
+
+        var localReader2 = MoveToFieldStart(fieldIndex, reader);
+        ref readonly var fieldMeta2 = ref FieldMeta[fieldIndex];
+        ref readonly var columnMeta2 = ref ColumnMeta[fieldIndex];
+
+        if (columnMeta2 is { CompressionType: CompressionType.PalletArray, Pallet.Cardinality: not 1 })
         {
-            decrypted.Dispose();
+            value = string.Empty;
+            return false;
         }
+
+        var offset2 = Wdc5FieldDecoder.ReadScalar<int>(id, ref localReader2, fieldMeta2, columnMeta2, PalletData[fieldIndex], CommonData[fieldIndex]);
+        if (offset2 == 0)
+        {
+            value = string.Empty;
+            return true;
+        }
+
+        if (offset2 < 0)
+        {
+            value = string.Empty;
+            return false;
+        }
+
+        var recordOffset2 = (long)(globalRowIndex * Header.RecordSize) - RecordsBlobSizeBytes;
+        var fieldStartBytes2 = (long)(ColumnMeta[fieldIndex].RecordOffset >> 3);
+        var stringIndex2 = recordOffset2 + fieldStartBytes2 + offset2;
+
+        if (stringIndex2 < 0)
+            stringIndex2 = 0;
+
+        if (stringIndex2 < section.StringTableBaseOffset)
+        {
+            value = string.Empty;
+            return false;
+        }
+
+        var sectionEndExclusive2 = section.StringTableBaseOffset + section.Header.StringTableSize;
+        if (stringIndex2 >= sectionEndExclusive2 || stringIndex2 is > int.MaxValue)
+        {
+            value = string.Empty;
+            return false;
+        }
+
+        return TryReadNullTerminatedUtf8(DenseStringTableBytes.Span, startIndex: (int)stringIndex2, endExclusive: sectionEndExclusive2, out value);
     }
 
-    private bool TryGetInlineString(Wdc5Section section, int rowIndexInSection, BitReader reader, int id, int fieldIndex, out string value)
+    private bool TryGetInlineString(Wdc5Section section, int rowIndexInSection, Wdc5RowReader reader, int rowStartByte, int rowSizeBytes, int id, int fieldIndex, out string value)
     {
         if (!Header.Flags.HasFlag(Db2Flags.Sparse))
         {
@@ -889,46 +925,39 @@ public sealed class Wdc5File : IDb2File<Wdc5Row>, IDb2DenseStringTableIndexProvi
         if ((uint)fieldIndex >= (uint)Header.FieldsCount)
             throw new ArgumentOutOfRangeException(nameof(fieldIndex));
 
-        var rowStartInSection = reader.OffsetBytes + (reader.PositionBits >> 3);
-        var rowSizeBytes = (int)section.SparseEntries[rowIndexInSection].Size;
-
+        var rowEndExclusive = rowStartByte + rowSizeBytes;
         ReadOnlySpan<byte> recordBytes = section.RecordsData;
-        var rowEndExclusive = rowStartInSection + rowSizeBytes;
 
-        DecryptedRowLease decrypted = default;
-        try
+        if (section.IsDecryptable)
         {
-            var localReader = reader;
-            localReader.PositionBits = reader.PositionBits;
+            using var decrypted = DecryptRowBytes(section, rowStartByte, rowSizeBytes, nonceId: id);
+            recordBytes = decrypted.Bytes;
 
-            if (section.IsDecryptable)
-            {
-                decrypted = DecryptRowBytes(section, rowIndexInSection, reader, id);
-                recordBytes = decrypted.Bytes.AsSpan(0, rowSizeBytes);
-                rowEndExclusive = rowSizeBytes;
-                rowStartInSection = 0;
-
-                localReader = decrypted.Reader;
-                localReader.PositionBits = 0;
-            }
-
+            var localReader = decrypted.CreateReaderAtRowStart();
             for (var i = 0; i < fieldIndex; i++)
-                SkipSparseField(ref localReader, i, recordBytes, rowEndExclusive, id);
+                SkipSparseField(ref localReader, i, recordBytes, rowSizeBytes, id);
 
-            var fieldStart = localReader.OffsetBytes + (localReader.PositionBits >> 3);
-            if (fieldStart >= 0 && fieldStart < rowEndExclusive && TryReadNullTerminatedUtf8(recordBytes, startIndex: fieldStart, endExclusive: rowEndExclusive, out value))
+            var fieldStart = localReader.PositionBits >> 3;
+            if (fieldStart >= 0 && fieldStart < rowSizeBytes && TryReadNullTerminatedUtf8(recordBytes, startIndex: fieldStart, endExclusive: rowSizeBytes, out value))
                 return true;
 
             value = string.Empty;
             return false;
         }
-        finally
-        {
-            decrypted.Dispose();
-        }
+
+        var localReader2 = reader;
+        for (var i = 0; i < fieldIndex; i++)
+            SkipSparseField(ref localReader2, i, recordBytes, rowEndExclusive, id);
+
+        var fieldStart2 = localReader2.PositionBits >> 3;
+        if (fieldStart2 >= 0 && fieldStart2 < rowEndExclusive && TryReadNullTerminatedUtf8(recordBytes, startIndex: fieldStart2, endExclusive: rowEndExclusive, out value))
+            return true;
+
+        value = string.Empty;
+        return false;
     }
 
-    private void SkipSparseField(ref BitReader reader, int fieldIndex, ReadOnlySpan<byte> recordBytes, int rowEndExclusive, int id)
+    private void SkipSparseField(ref Wdc5RowReader reader, int fieldIndex, ReadOnlySpan<byte> recordBytes, int endExclusive, int id)
     {
         ref readonly var fieldMeta = ref FieldMeta[fieldIndex];
         ref readonly var columnMeta = ref ColumnMeta[fieldIndex];
@@ -941,8 +970,8 @@ public sealed class Wdc5File : IDb2File<Wdc5Row>, IDb2DenseStringTableIndexProvi
 
             if (bitSize == 32)
             {
-                var currentBytePos = reader.OffsetBytes + (reader.PositionBits >> 3);
-                var terminatorIndex = recordBytes[currentBytePos..rowEndExclusive].IndexOf((byte)0);
+                var currentBytePos = reader.PositionBits >> 3;
+                var terminatorIndex = recordBytes[currentBytePos..endExclusive].IndexOf((byte)0);
                 if (terminatorIndex >= 0)
                 {
                     reader.PositionBits += (terminatorIndex + 1) * 8;
@@ -993,20 +1022,18 @@ public sealed class Wdc5File : IDb2File<Wdc5Row>, IDb2DenseStringTableIndexProvi
         }
     }
 
-    private BitReader MoveToFieldStart(int fieldIndex, BitReader reader)
+    private Wdc5RowReader MoveToFieldStart(int fieldIndex, Wdc5RowReader reader)
     {
         var localReader = reader;
         var fieldBitOffset = ColumnMeta[fieldIndex].RecordOffset;
 
-        if (Header.Flags.HasFlag(Db2Flags.Sparse))
-            localReader.PositionBits = reader.PositionBits + fieldBitOffset;
-        else
-            localReader.PositionBits = fieldBitOffset;
+        // ColumnMeta.RecordOffset is relative to the start of the record, not the start of the section blob.
+        localReader.PositionBits = reader.PositionBits + fieldBitOffset;
 
         return localReader;
     }
 
-    private static T[] ReadNoneArray<T>(ref BitReader reader, FieldMetaData fieldMeta, ColumnMetaData columnMeta) where T : unmanaged
+    private static T[] ReadNoneArray<T>(ref Wdc5RowReader reader, FieldMetaData fieldMeta, ColumnMetaData columnMeta) where T : unmanaged
     {
         var bitSize = 32 - fieldMeta.Bits;
         if (bitSize <= 0)
@@ -1022,14 +1049,17 @@ public sealed class Wdc5File : IDb2File<Wdc5Row>, IDb2DenseStringTableIndexProvi
         return array;
     }
 
-    private static T[] ReadPalletArray<T>(ref BitReader reader, ColumnMetaData columnMeta, Value32[] palletData) where T : unmanaged
+    private static T[] ReadPalletArray<T>(ref Wdc5RowReader reader, ColumnMetaData columnMeta, uint[] palletData) where T : unmanaged
     {
         var cardinality = columnMeta.Pallet.Cardinality;
         var palletArrayIndex = reader.ReadUInt32(columnMeta.Pallet.BitWidth);
 
         var array = new T[cardinality];
         for (var i = 0; i < array.Length; i++)
-            array[i] = palletData[i + cardinality * (int)palletArrayIndex].GetValue<T>();
+        {
+            var raw = palletData[i + cardinality * (int)palletArrayIndex];
+            array[i] = Unsafe.As<uint, T>(ref raw);
+        }
 
         return array;
     }
@@ -1038,17 +1068,18 @@ public sealed class Wdc5File : IDb2File<Wdc5Row>, IDb2DenseStringTableIndexProvi
     {
         private readonly byte[]? _buffer;
         private readonly int _clearLength;
+        private readonly int _rowSizeBytes;
 
-        public DecryptedRowLease(byte[] buffer, int clearLength)
+        public DecryptedRowLease(byte[] buffer, int clearLength, int rowSizeBytes)
         {
             _buffer = buffer;
             _clearLength = clearLength;
-            Reader = new BitReader(buffer) { OffsetBytes = 0, PositionBits = 0 };
+            _rowSizeBytes = rowSizeBytes;
         }
 
-        public BitReader Reader { get; }
+        public ReadOnlySpan<byte> Bytes => _buffer.AsSpan(0, _rowSizeBytes);
 
-        public byte[] Bytes => _buffer ?? [];
+        public Wdc5RowReader CreateReaderAtRowStart() => new(Bytes, positionBits: 0);
 
         public void Dispose()
         {
@@ -1062,29 +1093,23 @@ public sealed class Wdc5File : IDb2File<Wdc5Row>, IDb2DenseStringTableIndexProvi
         }
     }
 
-    private DecryptedRowLease DecryptRowBytes(Wdc5Section section, int rowIndexInSection, BitReader reader, int id)
+    private DecryptedRowLease DecryptRowBytes(Wdc5Section section, int rowStartByte, int rowSizeBytes, int nonceId)
     {
         if (!section.IsDecryptable)
             throw new InvalidOperationException("Row is not decryptable.");
 
-        var rowStartInSection = reader.OffsetBytes + (reader.PositionBits >> 3);
-        var rowSizeBytes = Header.Flags.HasFlag(Db2Flags.Sparse)
-            ? (int)section.SparseEntries[rowIndexInSection].Size
-            : Header.RecordSize;
-
         if (rowSizeBytes < 0)
             throw new InvalidDataException("Row size is negative.");
 
-        var rowEndExclusive = (long)rowStartInSection + rowSizeBytes;
-        if (rowStartInSection < 0 || rowEndExclusive < 0 || rowEndExclusive > section.RecordsData.Length)
+        var rowEndExclusive = (long)rowStartByte + rowSizeBytes;
+        if (rowStartByte < 0 || rowEndExclusive < 0 || rowEndExclusive > section.RecordsData.Length)
             throw new InvalidDataException("Encrypted row points outside section record data.");
 
         var buffer = ArrayPool<byte>.Shared.Rent(rowSizeBytes + 8);
         var dst = buffer.AsSpan(0, rowSizeBytes);
-        section.RecordsData.AsSpan(rowStartInSection, rowSizeBytes).CopyTo(dst);
+        section.RecordsData.AsSpan(rowStartByte, rowSizeBytes).CopyTo(dst);
         Array.Clear(buffer, rowSizeBytes, 8);
 
-        var nonceId = Options is { EncryptedRowNonceStrategy: Wdc5EncryptedRowNonceStrategy.SourceId } ? id : id;
         Span<byte> nonce = stackalloc byte[8];
         BinaryPrimitives.WriteUInt64LittleEndian(nonce, unchecked((ulong)nonceId));
 
@@ -1094,6 +1119,6 @@ public sealed class Wdc5File : IDb2File<Wdc5Row>, IDb2DenseStringTableIndexProvi
             salsa.Transform(span, span);
         }
 
-        return new DecryptedRowLease(buffer, clearLength: rowSizeBytes);
+        return new DecryptedRowLease(buffer, clearLength: rowSizeBytes, rowSizeBytes: rowSizeBytes);
     }
 }

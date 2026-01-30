@@ -34,13 +34,13 @@ public sealed class DiagnosticTest(ITestOutputHelper output)
         foreach (var row in file.EnumerateRows().Take(10))
         {
             tryCount++;
-            var id = row.Get<int>(Db2VirtualFieldIndex.Id);
+            var id = row.RowId;
 
             string? value = null;
             var success = false;
             try
             {
-                value = row.Get<string>(directory.ColumnStartIndex);
+                value = file.ReadField<string>(row, directory.ColumnStartIndex);
                 success = !string.IsNullOrEmpty(value);
             }
             catch

@@ -31,4 +31,4 @@ public readonly record struct ColumnCompressionDataImmediate(int BitOffset, int 
 
 public readonly record struct ColumnCompressionDataPallet(int BitOffset, int BitWidth, int Cardinality);
 
-public readonly record struct ColumnCompressionDataCommon(Value32 DefaultValue, int B, int C);
+public readonly record struct ColumnCompressionDataCommon(uint DefaultValue, int B, int C);

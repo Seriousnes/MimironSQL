@@ -16,7 +16,7 @@ public sealed class Wdc5RowDecodeSmokeTests
         var file = new Wdc5File(stream);
         var firstRow = file.EnumerateRows().First();
 
-        Should.NotThrow(() => firstRow.Get<uint>(0));
+        Should.NotThrow(() => file.ReadField<uint>(firstRow, 0));
     }
 
     [Fact]
@@ -27,11 +27,11 @@ public sealed class Wdc5RowDecodeSmokeTests
         var file = new Wdc5File(stream);
         var firstRow = file.EnumerateRows().First();
 
-        var id = firstRow.Get<int>(Db2VirtualFieldIndex.Id);
+        var id = firstRow.RowId;
         id.ShouldNotBe(-1);
         file.TryGetRowById(id, out var byId).ShouldBeTrue();
-        byId.Get<int>(Db2VirtualFieldIndex.Id).ShouldBe(id);
+        byId.RowId.ShouldBe(id);
 
-        byId.Get<uint>(0).ShouldBe(firstRow.Get<uint>(0));
+        file.ReadField<uint>(byId, 0).ShouldBe(file.ReadField<uint>(firstRow, 0));
     }
 }

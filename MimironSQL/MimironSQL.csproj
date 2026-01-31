@@ -10,6 +10,16 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <PackageId>MimironSQL</PackageId>
+    <Version>0.1.0</Version>
+    <Authors>Seriousnes</Authors>
+    <Company>Seriousnes</Company>
+    <Description>A high-performance LINQ query provider for World of Warcraft's DB2 database files</Description>
+    <PackageProjectUrl>https://github.com/Seriousnes/MimironSQL</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/Seriousnes/MimironSQL</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageTags>warcraft;wow;db2;linq;query;database</PackageTags>
   </PropertyGroup>
 
 </Project>

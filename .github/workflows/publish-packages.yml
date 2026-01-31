@@ -3,14 +3,23 @@ name: Publish NuGet Packages
 on:
   push:
     branches: [ main ]
+  pull_request:
+    branches: [ main ]
 
 permissions:
   contents: read
 
 jobs:
-  publish:
-    name: Build and Publish NuGet Packages
+  pack:
+    name: Pack ${{ matrix.project }}
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        project:
+          - MimironSQL.Formats.Abstractions
+          - Salsa20
+          - MimironSQL.Formats.Wdc5
+          - MimironSQL
 
     steps:
       - name: Checkout
@@ -24,22 +33,34 @@ jobs:
       - name: Restore dependencies
         run: dotnet restore MimironSQL.slnx
 
-      - name: Build solution
-        run: dotnet build MimironSQL.slnx --configuration Release --no-restore
+      - name: Pack ${{ matrix.project }}
+        run: dotnet pack ${{ matrix.project }}/${{ matrix.project }}.csproj --configuration Release --output ./packages
 
-      - name: Pack MimironSQL.Formats.Abstractions
-        run: dotnet pack MimironSQL.Formats.Abstractions/MimironSQL.Formats.Abstractions.csproj --configuration Release --no-build --output ./packages
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: package-${{ matrix.project }}
+          path: ./packages/*.nupkg
+          retention-days: 90
 
-      - name: Pack Salsa20
-        run: dotnet pack Salsa20/Salsa20.csproj --configuration Release --no-build --output ./packages
+  publish:
+    name: Publish Packages
+    runs-on: ubuntu-latest
+    needs: pack
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
 
-      - name: Pack MimironSQL.Formats.Wdc5
-        run: dotnet pack MimironSQL.Formats.Wdc5/MimironSQL.Formats.Wdc5.csproj --configuration Release --no-build --output ./packages
+    steps:
+      - name: Download all package artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: package-*
+          path: ./packages
+          merge-multiple: true
 
-      - name: Pack MimironSQL
-        run: dotnet pack MimironSQL/MimironSQL.csproj --configuration Release --no-build --output ./packages
+      - name: List packages
+        run: ls -la ./packages/
 
-      - name: Upload NuGet packages
+      - name: Upload combined packages
         uses: actions/upload-artifact@v4
         with:
           name: nuget-packages

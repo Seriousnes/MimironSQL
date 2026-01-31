@@ -11,15 +11,8 @@ permissions:
 
 jobs:
   pack:
-    name: Pack ${{ matrix.project }}
+    name: Build and Pack All Packages
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        project:
-          - MimironSQL.Formats.Abstractions
-          - Salsa20
-          - MimironSQL.Formats.Wdc5
-          - MimironSQL
 
     steps:
       - name: Checkout
@@ -33,13 +26,17 @@ jobs:
       - name: Restore dependencies
         run: dotnet restore MimironSQL.slnx
 
-      - name: Pack ${{ matrix.project }}
-        run: dotnet pack ${{ matrix.project }}/${{ matrix.project }}.csproj --configuration Release --output ./packages
+      - name: Pack all packages
+        run: |
+          dotnet pack MimironSQL.Formats.Abstractions/MimironSQL.Formats.Abstractions.csproj --configuration Release --output ./packages
+          dotnet pack Salsa20/Salsa20.csproj --configuration Release --output ./packages
+          dotnet pack MimironSQL.Formats.Wdc5/MimironSQL.Formats.Wdc5.csproj --configuration Release --output ./packages
+          dotnet pack MimironSQL/MimironSQL.csproj --configuration Release --output ./packages
 
-      - name: Upload package artifact
+      - name: Upload package artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: package-${{ matrix.project }}
+          name: all-packages
           path: ./packages/*.nupkg
           retention-days: 90
 
@@ -50,12 +47,11 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
 
     steps:
-      - name: Download all package artifacts
+      - name: Download package artifacts
         uses: actions/download-artifact@v4
         with:
-          pattern: package-*
+          name: all-packages
           path: ./packages
-          merge-multiple: true
 
       - name: List packages
         run: ls -la ./packages/

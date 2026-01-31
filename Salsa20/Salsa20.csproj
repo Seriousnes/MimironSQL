@@ -4,7 +4,7 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-	<RootNamespace>Security.Cryptography</RootNamespace>
+    <RootNamespace>Security.Cryptography</RootNamespace>
     <PackageId>MimironSQL.Salsa20</PackageId>
     <Version>0.1.0</Version>
     <Authors>Seriousnes</Authors>

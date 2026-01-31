@@ -4,7 +4,17 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-	<RootNamespace>Security.Cryptography</RootNamespace>
+    <RootNamespace>Security.Cryptography</RootNamespace>
+    <PackageId>MimironSQL.Salsa20</PackageId>
+    <Version>0.1.0</Version>
+    <Authors>Seriousnes</Authors>
+    <Company>Seriousnes</Company>
+    <Description>Salsa20 encryption library for decrypting encrypted DB2 files in MimironSQL</Description>
+    <PackageProjectUrl>https://github.com/Seriousnes/MimironSQL</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/Seriousnes/MimironSQL</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageTags>salsa20;encryption;cryptography</PackageTags>
   </PropertyGroup>
 
 </Project>

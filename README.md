@@ -4,22 +4,21 @@ MimironSQL is a high-performance LINQ query provider for World of Warcraft's DB2
 
 ## Features
 
-- 🎯 **Type-safe LINQ queries** - Query DB2 files using standard LINQ operations
-- 🔗 **Navigation properties** - Configure and traverse relationships between tables
-- 📊 **Multiple data sources** - Read from filesystem or CASC archives
-- ⚡ **High performance** - Optimized for efficient data access and materialization
-- 🛡️ **Read-only** - Safe, non-destructive access to game data
+- **Type-safe LINQ queries** - Query DB2 files using standard LINQ operations
+- **Navigation properties** - Configure and traverse relationships between tables
+- **Multiple data sources** - Read from filesystem or CASC archives
+- **High performance** - Optimized for efficient data access and materialization
+- **Read-only** - Safe, non-destructive access to game data
 
 ## Installation
 
-MimironSQL is a .NET library targeting .NET 10. Add the required packages to your project:
+MimironSQL is a .NET library targeting .NET 10. To use it in your project, add a reference to the MimironSQL projects:
 
-```bash
-# Core library
-dotnet add package MimironSQL
-
-# WDC5 format support (required for WoW DB2 files)
-dotnet add package MimironSQL.Formats.Wdc5
+```xml
+<ItemGroup>
+  <ProjectReference Include="..\MimironSQL\MimironSQL.csproj" />
+  <ProjectReference Include="..\MimironSQL.Formats.Wdc5\MimironSQL.Formats.Wdc5.csproj" />
+</ItemGroup>
 ```
 
 ### Dependencies
@@ -288,32 +287,18 @@ LINQ extensions for DB2 queries.
 
 ## Supported LINQ Operations
 
-MimironSQL supports the following LINQ operations:
+MimironSQL supports the following LINQ query operations:
 
-### Filtering
-- `Where(predicate)` - Filter results
-- `FirstOrDefault(predicate)` - Get first matching element
-- `Single(predicate)` - Get single matching element
-- `Take(count)` - Limit results
-- `Skip(count)` - Skip results
+- `Where` - Filtering
+- `Select` - Projection (including anonymous types and navigation properties)
+- `FirstOrDefault`, `First` - Retrieve first element
+- `SingleOrDefault`, `Single` - Retrieve single element
+- `Take`, `Skip` - Result limiting and pagination
+- `Count`, `Any` - Aggregation
+- `Include` - Eager loading of navigation properties
+- `Find` - Direct primary key lookup (most efficient)
 
-### Projection
-- `Select(selector)` - Project to new shape
-- Anonymous types and named types supported
-- Navigation property projections
-
-### Aggregation
-- `Count()` - Count elements
-- `Any()` - Check if any elements exist
-
-### Relationships
-- `Include(navigation)` - Eager load related entities
-- Navigation property access in projections
-
-### Direct Access
-- `Find(id)` - Lookup by primary key (most efficient)
-
-**Note:** Write operations (Insert, Update, Delete) are not supported as DB2 files are read-only.
+**Note:** Unsupported LINQ operations will throw `NotSupportedException` at query execution time. Write operations (Insert, Update, Delete) are not supported as DB2 files are read-only.
 
 ## Navigation Configuration Examples
 

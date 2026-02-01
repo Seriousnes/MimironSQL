@@ -1,8 +1,8 @@
 using System.Globalization;
 
-namespace MimironSQL.Db2.Schema.Dbd;
+namespace MimironSQL.Dbd;
 
-internal sealed class DbdLayout(uint[] hashes)
+public sealed class DbdLayout(uint[] hashes)
 {
     public uint[] Hashes { get; } = hashes;
     public List<DbdBuildBlock> Builds { get; } = [];

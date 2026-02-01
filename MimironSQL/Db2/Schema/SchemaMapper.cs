@@ -1,4 +1,3 @@
-using MimironSQL.Db2.Schema.Dbd;
 using MimironSQL.Formats;
 using MimironSQL.Providers;
 
@@ -10,9 +9,7 @@ internal sealed class SchemaMapper(IDbdProvider dbdProvider)
     {
         ArgumentNullException.ThrowIfNull(tableName);
 
-
-        using var stream = dbdProvider.Open(tableName);
-        var dbd = DbdFile.Parse(stream);
+        var dbd = dbdProvider.Open(tableName);
 
         var layoutHash = layout.LayoutHash;
         if (!dbd.TryGetLayout(layoutHash, out var dbdLayout))
@@ -33,10 +30,10 @@ internal sealed class SchemaMapper(IDbdProvider dbdProvider)
             if (entry.IsNonInline)
             {
                 var virtualIndex = entry.IsId
-                    ? global::MimironSQL.Db2.Db2VirtualFieldIndex.Id
+                    ? Db2VirtualFieldIndex.Id
                     : entry.IsRelation
-                        ? global::MimironSQL.Db2.Db2VirtualFieldIndex.ParentRelation
-                        : global::MimironSQL.Db2.Db2VirtualFieldIndex.UnsupportedNonInline;
+                        ? Db2VirtualFieldIndex.ParentRelation
+                        : Db2VirtualFieldIndex.UnsupportedNonInline;
 
                 fields.Add(new Db2FieldSchema(
                     entry.Name,

@@ -12,12 +12,16 @@ permissions:
 
 jobs:
   pack:
-    name: Build and Pack All Packages
+    name: Build and Pack Changed Packages
     runs-on: ubuntu-latest
+    outputs:
+      any: ${{ steps.packages.outputs.any }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
@@ -30,14 +34,18 @@ jobs:
       - name: Build solution
         run: dotnet build MimironSQL.slnx --configuration Release
 
-      - name: Pack all packages
+      - name: Determine and pack changed packages
+        id: packages
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event_name == 'push' && github.event.before || github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event_name == 'push' && github.sha || github.event.pull_request.head.sha }}
+          PACKAGE_VERSION: 1.0.${{ github.run_number }}
         run: |
-          dotnet pack MimironSQL.Formats.Abstractions/MimironSQL.Formats.Abstractions.csproj --configuration Release --no-build --output ./packages
-          dotnet pack Salsa20/Salsa20.csproj --configuration Release --no-build --output ./packages
-          dotnet pack MimironSQL.Formats.Wdc5/MimironSQL.Formats.Wdc5.csproj --configuration Release --no-build --output ./packages
-          dotnet pack MimironSQL/MimironSQL.csproj --configuration Release --no-build --output ./packages
+          bash ./.github/scripts/pack-changed.sh
 
       - name: Upload package artifacts
+        if: steps.packages.outputs.any == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && 'nuget-packages' || 'pr-packages' }}
@@ -48,7 +56,7 @@ jobs:
     name: Publish to GitHub Packages
     runs-on: ubuntu-latest
     needs: pack
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.pack.outputs.any == 'true'
 
     steps:
       - name: Checkout

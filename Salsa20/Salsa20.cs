@@ -5,6 +5,7 @@ namespace Security.Cryptography;
 
 /// <summary>
 /// A zero-allocation, high-performance implementation of the Salsa20 stream cipher.
+/// Algorithm specification by Daniel J. Bernstein: https://cr.yp.to/snuffle.html
 /// </summary>
 public sealed class Salsa20 : IDisposable
 {

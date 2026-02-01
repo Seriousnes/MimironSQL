@@ -1,6 +1,6 @@
-namespace MimironSQL.Db2.Schema.Dbd;
+namespace MimironSQL.Dbd;
 
-internal sealed class DbdBuildBlock(string buildLine)
+public sealed class DbdBuildBlock(string buildLine)
 {
     public string BuildLine { get; } = buildLine;
     public List<DbdLayoutEntry> Entries { get; } = [];

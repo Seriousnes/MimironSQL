@@ -3,9 +3,7 @@ This project is a SQL engine for reading and querying World of Warcraft DB2 file
 
 ## IMPORTANT
 - When you receive answers to questions as per the "Follow-up Questions" instructions, incorporate those answers into this project overview and the implementation plan as needed.
-- Ignore all other `copilot-instructions.md` in this workspace.
 - Only consider files within the root directory of MimironSQL and its subdirectories as part of this project. Do not consider files from other repositories (such as DBCD, WoWDBDefs, or CASC.Net) except for understanding how to interface with them.
-- Never modifiy files outside of the MimironSQL repository.
 - Use minimal commenting style, only adding comments on methods or complex logic where absolutely necessary for clarity.
 
 ## Terminal (Hard)

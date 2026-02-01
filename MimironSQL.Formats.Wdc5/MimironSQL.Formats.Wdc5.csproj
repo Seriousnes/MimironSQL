@@ -1,14 +1,12 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
-  <ItemGroup>
-    <ProjectReference Include="..\MimironSQL.Formats.Abstractions\MimironSQL.Formats.Abstractions.csproj" />
-    <ProjectReference Include="..\Salsa20\Salsa20.csproj" />
-  </ItemGroup>
-
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <PropertyGroup>
     <PackageId>MimironSQL.Formats.Wdc5</PackageId>
     <Version>0.1.0</Version>
     <Authors>Seriousnes</Authors>
@@ -20,5 +18,10 @@
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageTags>warcraft;wow;db2;wdc5;format</PackageTags>
   </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\MimironSQL.Formats.Abstractions\MimironSQL.Formats.Abstractions.csproj" />
+    <ProjectReference Include="..\Salsa20\Salsa20.csproj" />
+  </ItemGroup>
 
 </Project>

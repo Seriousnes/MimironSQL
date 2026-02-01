@@ -4,6 +4,9 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <PropertyGroup>
     <PackageId>MimironSQL.Formats.Abstractions</PackageId>
     <Version>0.1.0</Version>
     <Authors>Seriousnes</Authors>

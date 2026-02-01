@@ -420,7 +420,9 @@ Ensure your entity class:
 
 ## License
 
-See [LICENSE.txt](LICENSE.txt) for license information.
+This project is licensed under the MIT License. See [LICENSE.txt](LICENSE.txt) for details.
+
+For acknowledgments of specifications and community resources used in this project, see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 ## Contributing
 

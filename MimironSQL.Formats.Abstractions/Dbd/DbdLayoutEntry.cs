@@ -1,8 +1,10 @@
 using System.Globalization;
 
-namespace MimironSQL.Db2.Schema.Dbd;
+using MimironSQL.Db2;
 
-internal readonly record struct DbdLayoutEntry(
+namespace MimironSQL.Dbd;
+
+public readonly record struct DbdLayoutEntry(
     string Name,
     Db2ValueType ValueType,
     string? ReferencedTableName,
@@ -12,7 +14,7 @@ internal readonly record struct DbdLayoutEntry(
     bool IsId,
     bool IsRelation);
 
-internal static class DbdLayoutEntryParser
+public static class DbdLayoutEntryParser
 {
     public static bool TryParse(string line, IReadOnlyDictionary<string, DbdColumn> columnsByName, out DbdLayoutEntry entry)
     {

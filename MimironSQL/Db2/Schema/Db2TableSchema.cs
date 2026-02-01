@@ -25,10 +25,8 @@ public sealed class Db2TableSchema(string tableName, uint layoutHash, int physic
         if (TryGetField(name, out field))
             return true;
 
-        // Fallback to case-insensitive search (common for Id/ID).
-        // FirstOrDefault on struct returns default(Db2FieldSchema) with empty Name when no match is found.
         var caseInsensitiveMatch = Fields.FirstOrDefault(f => string.Equals(f.Name, name, StringComparison.OrdinalIgnoreCase));
-        if (!caseInsensitiveMatch.Equals(default(Db2FieldSchema)))
+        if (!caseInsensitiveMatch.Equals(default))
         {
             field = caseInsensitiveMatch;
             return true;

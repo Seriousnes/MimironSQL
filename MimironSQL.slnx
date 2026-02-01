@@ -1,8 +1,9 @@
 <Solution>
-  <Project Path="MimironSQL.Tests/MimironSQL.Tests.csproj" />
-  <Project Path="MimironSQL/MimironSQL.csproj" />
   <Project Path="MimironSQL.Benchmarks/MimironSQL.Benchmarks.csproj" />
   <Project Path="MimironSQL.Formats.Abstractions/MimironSQL.Formats.Abstractions.csproj" />
   <Project Path="MimironSQL.Formats.Wdc5/MimironSQL.Formats.Wdc5.csproj" />
+  <Project Path="MimironSQL.Providers/MimironSQL.Providers.csproj" Id="159e2995-3a90-4c4a-9da3-e66d9fc5635f" />
+  <Project Path="MimironSQL.Tests/MimironSQL.Tests.csproj" />
+  <Project Path="MimironSQL/MimironSQL.csproj" />
   <Project Path="Salsa20/Salsa20.csproj" />
 </Solution>

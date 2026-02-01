@@ -1,5 +1,4 @@
 using BenchmarkDotNet.Attributes;
-using MimironSQL.Benchmarks.Fixtures;
 using MimironSQL.Providers;
 
 namespace MimironSQL.Benchmarks;

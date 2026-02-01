@@ -1,6 +1,6 @@
-namespace MimironSQL.Db2.Schema.Dbd;
+namespace MimironSQL.Dbd;
 
-internal sealed class DbdFile(Dictionary<string, DbdColumn> columnsByName, List<DbdLayout> layouts)
+public sealed class DbdFile(Dictionary<string, DbdColumn> columnsByName, List<DbdLayout> layouts)
 {
     public IReadOnlyDictionary<string, DbdColumn> ColumnsByName { get; } = columnsByName;
     public IReadOnlyList<DbdLayout> Layouts { get; } = layouts;

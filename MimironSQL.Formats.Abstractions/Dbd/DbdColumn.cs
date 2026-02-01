@@ -1,12 +1,13 @@
-namespace MimironSQL.Db2.Schema.Dbd;
+using MimironSQL.Db2;
 
-internal readonly record struct DbdColumn(Db2ValueType ValueType, string? ReferencedTableName, bool IsVerified);
+namespace MimironSQL.Dbd;
 
-internal static class DbdColumnParser
+public readonly record struct DbdColumn(Db2ValueType ValueType, string? ReferencedTableName, bool IsVerified);
+
+public static class DbdColumnParser
 {
     public static bool TryParse(string line, out string name, out DbdColumn column)
     {
-        // Format: "type name" (e.g., "locstring MapName_lang", "int<Map::ID> ParentMapID")
         var space = line.IndexOf(' ');
         if (space <= 0 || space == line.Length - 1)
         {
@@ -35,10 +36,6 @@ internal static class DbdColumnParser
 
     private static DbdColumn ParseColumnType(string token)
     {
-        // Examples:
-        // - int
-        // - int<Map::ID>
-        // - int<ActionBarGroup::ID>
         var lt = token.IndexOf('<');
         if (lt >= 0)
         {
@@ -56,7 +53,6 @@ internal static class DbdColumnParser
 
     private static string? TryParseReferenceTableName(string inner)
     {
-        // Inner is usually like "Map::ID" or "QuestV2::ID"
         var idx = inner.IndexOf("::", StringComparison.Ordinal);
         if (idx <= 0)
             return null;

@@ -1,6 +1,8 @@
+using MimironSQL.Dbd;
+
 namespace MimironSQL.Providers;
 
 public interface IDbdProvider
 {
-    Stream Open(string tableName);
+    DbdFile Open(string tableName);
 }

@@ -26,7 +26,7 @@ This project is a SQL engine for reading and querying World of Warcraft DB2 file
 
 ## Repository Structure
 - `MimironSQL/`: Main library project with the SQL engine implementation
-- `MimironSQL.Formats.Abstractions/`: Abstract interfaces and base types for DB2 format support
+- `MimironSQL.Abstractions/`: Abstract interfaces and base types for DB2 format support
 - `MimironSQL.Formats.Wdc5/`: WDC5 format implementation (World of Warcraft DB2 version 5)
 - `MimironSQL.Tests/`: Unit and integration tests using xUnit, NSubstitute, and Shouldly
 - `Salsa20/`: Salsa20 encryption library used for encrypted DB2 files

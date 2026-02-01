@@ -1,4 +1,4 @@
-namespace MimironSQL.Db2.Schema;
+namespace MimironSQL.Db2;
 
 public enum Db2ValueType
 {

@@ -234,7 +234,7 @@ internal static class Db2NavigationRowProjector
                         if (node.Member.Name.Equals("Id", StringComparison.OrdinalIgnoreCase))
                         {
                             var idField = rootSchema.Fields.FirstOrDefault(f => f.IsId);
-                            if (idField.Equals(default(Db2FieldSchema)) || string.IsNullOrWhiteSpace(idField.Name))
+                            if (idField.Equals(default) || string.IsNullOrWhiteSpace(idField.Name))
                                 throw new NotSupportedException($"Id field was not found in schema '{rootSchema.TableName}'.");
                             field = idField;
                         }

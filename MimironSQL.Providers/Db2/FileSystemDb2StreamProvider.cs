@@ -2,7 +2,7 @@ namespace MimironSQL.Providers;
 
 public sealed class FileSystemDb2StreamProvider(FileSystemDb2StreamProviderOptions options) : IDb2StreamProvider
 {
-    private readonly IReadOnlyDictionary<string, string> _pathsByTableName = Directory
+    private readonly Dictionary<string, string> _pathsByTableName = Directory
         .EnumerateFiles(options.Db2DirectoryPath, "*.db2", SearchOption.TopDirectoryOnly)
         .ToDictionary(
             p => Path.GetFileNameWithoutExtension(p),

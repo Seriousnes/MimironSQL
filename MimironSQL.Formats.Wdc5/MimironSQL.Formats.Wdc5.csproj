@@ -20,7 +20,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\MimironSQL.Formats.Abstractions\MimironSQL.Formats.Abstractions.csproj" />
+    <ProjectReference Include="..\MimironSQL.Abstractions\MimironSQL.Abstractions.csproj" />
     <ProjectReference Include="..\Salsa20\Salsa20.csproj" />
   </ItemGroup>
 

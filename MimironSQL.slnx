@@ -1,6 +1,6 @@
 <Solution>
   <Project Path="MimironSQL.Benchmarks/MimironSQL.Benchmarks.csproj" />
-  <Project Path="MimironSQL.Formats.Abstractions/MimironSQL.Formats.Abstractions.csproj" />
+  <Project Path="MimironSQL.Abstractions/MimironSQL.Abstractions.csproj" />
   <Project Path="MimironSQL.Formats.Wdc5/MimironSQL.Formats.Wdc5.csproj" />
   <Project Path="MimironSQL.Providers/MimironSQL.Providers.csproj" />
   <Project Path="MimironSQL.Tests/MimironSQL.Tests.csproj" />

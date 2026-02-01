@@ -8,7 +8,7 @@
 	</PropertyGroup>
 
 	<PropertyGroup>
-		<PackageId>MimironSQL.Formats.Abstractions</PackageId>
+		<PackageId>MimironSQL.Abstractions</PackageId>
 		<Version>0.1.0</Version>
 		<Authors>Seriousnes</Authors>
 		<Company>Seriousnes</Company>

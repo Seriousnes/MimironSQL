@@ -28,13 +28,16 @@ public sealed class Db2CollectionNavigationBuilder<TSource, TTarget>(Db2ModelBui
             if (body is UnaryExpression { NodeType: ExpressionType.Convert or ExpressionType.ConvertChecked } u)
                 body = u.Operand;
 
-            if (body is not MemberExpression { Member: PropertyInfo or FieldInfo } member)
-                throw new NotSupportedException("FK array selector only supports simple member access (e.g., x => x.ChildIds).");
+            if (body is not MemberExpression { Member: PropertyInfo p } member)
+                throw new NotSupportedException("FK array selector only supports simple public property access (e.g., x => x.ChildIds).");
 
             if (member.Expression != expression.Parameters[0])
                 throw new NotSupportedException("FK array selector only supports direct member access on the root entity parameter.");
 
-            return member.Member;
+            if (p.GetMethod is not { IsPublic: true })
+                throw new NotSupportedException($"FK array property '{p.DeclaringType?.FullName}.{p.Name}' must have a public getter.");
+
+            return p;
         }
     }
 
@@ -57,13 +60,16 @@ public sealed class Db2CollectionNavigationBuilder<TSource, TTarget>(Db2ModelBui
             if (body is UnaryExpression { NodeType: ExpressionType.Convert or ExpressionType.ConvertChecked } u)
                 body = u.Operand;
 
-            if (body is not MemberExpression { Member: PropertyInfo or FieldInfo } member)
-                throw new NotSupportedException("FK selector only supports simple member access (e.g., x => x.ParentId). ");
+            if (body is not MemberExpression { Member: PropertyInfo p } member)
+                throw new NotSupportedException("FK selector only supports simple public property access (e.g., x => x.ParentId). ");
 
             if (member.Expression != expression.Parameters[0])
                 throw new NotSupportedException("FK selector only supports direct member access on the root entity parameter.");
 
-            return member.Member;
+            if (p.GetMethod is not { IsPublic: true })
+                throw new NotSupportedException($"FK property '{p.DeclaringType?.FullName}.{p.Name}' must have a public getter.");
+
+            return p;
         }
     }
 
@@ -84,13 +90,16 @@ public sealed class Db2CollectionNavigationBuilder<TSource, TTarget>(Db2ModelBui
             if (body is UnaryExpression { NodeType: ExpressionType.Convert or ExpressionType.ConvertChecked } u)
                 body = u.Operand;
 
-            if (body is not MemberExpression { Member: PropertyInfo or FieldInfo } member)
-                throw new NotSupportedException("Principal key selector only supports simple member access (e.g., x => x.Id). ");
+            if (body is not MemberExpression { Member: PropertyInfo p } member)
+                throw new NotSupportedException("Principal key selector only supports simple public property access (e.g., x => x.Id). ");
 
             if (member.Expression != expression.Parameters[0])
                 throw new NotSupportedException("Principal key selector only supports direct member access on the root entity parameter.");
 
-            return member.Member;
+            if (p.GetMethod is not { IsPublic: true })
+                throw new NotSupportedException($"Principal key property '{p.DeclaringType?.FullName}.{p.Name}' must have a public getter.");
+
+            return p;
         }
     }
 

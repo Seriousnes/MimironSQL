@@ -1,29 +1,30 @@
 using MimironSQL.Db2.Schema;
+using MimironSQL.Db2.Model;
 
 using System.Linq.Expressions;
 using System.Reflection;
-using MimironSQL.Extensions;
 using MimironSQL.Formats;
 
 namespace MimironSQL.Db2.Query;
 
 internal static class Db2RowProjectorCompiler
 {
-    public static bool TryCompile<TEntity, TResult, TRow>(Db2TableSchema schema, Expression<Func<TEntity, TResult>> selector, out Func<TRow, TResult> projector)
+    public static bool TryCompile<TEntity, TResult, TRow>(Db2EntityType entityType, Expression<Func<TEntity, TResult>> selector, out Func<TRow, TResult> projector)
         where TRow : struct, IRowHandle
-        => TryCompile<TEntity, TResult, TRow>(file: null, schema, selector, out projector, out _);
+        => TryCompile<TEntity, TResult, TRow>(file: null, entityType, selector, out projector, out _);
 
     public static bool TryCompile<TEntity, TResult, TRow>(
         IDb2File? file,
-        Db2TableSchema schema,
+        Db2EntityType entityType,
         Expression<Func<TEntity, TResult>> selector,
         out Func<TRow, TResult> projector,
         out Db2SourceRequirements requirements)
         where TRow : struct, IRowHandle
     {
+        var schema = entityType.Schema;
         var fieldsByName = schema.Fields.ToDictionary(f => f.Name, StringComparer.OrdinalIgnoreCase);
 
-        requirements = new Db2SourceRequirements(schema, typeof(TEntity));
+        requirements = new Db2SourceRequirements(entityType);
 
         var entityParam = selector.Parameters[0];
         var rowParam = Expression.Parameter(typeof(TRow), "row");
@@ -45,7 +46,7 @@ internal static class Db2RowProjectorCompiler
 
         try
         {
-            var rewriter = new SelectorRewriter<TRow>(entityParam, rowParam, GetAccessor, requirements, file);
+            var rewriter = new SelectorRewriter<TRow>(entityParam, rowParam, entityType, GetAccessor, requirements, file);
             var rewrittenBody = rewriter.Visit(selector.Body);
 
             if (rewrittenBody is null)
@@ -67,6 +68,7 @@ internal static class Db2RowProjectorCompiler
     private sealed class SelectorRewriter<TRow>(
         ParameterExpression entityParam,
         ParameterExpression rowParam,
+        Db2EntityType entityType,
         Func<string, Db2FieldAccessor> getAccessor,
         Db2SourceRequirements requirements,
         IDb2File? file) : ExpressionVisitor
@@ -85,8 +87,12 @@ internal static class Db2RowProjectorCompiler
         {
             if (node.Expression == entityParam)
             {
-                var accessor = getAccessor(node.Member.Name);
-                requirements.RequireField(accessor.Field, node.Type == typeof(string) ? Db2RequiredColumnKind.String : Db2RequiredColumnKind.Scalar);
+                if (node.Member is not PropertyInfo)
+                    throw new NotSupportedException($"Member '{entityType.ClrType.FullName}.{node.Member.Name}' must be a public property.");
+
+                var field = entityType.ResolveFieldSchema(node.Member, context: "row projection");
+                var accessor = getAccessor(field.Name);
+                requirements.RequireMember(node.Member, node.Type == typeof(string) ? Db2RequiredColumnKind.String : Db2RequiredColumnKind.Scalar);
                 return BuildReadExpression(accessor.Field, node.Type);
             }
 
@@ -97,8 +103,12 @@ internal static class Db2RowProjectorCompiler
         {
             if (node is { NodeType: ExpressionType.Convert } && node.Operand is MemberExpression m && m.Expression == entityParam)
             {
-                var accessor = getAccessor(m.Member.Name);
-                requirements.RequireField(accessor.Field, m.Type == typeof(string) ? Db2RequiredColumnKind.String : Db2RequiredColumnKind.Scalar);
+                if (m.Member is not PropertyInfo)
+                    throw new NotSupportedException($"Member '{entityType.ClrType.FullName}.{m.Member.Name}' must be a public property.");
+
+                var field = entityType.ResolveFieldSchema(m.Member, context: "row projection");
+                var accessor = getAccessor(field.Name);
+                requirements.RequireMember(m.Member, m.Type == typeof(string) ? Db2RequiredColumnKind.String : Db2RequiredColumnKind.Scalar);
                 var read = BuildReadExpression(accessor.Field, m.Type);
                 return Expression.Convert(read, node.Type);
             }

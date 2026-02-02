@@ -1,7 +1,3 @@
-using System.Reflection;
-
-using MimironSQL.Db2.Query;
-
 namespace MimironSQL.Extensions;
 
 internal static class TypeExtensions

@@ -16,13 +16,16 @@ public sealed partial class Db2EntityTypeBuilder<T>
         if (body is UnaryExpression { NodeType: ExpressionType.Convert or ExpressionType.ConvertChecked } u)
             body = u.Operand;
 
-        if (body is not MemberExpression { Member: PropertyInfo or FieldInfo } member)
-            throw new NotSupportedException("HasMany only supports simple member access (e.g., x => x.Children).");
+        if (body is not MemberExpression { Member: PropertyInfo p } member)
+            throw new NotSupportedException("HasMany only supports simple public property access (e.g., x => x.Children).");
 
         if (member.Expression != navigation.Parameters[0])
             throw new NotSupportedException("HasMany only supports direct member access on the root entity parameter.");
 
-        var navMember = member.Member;
+        if (p.GetMethod is not { IsPublic: true })
+            throw new NotSupportedException($"Navigation property '{p.DeclaringType?.FullName}.{p.Name}' must have a public getter.");
+
+        var navMember = p;
         var navType = navMember.GetMemberType();
 
         var targetClrType = typeof(TTarget);

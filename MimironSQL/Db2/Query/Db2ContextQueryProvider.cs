@@ -68,7 +68,7 @@ internal sealed class Db2ContextQueryProvider(Db2Context context) : IQueryProvid
     private static IQueryable CreateQueryable<TElement>(IQueryProvider provider, Expression expression)
         => new Db2Queryable<TElement>(provider, expression);
 
-    private static IQueryProvider CreatePerTableProvider<TEntity, TRow>(
+    private static Db2QueryProvider<TEntity, TRow> CreatePerTableProvider<TEntity, TRow>(
         Db2Context context,
         IDb2File file,
         Db2TableSchema schema,
@@ -76,8 +76,7 @@ internal sealed class Db2ContextQueryProvider(Db2Context context) : IQueryProvid
         where TRow : struct, IRowHandle
     {
         var typedFile = (IDb2File<TRow>)file;
-        Func<string, (IDb2File<TRow> File, Db2TableSchema Schema)> resolver = tableName => context.GetOrOpenTableRawTyped<TRow>(tableName);
-        return new Db2QueryProvider<TEntity, TRow>(typedFile, schema, model, resolver);
+        return new Db2QueryProvider<TEntity, TRow>(typedFile, schema, model, context.GetOrOpenTableRawTyped<TRow>);
     }
 
     private static (Type EntityType, string TableName) GetRootTable(Expression expression)

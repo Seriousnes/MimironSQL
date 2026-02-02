@@ -1,4 +1,3 @@
-using MimironSQL.Db2;
 using MimironSQL.Db2.Schema;
 using MimironSQL.Db2.Model;
 using MimironSQL.Formats;
@@ -24,7 +23,8 @@ internal sealed class Db2QueryProvider<TEntity, TRow>(
     private static readonly ConcurrentDictionary<(Type NavigationType, Type TargetType), Func<Db2QueryProvider<TEntity, TRow>, IEnumerable<TEntity>, MemberInfo, string, Db2CollectionNavigation, IEnumerable<TEntity>>> ForeignKeyArrayToPrimaryKeyIncludeDelegates = new();
     private static readonly ConcurrentDictionary<(Type NavigationType, Type TargetType), Func<Db2QueryProvider<TEntity, TRow>, IEnumerable<TEntity>, MemberInfo, string, Db2CollectionNavigation, IEnumerable<TEntity>>> DependentForeignKeyToPrimaryKeyIncludeDelegates = new();
 
-    private readonly Db2EntityMaterializer<TEntity, TRow> _materializer = new(schema);
+    private readonly Db2EntityType _rootEntityType = model.GetEntityType(typeof(TEntity));
+    private readonly Db2EntityMaterializer<TEntity, TRow> _materializer = new(model.GetEntityType(typeof(TEntity)));
     private readonly Db2Model _model = model;
     private readonly Func<string, (IDb2File<TRow> File, Db2TableSchema Schema)> _tableResolver = tableResolver;
 
@@ -263,10 +263,10 @@ internal sealed class Db2QueryProvider<TEntity, TRow>(
             return false;
 
         var rowPredicates = new List<Func<TRow, bool>>();
-        var requirements = new Db2SourceRequirements(schema, typeof(TEntity));
+        var requirements = new Db2SourceRequirements(_rootEntityType);
         foreach (var predicate in preEntityWhere)
         {
-            if (!Db2RowPredicateCompiler.TryCompile(file, schema, predicate, out var rowPredicate, out var predicateRequirements))
+            if (!Db2RowPredicateCompiler.TryCompile(file, _rootEntityType, predicate, out var rowPredicate, out var predicateRequirements))
                 return false;
 
             requirements.Columns.UnionWith(predicateRequirements.Columns);
@@ -326,11 +326,11 @@ internal sealed class Db2QueryProvider<TEntity, TRow>(
             return false;
 
         var rowPredicates = new List<Func<TRow, bool>>();
-        var rootRequirements = new Db2SourceRequirements(schema, typeof(TEntity));
+        var rootRequirements = new Db2SourceRequirements(_rootEntityType);
 
         foreach (var predicate in preEntityWhere)
         {
-            if (!Db2RowPredicateCompiler.TryCompile(file, schema, predicate, out var rowPredicate, out var predicateRequirements))
+            if (!Db2RowPredicateCompiler.TryCompile(file, _rootEntityType, predicate, out var rowPredicate, out var predicateRequirements))
                 return false;
 
             rootRequirements.Columns.UnionWith(predicateRequirements.Columns);
@@ -375,7 +375,7 @@ internal sealed class Db2QueryProvider<TEntity, TRow>(
         if (selector is not Expression<Func<TEntity, TProjected>> typed)
             return null;
 
-        return Db2RowProjectorCompiler.TryCompile<TEntity, TProjected, TRow>(file, schema, typed, out var projector, out var requirements)
+        return Db2RowProjectorCompiler.TryCompile<TEntity, TProjected, TRow>(file, _rootEntityType, typed, out var projector, out var requirements)
             ? (projector, requirements)
             : null;
     }
@@ -434,7 +434,7 @@ internal sealed class Db2QueryProvider<TEntity, TRow>(
         return Db2NavigationRowProjector.ProjectFromRows<TProjected, TRow>(
             file,
             FilteredRows(),
-            schema,
+            _rootEntityType,
             _model,
             _tableResolver,
             [.. navAccesses],
@@ -526,7 +526,7 @@ internal sealed class Db2QueryProvider<TEntity, TRow>(
                 continue;
             }
 
-            if (Db2RowPredicateCompiler.TryCompile(file, schema, predicate, out var rowPredicate))
+            if (Db2RowPredicateCompiler.TryCompile(file, _rootEntityType, predicate, out var rowPredicate))
                 rowPredicates.Add(rowPredicate);
             else
                 entityPredicates.Add(predicate.Compile());
@@ -711,6 +711,13 @@ internal sealed class Db2QueryProvider<TEntity, TRow>(
 
     private static bool TryGetEnumerableElementType(Type type, out Type elementType)
     {
+        // Special-case: string implements IEnumerable<char>, but for query results we treat it as a scalar.
+        if (type == typeof(string))
+        {
+            elementType = typeof(string).BaseType!;
+            return false;
+        }
+
         if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(IEnumerable<>))
         {
             elementType = type.GetGenericArguments()[0];
@@ -806,8 +813,8 @@ internal sealed class Db2QueryProvider<TEntity, TRow>(
             var navigationSetter = CreateNavigationSetter<TRelated>(referenceNavMember);
 
             var targetEntityType = _model.GetEntityType(referenceNav.TargetClrType);
-            var (relatedFile, relatedSchema) = _tableResolver(targetEntityType.TableName);
-            var relatedMaterializer = new Db2EntityMaterializer<TRelated, TRow>(relatedSchema);
+            var (relatedFile, _) = _tableResolver(targetEntityType.TableName);
+            var relatedMaterializer = new Db2EntityMaterializer<TRelated, TRow>(targetEntityType);
 
             var entitiesWithKeys = new List<(TEntity Entity, int Key)>();
             HashSet<int> keys = [];
@@ -920,8 +927,8 @@ internal sealed class Db2QueryProvider<TEntity, TRow>(
         var navigationSetter = CreateNavigationSetter<TRelatedNav>(navMember);
 
         var targetEntityType = provider._model.GetEntityType(typeof(TTarget));
-        var (relatedFile, relatedSchema) = provider._tableResolver(targetEntityType.TableName);
-        var relatedMaterializer = new Db2EntityMaterializer<TTarget, TRow>(relatedSchema);
+        var (relatedFile, _) = provider._tableResolver(targetEntityType.TableName);
+        var relatedMaterializer = new Db2EntityMaterializer<TTarget, TRow>(targetEntityType);
 
         var entitiesWithIds = new List<(TEntity Entity, int[] Ids)>();
         HashSet<int> keys = [];
@@ -1010,8 +1017,8 @@ internal sealed class Db2QueryProvider<TEntity, TRow>(
         }
 
         var targetEntityType = provider._model.GetEntityType(typeof(TTarget));
-        var (relatedFile, relatedSchema) = provider._tableResolver(targetEntityType.TableName);
-        var relatedMaterializer = new Db2EntityMaterializer<TTarget, TRow>(relatedSchema);
+        var (relatedFile, _) = provider._tableResolver(targetEntityType.TableName);
+        var relatedMaterializer = new Db2EntityMaterializer<TTarget, TRow>(targetEntityType);
 
         Dictionary<int, List<TTarget>> dependentsByKey = [];
         if (keys is { Count: not 0 })

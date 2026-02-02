@@ -225,7 +225,13 @@ public abstract class Db2Context
 
     private Db2Table<TEntity> CreateTypedTable<TEntity, TRow>(string tableName, Db2TableSchema schema, IDb2File file)
         where TRow : struct
-        => new Db2Table<TEntity, TRow>(tableName, schema, _queryProvider, (IDb2File<TRow>)file);
+    {
+        var entityType = _model!.GetEntityType(typeof(TEntity));
+        if (!entityType.TableName.Equals(tableName, StringComparison.OrdinalIgnoreCase))
+            entityType = entityType.WithSchema(tableName, schema);
+
+        return new Db2Table<TEntity, TRow>(tableName, schema, entityType, _queryProvider, (IDb2File<TRow>)file);
+    }
 
     protected Db2Table<T> Table<T>(string? tableName = null)
     {

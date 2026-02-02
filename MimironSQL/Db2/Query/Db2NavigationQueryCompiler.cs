@@ -1,8 +1,6 @@
-using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
 
-using MimironSQL.Db2;
 using MimironSQL.Db2.Model;
 using MimironSQL.Db2.Schema;
 using MimironSQL.Extensions;
@@ -23,6 +21,8 @@ internal static class Db2NavigationQueryCompiler
     {
         rowPredicate = _ => true;
 
+        var rootEntityType = model.GetEntityType(typeof(TEntity));
+
         var body = predicate.Body is UnaryExpression { NodeType: ExpressionType.Convert or ExpressionType.ConvertChecked } u
             ? u.Operand
             : predicate.Body;
@@ -34,7 +34,7 @@ internal static class Db2NavigationQueryCompiler
             var right = Expression.Lambda<Func<TEntity, bool>>(andAlso.Right, p);
 
             if (Db2NavigationQueryTranslator.TryTranslateCollectionAnyPredicate(model, left, out var leftAnyPlan) &&
-                Db2RowPredicateCompiler.TryCompile(rootFile, rootSchema, right, out var rightRowPredicateAny))
+                Db2RowPredicateCompiler.TryCompile(rootFile, rootEntityType, right, out var rightRowPredicateAny))
             {
                 var ids = FindMatchingRootIdsForCollectionAny<TRow>(model, tableResolver, leftAnyPlan.Navigation, leftAnyPlan.DependentPredicate);
                 var nav = CompileSharedPrimaryKeySemiJoin<TRow>(ids);
@@ -43,7 +43,7 @@ internal static class Db2NavigationQueryCompiler
             }
 
             if (Db2NavigationQueryTranslator.TryTranslateCollectionAnyPredicate(model, right, out var rightAnyPlan) &&
-                Db2RowPredicateCompiler.TryCompile(rootFile, rootSchema, left, out var leftRowPredicateAny))
+                Db2RowPredicateCompiler.TryCompile(rootFile, rootEntityType, left, out var leftRowPredicateAny))
             {
                 var ids = FindMatchingRootIdsForCollectionAny<TRow>(model, tableResolver, rightAnyPlan.Navigation, rightAnyPlan.DependentPredicate);
                 var nav = CompileSharedPrimaryKeySemiJoin<TRow>(ids);
@@ -235,7 +235,7 @@ internal static class Db2NavigationQueryCompiler
             }
 
             if (Db2NavigationQueryTranslator.TryTranslateStringPredicate(model, left, out var navPlanLeft) &&
-                Db2RowPredicateCompiler.TryCompile(rootFile, rootSchema, right, out var rightRowPredicate))
+                Db2RowPredicateCompiler.TryCompile(rootFile, rootEntityType, right, out var rightRowPredicate))
             {
                 var ids = FindMatchingIds<TRow>(tableResolver, navPlanLeft);
                 var nav = navPlanLeft.Join.Kind switch
@@ -250,7 +250,7 @@ internal static class Db2NavigationQueryCompiler
             }
 
             if (Db2NavigationQueryTranslator.TryTranslateScalarPredicate(model, left, out var scalarPlanLeft) &&
-                Db2RowPredicateCompiler.TryCompile(rootFile, rootSchema, right, out var rightRowPredicate2))
+                Db2RowPredicateCompiler.TryCompile(rootFile, rootEntityType, right, out var rightRowPredicate2))
             {
                 var ids = FindMatchingIdsScalar<TRow>(tableResolver, scalarPlanLeft);
                 var nav = scalarPlanLeft.Join.Kind switch
@@ -265,7 +265,7 @@ internal static class Db2NavigationQueryCompiler
             }
 
             if (Db2NavigationQueryTranslator.TryTranslateStringPredicate(model, right, out var navPlanRight) &&
-                Db2RowPredicateCompiler.TryCompile(rootFile, rootSchema, left, out var leftRowPredicate))
+                Db2RowPredicateCompiler.TryCompile(rootFile, rootEntityType, left, out var leftRowPredicate))
             {
                 var ids = FindMatchingIds<TRow>(tableResolver, navPlanRight);
                 var nav = navPlanRight.Join.Kind switch
@@ -280,7 +280,7 @@ internal static class Db2NavigationQueryCompiler
             }
 
             if (Db2NavigationQueryTranslator.TryTranslateScalarPredicate(model, right, out var scalarPlanRight) &&
-                Db2RowPredicateCompiler.TryCompile(rootFile, rootSchema, left, out var leftRowPredicate2))
+                Db2RowPredicateCompiler.TryCompile(rootFile, rootEntityType, left, out var leftRowPredicate2))
             {
                 var ids = FindMatchingIdsScalar<TRow>(tableResolver, scalarPlanRight);
                 var nav = scalarPlanRight.Join.Kind switch
@@ -407,7 +407,7 @@ internal static class Db2NavigationQueryCompiler
 
         var typedPredicate = (Expression<Func<TDependent, bool>>)dependentPredicate;
 
-        if (Db2RowPredicateCompiler.TryCompile(dependentFile, dependentSchema, typedPredicate, out var dependentRowPredicate))
+        if (Db2RowPredicateCompiler.TryCompile(dependentFile, dependentEntityType, typedPredicate, out var dependentRowPredicate))
         {
             foreach (var row in dependentFile.EnumerateRows())
             {
@@ -423,7 +423,7 @@ internal static class Db2NavigationQueryCompiler
         }
 
         var dependentEntityPredicate = typedPredicate.Compile();
-        var materializer = new Db2EntityMaterializer<TDependent, TRow>(dependentSchema);
+        var materializer = new Db2EntityMaterializer<TDependent, TRow>(dependentEntityType);
 
         foreach (var row in dependentFile.EnumerateRows())
         {
@@ -444,12 +444,9 @@ internal static class Db2NavigationQueryCompiler
         Db2NavigationStringPredicatePlan plan)
         where TRow : struct, IRowHandle
     {
-        var (relatedFile, relatedSchema) = tableResolver(plan.Join.Target.TableName);
+        var (relatedFile, _) = tableResolver(plan.Join.Target.TableName);
 
-        if (!relatedSchema.TryGetField(plan.TargetStringMember.Name, out var relatedField))
-            return [];
-
-        var relatedFieldIndex = relatedField.ColumnStartIndex;
+        var relatedFieldIndex = plan.TargetStringFieldSchema.ColumnStartIndex;
         HashSet<int> matchingIds = [];
 
         if (plan.MatchKind is Db2NavigationStringMatchKind.Contains or Db2NavigationStringMatchKind.StartsWith or Db2NavigationStringMatchKind.EndsWith)
@@ -462,7 +459,7 @@ internal static class Db2NavigationQueryCompiler
                 _ => Db2StringMatchKind.Contains,
             };
 
-            var isDenseOptimizable = !relatedFile.Flags.HasFlag(Db2Flags.Sparse) && !relatedField.IsVirtual;
+            var isDenseOptimizable = !relatedFile.Flags.HasFlag(Db2Flags.Sparse) && !plan.TargetStringFieldSchema.IsVirtual;
             if (isDenseOptimizable && relatedFile is IDb2DenseStringTableIndexProvider<TRow> provider)
             {
                 var starts = Db2DenseStringScanner.FindStartOffsets(relatedFile.DenseStringTableBytes.Span, plan.Needle, mk);
@@ -543,11 +540,8 @@ internal static class Db2NavigationQueryCompiler
         where TRow : struct, IRowHandle
         where T : unmanaged, IComparable<T>, IEquatable<T>
     {
-        var (relatedFile, relatedSchema) = tableResolver(plan.Join.Target.TableName);
-        if (!TryResolveRelatedScalarField(plan.Join, plan.TargetScalarMember, relatedSchema, out var relatedField))
-            return [];
-
-        var relatedFieldIndex = relatedField.ColumnStartIndex;
+        var (relatedFile, _) = tableResolver(plan.Join.Target.TableName);
+        var relatedFieldIndex = plan.TargetScalarFieldSchema.ColumnStartIndex;
         HashSet<int> matchingIds = [];
 
         foreach (var relatedRow in relatedFile.EnumerateRows())
@@ -558,21 +552,6 @@ internal static class Db2NavigationQueryCompiler
         }
 
         return matchingIds;
-    }
-
-    private static bool TryResolveRelatedScalarField(
-        Db2NavigationJoinPlan join,
-        MemberInfo targetScalarMember,
-        Db2TableSchema relatedSchema,
-        out Db2FieldSchema relatedField)
-    {
-        if (targetScalarMember.Name.Equals(join.Target.PrimaryKeyMember.Name, StringComparison.OrdinalIgnoreCase))
-        {
-            relatedField = join.Target.PrimaryKeyFieldSchema;
-            return true;
-        }
-
-        return relatedSchema.TryGetFieldCaseInsensitive(targetScalarMember.Name, out relatedField!);
     }
 
     private static HashSet<int> FindExistingTargetIds<TRow>(

@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.ComponentModel.DataAnnotations.Schema;
 
 using MimironSQL.Db2.Query;
 using MimironSQL.Db2.Schema;
@@ -95,9 +96,29 @@ public sealed class Db2ModelBuilder
         if (_entityTypes.TryGetValue(clrType, out var existing))
             return existing;
 
+        foreach (var f in clrType.GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic))
+        {
+            if (f.GetCustomAttribute<ColumnAttribute>(inherit: false) is not null)
+                throw new NotSupportedException($"Column mapping attributes are only supported on public properties. Field '{clrType.FullName}.{f.Name}' is not a valid target.");
+        }
+
+        foreach (var p in clrType.GetProperties(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic))
+        {
+            if (p.GetCustomAttribute<ColumnAttribute>(inherit: false) is null)
+                continue;
+
+            if (p.GetMethod is not { IsPublic: true })
+            {
+                throw new NotSupportedException(
+                    $"Column mapping attributes are only supported on public properties. Property '{clrType.FullName}.{p.Name}' is not a valid target.");
+            }
+        }
+
+        var tableAttr = clrType.GetCustomAttribute<TableAttribute>(inherit: false);
         var created = new Db2EntityTypeMetadata(clrType)
         {
-            TableName = clrType.Name,
+            TableName = tableAttr?.Name ?? clrType.Name,
+            TableNameWasConfigured = tableAttr is not null,
         };
 
         _entityTypes.Add(clrType, created);
@@ -214,9 +235,21 @@ public sealed class Db2ModelBuilder
             var schema = schemaResolver(tableName);
 
             var pkMember = ResolvePrimaryKeyMember(m);
-            var pkFieldSchema = ResolveFieldSchema(schema, pkMember, $"primary key member '{pkMember.Name}' of entity '{clrType.FullName}'");
+            if (HasAnyColumnMapping(m, pkMember))
+            {
+                throw new NotSupportedException(
+                    $"Primary key member '{clrType.FullName}.{pkMember.Name}' cannot configure column mapping via [Column] or HasColumnName().");
+            }
 
-            built.Add(clrType, new Db2EntityType(clrType, tableName, schema, pkMember, pkFieldSchema));
+            var pkFieldSchema = ResolveFieldSchema(schema, m, pkMember, $"primary key member '{pkMember.Name}' of entity '{clrType.FullName}'");
+
+            built.Add(clrType, new Db2EntityType(
+                clrType,
+                tableName,
+                schema,
+                pkMember,
+                pkFieldSchema,
+                new Dictionary<string, string>(m.ColumnNameMappings, StringComparer.Ordinal)));
 
             foreach (var nav in m.Navigations)
             {
@@ -239,8 +272,8 @@ public sealed class Db2ModelBuilder
                 var targetTableName = targetMetadata.TableName ?? nav.TargetClrType.Name;
                 var targetSchema = schemaResolver(targetTableName);
 
-                var sourceKeyFieldSchema = ResolveFieldSchema(schema, nav.SourceKeyMember!, $"source key member '{nav.SourceKeyMember!.Name}' in navigation '{clrType.FullName}.{nav.NavigationMember.Name}'");
-                var targetKeyFieldSchema = ResolveFieldSchema(targetSchema, nav.TargetKeyMember!, $"target key member '{nav.TargetKeyMember!.Name}' in navigation '{clrType.FullName}.{nav.NavigationMember.Name}'");
+                var sourceKeyFieldSchema = ResolveFieldSchema(schema, m, nav.SourceKeyMember!, $"source key member '{nav.SourceKeyMember!.Name}' in navigation '{clrType.FullName}.{nav.NavigationMember.Name}'");
+                var targetKeyFieldSchema = ResolveFieldSchema(targetSchema, targetMetadata, nav.TargetKeyMember!, $"target key member '{nav.TargetKeyMember!.Name}' in navigation '{clrType.FullName}.{nav.NavigationMember.Name}'");
 
                 navigations[(clrType, nav.NavigationMember)] = new Db2ReferenceNavigation(
                     sourceClrType: clrType,
@@ -271,7 +304,7 @@ public sealed class Db2ModelBuilder
                             $"Collection navigation '{clrType.FullName}.{nav.NavigationMember.Name}' expects an int key collection (e.g., int[] or ICollection<int>) but found '{sourceKeyCollectionType.FullName}'.");
                     }
 
-                    var sourceKeyFieldSchema = ResolveFieldSchema(schema, nav.SourceKeyCollectionMember, $"source key member '{nav.SourceKeyCollectionMember.Name}' in collection navigation '{clrType.FullName}.{nav.NavigationMember.Name}'");
+                    var sourceKeyFieldSchema = ResolveFieldSchema(schema, m, nav.SourceKeyCollectionMember, $"source key member '{nav.SourceKeyCollectionMember.Name}' in collection navigation '{clrType.FullName}.{nav.NavigationMember.Name}'");
 
                     collectionNavigations[(clrType, nav.NavigationMember)] = new Db2CollectionNavigation(
                         sourceClrType: clrType,
@@ -302,7 +335,7 @@ public sealed class Db2ModelBuilder
                     var dependentTableName = dependentMetadata.TableName ?? nav.TargetClrType.Name;
                     var dependentSchema = schemaResolver(dependentTableName);
 
-                    var dependentFkFieldSchema = ResolveFieldSchema(dependentSchema, nav.DependentForeignKeyMember, $"dependent FK member '{nav.DependentForeignKeyMember.Name}' in collection navigation '{clrType.FullName}.{nav.NavigationMember.Name}'");
+                    var dependentFkFieldSchema = ResolveFieldSchema(dependentSchema, dependentMetadata, nav.DependentForeignKeyMember, $"dependent FK member '{nav.DependentForeignKeyMember.Name}' in collection navigation '{clrType.FullName}.{nav.NavigationMember.Name}'");
 
                     collectionNavigations[(clrType, nav.NavigationMember)] = new Db2CollectionNavigation(
                         sourceClrType: clrType,
@@ -348,9 +381,12 @@ public sealed class Db2ModelBuilder
         return false;
     }
 
-    private static Db2FieldSchema ResolveFieldSchema(Db2TableSchema schema, MemberInfo member, string context)
+    private static Db2FieldSchema ResolveFieldSchema(Db2TableSchema schema, Db2EntityTypeMetadata metadata, MemberInfo member, string context)
     {
-        var memberName = member.Name;
+        if (member is not PropertyInfo { GetMethod.IsPublic: true } property)
+            throw new NotSupportedException($"Member '{metadata.ClrType.FullName}.{member.Name}' must be a public property to map to DB2 columns.");
+
+        var memberName = ResolveColumnName(metadata, property);
         if (!schema.TryGetFieldCaseInsensitive(memberName, out var fieldSchema))
         {
             throw new NotSupportedException(
@@ -362,6 +398,29 @@ public sealed class Db2ModelBuilder
         return fieldSchema;
     }
 
+    private static bool HasAnyColumnMapping(Db2EntityTypeMetadata metadata, MemberInfo member)
+    {
+        if (member is not PropertyInfo p)
+            return false;
+
+        if (p.GetCustomAttribute<ColumnAttribute>(inherit: false) is not null)
+            return true;
+
+        return metadata.ColumnNameMappings.ContainsKey(p.Name);
+    }
+
+    private static string ResolveColumnName(Db2EntityTypeMetadata metadata, PropertyInfo property)
+    {
+        if (metadata.ColumnNameMappings.TryGetValue(property.Name, out var configured))
+            return configured;
+
+        var attr = property.GetCustomAttribute<ColumnAttribute>(inherit: false);
+        if (attr is not null && !string.IsNullOrWhiteSpace(attr.Name))
+            return attr.Name;
+
+        return property.Name;
+    }
+
     private static MemberInfo ResolvePrimaryKeyMember(Db2EntityTypeMetadata metadata)
     {
         if (metadata.PrimaryKeyMember is not null)
@@ -369,10 +428,8 @@ public sealed class Db2ModelBuilder
 
         var candidates = metadata.ClrType.GetMember("Id", BindingFlags.Instance | BindingFlags.Public);
         foreach (var m in candidates)
-        {
-            if (m is PropertyInfo or FieldInfo)
-                return m;
-        }
+            if (m is PropertyInfo { GetMethod.IsPublic: true } p)
+                return p;
 
         throw new NotSupportedException($"Entity type '{metadata.ClrType.FullName}' has no key member. Configure a primary key in OnModelCreating (e.g., modelBuilder.Entity<{metadata.ClrType.Name}>().HasKey(x => x.Id)).");
     }
@@ -382,8 +439,8 @@ public sealed class Db2ModelBuilder
         var members = type.GetMember(name, BindingFlags.Instance | BindingFlags.Public);
         foreach (var m in members)
         {
-            if (m is PropertyInfo or FieldInfo)
-                return m;
+            if (m is PropertyInfo { GetMethod.IsPublic: true } p)
+                return p;
         }
 
         return null;

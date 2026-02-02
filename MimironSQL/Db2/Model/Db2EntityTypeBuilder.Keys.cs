@@ -16,13 +16,16 @@ public sealed partial class Db2EntityTypeBuilder<T>
         if (body is UnaryExpression { NodeType: ExpressionType.Convert or ExpressionType.ConvertChecked } u)
             body = u.Operand;
 
-        if (body is not MemberExpression { Member: PropertyInfo or FieldInfo } member)
-            throw new NotSupportedException("Key selector only supports simple member access (e.g., x => x.Id). ");
+        if (body is not MemberExpression { Member: PropertyInfo p } member)
+            throw new NotSupportedException("Key selector only supports simple public property access (e.g., x => x.Id). ");
 
         if (member.Expression != key.Parameters[0])
             throw new NotSupportedException("Key selector only supports direct member access on the root entity parameter.");
 
-        Metadata.PrimaryKeyMember = member.Member;
+        if (p.GetMethod is not { IsPublic: true })
+            throw new NotSupportedException($"Key property '{p.DeclaringType?.FullName}.{p.Name}' must have a public getter.");
+
+        Metadata.PrimaryKeyMember = p;
         Metadata.PrimaryKeyWasConfigured = true;
         return this;
     }

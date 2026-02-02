@@ -1,9 +1,9 @@
+using MimironSQL.Db2.Model;
 using MimironSQL.Db2.Schema;
 using MimironSQL.Formats;
 
 using System.Collections;
 using System.Linq.Expressions;
-using System.Numerics;
 
 namespace MimironSQL.Db2.Query;
 
@@ -13,7 +13,7 @@ internal interface IDb2Table
     string TableName { get; }
 }
 
-public class Db2Table<T> : IQueryable<T>, IDb2Table
+public abstract class Db2Table<T> : IQueryable<T>, IDb2Table
 {
     internal string TableName { get; }
     public Db2TableSchema Schema { get; }
@@ -39,10 +39,7 @@ public class Db2Table<T> : IQueryable<T>, IDb2Table
 
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 
-    public virtual T? Find<TId>(TId id) where TId : IEquatable<TId>, IComparable<TId>
-    {
-        throw new NotSupportedException("Find is not supported for this table instance.");
-    }
+    public abstract T? Find<TId>(TId id) where TId : IEquatable<TId>, IComparable<TId>;
 }
 
 internal sealed class Db2Table<T, TRow> : Db2Table<T>
@@ -51,11 +48,11 @@ internal sealed class Db2Table<T, TRow> : Db2Table<T>
     private readonly IDb2File<TRow> _file;
     private readonly Db2EntityMaterializer<T, TRow> _materializer;
 
-    internal Db2Table(string tableName, Db2TableSchema schema, IQueryProvider provider, IDb2File<TRow> file)
+    internal Db2Table(string tableName, Db2TableSchema schema, Db2EntityType entityType, IQueryProvider provider, IDb2File<TRow> file)
         : base(tableName, schema, provider)
     {
         _file = file;
-        _materializer = new Db2EntityMaterializer<T, TRow>(schema);
+        _materializer = new Db2EntityMaterializer<T, TRow>(entityType);
     }
 
     public override T? Find<TId>(TId id)

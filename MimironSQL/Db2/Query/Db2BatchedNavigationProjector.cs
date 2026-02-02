@@ -66,10 +66,8 @@ internal static class Db2BatchedNavigationProjector
             {
                 var member = distinctTargetMembers[i];
 
-                if (!relatedSchema.TryGetField(member.Name, out var field))
-                    throw new NotSupportedException($"Field '{member.Name}' was not found in schema '{relatedSchema.TableName}'.");
-
-                accessorByMember[member] = new Db2FieldAccessor(field);
+                var fieldSchema = target.ResolveFieldSchema(member, context: $"batched navigation projection on '{join.Navigation.SourceClrType.FullName}.{join.Navigation.NavigationMember.Name}'");
+                accessorByMember[member] = new Db2FieldAccessor(fieldSchema);
             }
 
             var keys = keysByNavigation[navMember];
@@ -133,14 +131,12 @@ internal static class Db2BatchedNavigationProjector
 
     private static Func<TEntity, int> CreateIntGetter<TEntity>(MemberInfo member)
     {
+        if (member is not PropertyInfo { GetMethod.IsPublic: true } p)
+            throw new NotSupportedException($"Key member '{member.Name}' must be a public property.");
+
         var entity = Expression.Parameter(typeof(TEntity), "entity");
 
-        Expression access = member switch
-        {
-            PropertyInfo p => Expression.Property(entity, p),
-            FieldInfo f => Expression.Field(entity, f),
-            _ => throw new InvalidOperationException($"Unexpected member type: {member.GetType().FullName}"),
-        };
+        var access = Expression.Property(entity, p);
 
         var memberType = access.Type;
         Expression key = memberType == typeof(int)

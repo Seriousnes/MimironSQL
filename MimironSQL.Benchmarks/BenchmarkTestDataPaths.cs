@@ -1,5 +1,3 @@
-using System.IO;
-
 namespace MimironSQL.Benchmarks;
 
 internal static class BenchmarkTestDataPaths

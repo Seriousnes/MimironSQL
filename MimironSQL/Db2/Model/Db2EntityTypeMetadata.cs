@@ -14,6 +14,8 @@ internal sealed class Db2EntityTypeMetadata(Type clrType)
 
     public bool PrimaryKeyWasConfigured { get; set; }
 
+    public Dictionary<string, string> ColumnNameMappings { get; } = new(StringComparer.Ordinal);
+
     public List<Db2NavigationMetadata> Navigations { get; } = [];
 
     public List<Db2CollectionNavigationMetadata> CollectionNavigations { get; } = [];

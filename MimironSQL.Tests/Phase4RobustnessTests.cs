@@ -1,5 +1,4 @@
 using MimironSQL.Db2.Query;
-using MimironSQL.Db2;
 using MimironSQL.Formats;
 using MimironSQL.Providers;
 using MimironSQL.Tests.Fixtures;

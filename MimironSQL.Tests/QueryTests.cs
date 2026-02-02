@@ -1,6 +1,4 @@
 using MimironSQL.Db2.Query;
-using MimironSQL.Db2.Schema;
-using MimironSQL.Db2;
 using MimironSQL.Formats;
 using MimironSQL.Formats.Wdc5;
 using MimironSQL.Providers;

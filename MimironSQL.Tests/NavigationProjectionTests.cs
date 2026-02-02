@@ -1,5 +1,3 @@
-using MimironSQL.Db2;
-using MimironSQL.Db2.Query;
 using MimironSQL.Formats.Wdc5;
 using MimironSQL.Providers;
 using MimironSQL.Tests.Fixtures;

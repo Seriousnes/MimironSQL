@@ -35,7 +35,7 @@ internal static class Db2NavigationQueryTranslator
             return false;
 
         var source = call.Arguments[0].UnwrapConvert()!;
-        if (source is not MemberExpression { Member: PropertyInfo or FieldInfo } member)
+        if (source is not MemberExpression { Member: PropertyInfo } member)
             return false;
 
         if (member.Expression != rootParam)
@@ -93,19 +93,16 @@ internal static class Db2NavigationQueryTranslator
 
         var join = new Db2NavigationJoinPlan(root, navigation, target);
 
-        var rootReq = new Db2SourceRequirements(root.Schema, root.ClrType);
+        var rootReq = new Db2SourceRequirements(root);
         rootReq.RequireMember(join.RootKeyMember, Db2RequiredColumnKind.JoinKey);
 
-        var targetReq = new Db2SourceRequirements(target.Schema, target.ClrType);
+        var targetReq = new Db2SourceRequirements(target);
         targetReq.RequireMember(join.TargetKeyMember, Db2RequiredColumnKind.JoinKey);
         targetReq.RequireMember(targetMember, Db2RequiredColumnKind.String);
 
-        if (!target.Schema.TryGetFieldCaseInsensitive(targetMember.Name, out var targetStringFieldSchema))
-        {
-            throw new NotSupportedException(
-                $"Field '{targetMember.Name}' not found in schema for table '{target.TableName}'. " +
-                $"This field is required for navigation string predicate on '{typeof(TEntity).FullName}.{navMember.Name}'.");
-        }
+        var targetStringFieldSchema = target.ResolveFieldSchema(
+            targetMember,
+            context: $"navigation string predicate on '{typeof(TEntity).FullName}.{navMember.Name}'");
 
         plan = new Db2NavigationStringPredicatePlan(
             Join: join,
@@ -145,19 +142,16 @@ internal static class Db2NavigationQueryTranslator
         var target = model.GetEntityType(navigation.TargetClrType);
         var join = new Db2NavigationJoinPlan(root, navigation, target);
 
-        var rootReq = new Db2SourceRequirements(root.Schema, root.ClrType);
+        var rootReq = new Db2SourceRequirements(root);
         rootReq.RequireMember(join.RootKeyMember, Db2RequiredColumnKind.JoinKey);
 
-        var targetReq = new Db2SourceRequirements(target.Schema, target.ClrType);
+        var targetReq = new Db2SourceRequirements(target);
         targetReq.RequireMember(join.TargetKeyMember, Db2RequiredColumnKind.JoinKey);
         targetReq.RequireMember(targetMember, Db2RequiredColumnKind.Scalar);
 
-        if (!target.Schema.TryGetFieldCaseInsensitive(targetMember.Name, out var targetFieldSchema))
-        {
-            throw new NotSupportedException(
-                $"Field '{targetMember.Name}' not found in schema for table '{target.TableName}'. " +
-                $"This field is required for navigation scalar predicate on '{typeof(TEntity).FullName}.{navMember.Name}'.");
-        }
+        var targetFieldSchema = target.ResolveFieldSchema(
+            targetMember,
+            context: $"navigation scalar predicate on '{typeof(TEntity).FullName}.{navMember.Name}'");
 
         plan = CreateScalarPredicatePlan(
             join,
@@ -331,10 +325,10 @@ internal static class Db2NavigationQueryTranslator
         var target = model.GetEntityType(navigation.TargetClrType);
         var join = new Db2NavigationJoinPlan(root, navigation, target);
 
-        var rootReq = new Db2SourceRequirements(root.Schema, root.ClrType);
+        var rootReq = new Db2SourceRequirements(root);
         rootReq.RequireMember(join.RootKeyMember, Db2RequiredColumnKind.JoinKey);
 
-        var targetReq = new Db2SourceRequirements(target.Schema, target.ClrType);
+        var targetReq = new Db2SourceRequirements(target);
         targetReq.RequireMember(join.TargetKeyMember, Db2RequiredColumnKind.JoinKey);
 
         plan = new Db2NavigationNullCheckPlan(
@@ -368,10 +362,10 @@ internal static class Db2NavigationQueryTranslator
 
             switch (expr)
             {
-                case MemberExpression { Member: PropertyInfo or FieldInfo } member:
+                case MemberExpression { Member: PropertyInfo } member:
                     {
                         // 1-hop: x.Nav.Member
-                        if (member.Expression.UnwrapConvert() is MemberExpression { Member: PropertyInfo or FieldInfo } nav && nav.Expression == rootParam)
+                        if (member.Expression.UnwrapConvert() is MemberExpression { Member: PropertyInfo } nav && nav.Expression == rootParam)
                         {
                             if (!model.TryGetReferenceNavigation(typeof(TEntity), nav.Member, out var navigation))
                             {
@@ -384,10 +378,10 @@ internal static class Db2NavigationQueryTranslator
                                 Navigation: navigation,
                                 Target: model.GetEntityType(navigation.TargetClrType));
 
-                            var rootReq = new Db2SourceRequirements(join.Root.Schema, join.Root.ClrType);
+                            var rootReq = new Db2SourceRequirements(join.Root);
                             rootReq.RequireMember(join.RootKeyMember, Db2RequiredColumnKind.JoinKey);
 
-                            var targetReq = new Db2SourceRequirements(join.Target.Schema, join.Target.ClrType);
+                            var targetReq = new Db2SourceRequirements(join.Target);
                             targetReq.RequireMember(join.TargetKeyMember, Db2RequiredColumnKind.JoinKey);
 
                             var targetMemberType = member.Member.GetMemberType();
@@ -502,13 +496,13 @@ internal static class Db2NavigationQueryTranslator
 
             expr = expr.UnwrapConvert();
 
-            if (expr is not MemberExpression { Member: PropertyInfo or FieldInfo } relatedExpr)
+            if (expr is not MemberExpression { Member: PropertyInfo } relatedExpr)
                 return false;
 
             var navExpr = relatedExpr.Expression;
             navExpr = navExpr.UnwrapConvert();
 
-            if (navExpr is not MemberExpression { Member: PropertyInfo or FieldInfo } navMemberExpr)
+            if (navExpr is not MemberExpression { Member: PropertyInfo } navMemberExpr)
                 return false;
 
             if (navMemberExpr.Expression != root)
@@ -632,13 +626,13 @@ internal static class Db2NavigationQueryTranslator
 
             expr = expr.UnwrapConvert();
 
-            if (expr is not MemberExpression { Member: PropertyInfo or FieldInfo } relatedExpr)
+            if (expr is not MemberExpression { Member: PropertyInfo } relatedExpr)
                 return false;
 
             var navExpr = relatedExpr.Expression;
             navExpr = navExpr.UnwrapConvert();
 
-            if (navExpr is not MemberExpression { Member: PropertyInfo or FieldInfo } navMemberExpr)
+            if (navExpr is not MemberExpression { Member: PropertyInfo } navMemberExpr)
                 return false;
 
             if (navMemberExpr.Expression != root)
@@ -730,7 +724,7 @@ internal static class Db2NavigationQueryTranslator
 
             expr = expr.UnwrapConvert();
 
-            if (expr is not MemberExpression { Member: PropertyInfo or FieldInfo } navExpr)
+            if (expr is not MemberExpression { Member: PropertyInfo } navExpr)
                 return false;
 
             if (navExpr.Expression != root)

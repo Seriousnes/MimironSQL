@@ -1,5 +1,4 @@
-﻿using MimironSQL.Db2;
-using MimironSQL.Db2.Model;
+﻿using MimironSQL.Db2.Model;
 using MimironSQL.Db2.Query;
 using MimironSQL.Providers;
 

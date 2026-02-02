@@ -1,5 +1,5 @@
 using MimironSQL.Db2.Schema;
-using MimironSQL.Extensions;
+using MimironSQL.Db2.Model;
 using MimironSQL.Formats;
 
 using System.Linq.Expressions;
@@ -9,21 +9,26 @@ namespace MimironSQL.Db2.Query;
 
 internal static class Db2RowPredicateCompiler
 {
-    public static bool TryCompile<TEntity, TRow>(IDb2File<TRow> file, Db2TableSchema schema, Expression<Func<TEntity, bool>> predicate, out Func<TRow, bool> rowPredicate)
+    public static bool TryCompile<TEntity, TRow>(
+        IDb2File<TRow> file,
+        Db2EntityType entityType,
+        Expression<Func<TEntity, bool>> predicate,
+        out Func<TRow, bool> rowPredicate)
         where TRow : struct, IRowHandle
-        => TryCompile(file, schema, predicate, out rowPredicate, out _);
+        => TryCompile(file, entityType, predicate, out rowPredicate, out _);
 
     public static bool TryCompile<TEntity, TRow>(
         IDb2File<TRow> file,
-        Db2TableSchema schema,
+        Db2EntityType entityType,
         Expression<Func<TEntity, bool>> predicate,
         out Func<TRow, bool> rowPredicate,
         out Db2SourceRequirements requirements)
         where TRow : struct, IRowHandle
     {
+        var schema = entityType.Schema;
         var fieldsByName = schema.Fields.ToDictionary(f => f.Name, StringComparer.OrdinalIgnoreCase);
 
-        requirements = new Db2SourceRequirements(schema, typeof(TEntity));
+        requirements = new Db2SourceRequirements(entityType);
 
         var entityParam = predicate.Parameters[0];
         var rowParam = Expression.Parameter(typeof(TRow), "row");
@@ -45,7 +50,7 @@ internal static class Db2RowPredicateCompiler
 
         try
         {
-            var rewriter = new PredicateRewriter<TRow>(entityParam, rowParam, GetAccessor, file, requirements);
+            var rewriter = new PredicateRewriter<TRow>(entityParam, rowParam, entityType, GetAccessor, file, requirements);
             var rewrittenBody = rewriter.Visit(predicate.Body);
             if (rewrittenBody is null)
             {
@@ -66,6 +71,7 @@ internal static class Db2RowPredicateCompiler
     private sealed class PredicateRewriter<TRow>(
         ParameterExpression entityParam,
         ParameterExpression rowParam,
+        Db2EntityType entityType,
         Func<string, Db2FieldAccessor> getAccessor,
         IDb2File<TRow> file,
         Db2SourceRequirements requirements) : ExpressionVisitor
@@ -86,8 +92,12 @@ internal static class Db2RowPredicateCompiler
         {
             if (node.Expression == entityParam)
             {
-                var accessor = getAccessor(node.Member.Name);
-                requirements.RequireField(accessor.Field, node.Type == typeof(string) ? Db2RequiredColumnKind.String : Db2RequiredColumnKind.Scalar);
+                if (node.Member is not PropertyInfo)
+                    throw new NotSupportedException($"Member '{entityType.ClrType.FullName}.{node.Member.Name}' must be a public property.");
+
+                var field = entityType.ResolveFieldSchema(node.Member, context: "row predicate");
+                var accessor = getAccessor(field.Name);
+                requirements.RequireMember(node.Member, node.Type == typeof(string) ? Db2RequiredColumnKind.String : Db2RequiredColumnKind.Scalar);
                 if (node.Type == typeof(string) && accessor.Field.IsVirtual)
                     throw new NotSupportedException($"Virtual field '{accessor.Field.Name}' cannot be materialized as a string.");
                 return BuildReadExpression(accessor.Field, node.Type);
@@ -100,8 +110,12 @@ internal static class Db2RowPredicateCompiler
         {
             if (node is { NodeType: ExpressionType.Convert } && node.Operand is MemberExpression m && m.Expression == entityParam)
             {
-                var accessor = getAccessor(m.Member.Name);
-                requirements.RequireField(accessor.Field, m.Type == typeof(string) ? Db2RequiredColumnKind.String : Db2RequiredColumnKind.Scalar);
+                if (m.Member is not PropertyInfo)
+                    throw new NotSupportedException($"Member '{entityType.ClrType.FullName}.{m.Member.Name}' must be a public property.");
+
+                var field = entityType.ResolveFieldSchema(m.Member, context: "row predicate");
+                var accessor = getAccessor(field.Name);
+                requirements.RequireMember(m.Member, m.Type == typeof(string) ? Db2RequiredColumnKind.String : Db2RequiredColumnKind.Scalar);
                 if (m.Type == typeof(string) && accessor.Field.IsVirtual)
                     throw new NotSupportedException($"Virtual field '{accessor.Field.Name}' cannot be materialized as a string.");
                 var read = BuildReadExpression(accessor.Field, m.Type);
@@ -121,8 +135,12 @@ internal static class Db2RowPredicateCompiler
                     if (node.Arguments is not { Count: 1 } || node.Arguments[0] is not ConstantExpression { Value: string needle })
                         throw new NotSupportedException("Only constant string needles are supported for string predicates.");
 
-                    var accessor = getAccessor(m.Member.Name);
-                    requirements.RequireField(accessor.Field, Db2RequiredColumnKind.String);
+                    if (m.Member is not PropertyInfo)
+                        throw new NotSupportedException($"Member '{entityType.ClrType.FullName}.{m.Member.Name}' must be a public property.");
+
+                    var field = entityType.ResolveFieldSchema(m.Member, context: "row predicate");
+                    var accessor = getAccessor(field.Name);
+                    requirements.RequireMember(m.Member, Db2RequiredColumnKind.String);
 
                     if (accessor.Field.IsVirtual)
                         throw new NotSupportedException($"Virtual field '{accessor.Field.Name}' cannot be materialized as a string.");

@@ -37,7 +37,6 @@ internal static class Db2KeyExpressionExtensions
         => member switch
         {
             PropertyInfo p => Expression.Property(instance, p),
-            FieldInfo f => Expression.Field(instance, f),
-            _ => throw new InvalidOperationException($"Unexpected member type: {member.GetType().FullName}"),
+            _ => throw new NotSupportedException($"Key member '{member.DeclaringType?.FullName}.{member.Name}' must be a public property."),
         };
 }

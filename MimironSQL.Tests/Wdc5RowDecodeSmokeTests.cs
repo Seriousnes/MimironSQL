@@ -1,4 +1,3 @@
-using MimironSQL.Db2;
 using MimironSQL.Formats.Wdc5;
 using MimironSQL.Providers;
 

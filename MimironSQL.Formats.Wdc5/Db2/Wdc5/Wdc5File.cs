@@ -1,12 +1,10 @@
 using System.Buffers;
 using System.Buffers.Binary;
-using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
 
 using MimironSQL.Db2;
-using MimironSQL.Formats;
 
 using Security.Cryptography;
 

@@ -1,7 +1,6 @@
 using System.Linq.Expressions;
 using System.Reflection;
 
-using MimironSQL.Db2;
 using MimironSQL.Db2.Model;
 using MimironSQL.Db2.Schema;
 using MimironSQL.Formats;
@@ -14,7 +13,7 @@ internal static class Db2NavigationRowProjector
     public static IEnumerable<TResult> ProjectFromRows<TResult, TRow>(
         IDb2File rootFile,
         IEnumerable<TRow> rows,
-        Db2TableSchema rootSchema,
+        Db2EntityType rootEntityType,
         Db2Model model,
         Func<string, (IDb2File<TRow> File, Db2TableSchema Schema)> tableResolver,
         Db2NavigationMemberAccessPlan[] accesses,
@@ -67,10 +66,8 @@ internal static class Db2NavigationRowProjector
             {
                 var member = distinctTargetMembers[i];
 
-                if (!relatedSchema.TryGetField(member.Name, out var field))
-                    throw new NotSupportedException($"Field '{member.Name}' was not found in schema '{relatedSchema.TableName}'.");
-
-                accessorByMember[member] = new Db2FieldAccessor(field);
+                var fieldSchema = target.ResolveFieldSchema(member, context: $"row-based navigation projection on '{join.Navigation.SourceClrType.FullName}.{join.Navigation.NavigationMember.Name}'");
+                accessorByMember[member] = new Db2FieldAccessor(fieldSchema);
             }
 
             var keys = keysByNavigation[navMember];
@@ -91,7 +88,7 @@ internal static class Db2NavigationRowProjector
             lookupByNavigation[navMember] = new NavigationLookup<TRow>(relatedFile, rowsByKey, accessorByMember);
         }
 
-        var projectorCompiler = new RowProjectorCompiler<TRow>(rootFile, rootSchema, selector, lookupByNavigation, rootKeyFieldIndexByNavigation);
+        var projectorCompiler = new RowProjectorCompiler<TRow>(rootFile, rootEntityType, selector, lookupByNavigation, rootKeyFieldIndexByNavigation);
         var projector = projectorCompiler.Compile<TResult>();
 
         foreach (var row in buffered)
@@ -117,7 +114,7 @@ internal static class Db2NavigationRowProjector
 
     private sealed class RowProjectorCompiler<TRow>(
         IDb2File rootFile,
-        Db2TableSchema rootSchema,
+        Db2EntityType rootEntityType,
         LambdaExpression selector,
         Dictionary<MemberInfo, NavigationLookup<TRow>> lookupByNavigation,
         Dictionary<MemberInfo, int> rootKeyFieldIndexByNavigation)
@@ -133,7 +130,7 @@ internal static class Db2NavigationRowProjector
                 _entityParam,
                 _rowParam,
                 _rootFileExpression,
-                rootSchema,
+                rootEntityType,
                 lookupByNavigation);
 
             var rewrittenBody = rewriter.Visit(selector.Body) ?? throw new NotSupportedException("Failed to rewrite selector for row-based projection.");
@@ -181,7 +178,7 @@ internal static class Db2NavigationRowProjector
             ParameterExpression entityParam,
             ParameterExpression rowParam,
             ConstantExpression rootFileExpression,
-            Db2TableSchema rootSchema,
+            Db2EntityType rootEntityType,
             Dictionary<MemberInfo, NavigationLookup<TRow>> lookupByNavigation) : ExpressionVisitor
         {
             public Dictionary<MemberInfo, NavigationLocalVars> NavigationLocals { get; } = [];
@@ -228,23 +225,8 @@ internal static class Db2NavigationRowProjector
                             $"Access navigation members explicitly (e.g., x.{node.Member.Name}.SomeField).");
                     }
 
-                    if (!rootSchema.TryGetField(node.Member.Name, out var field))
-                    {
-                        // Try to find Id field if member name is "Id"
-                        if (node.Member.Name.Equals("Id", StringComparison.OrdinalIgnoreCase))
-                        {
-                            var idField = rootSchema.Fields.FirstOrDefault(f => f.IsId);
-                            if (idField.Equals(default) || string.IsNullOrWhiteSpace(idField.Name))
-                                throw new NotSupportedException($"Id field was not found in schema '{rootSchema.TableName}'.");
-                            field = idField;
-                        }
-                        else
-                        {
-                            throw new NotSupportedException($"Field '{node.Member.Name}' was not found in schema '{rootSchema.TableName}'.");
-                        }
-                    }
-
-                    var accessor = new Db2FieldAccessor(field);
+                    var fieldSchema = rootEntityType.ResolveFieldSchema(node.Member, context: "row-based projection");
+                    var accessor = new Db2FieldAccessor(fieldSchema);
                     return BuildReadExpression(rootFileExpression, rowParam, accessor, node.Type);
                 }
 

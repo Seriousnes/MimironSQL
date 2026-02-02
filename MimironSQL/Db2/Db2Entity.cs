@@ -1,5 +1,3 @@
-using System.Numerics;
-
 namespace MimironSQL.Db2;
 
 public abstract class Db2Entity<TId> where TId : IEquatable<TId>, IComparable<TId>

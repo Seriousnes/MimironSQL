@@ -1,5 +1,3 @@
-using System.Threading;
-
 namespace MimironSQL.Formats.Wdc5;
 
 public readonly record struct Wdc5FileLookupSnapshot(int TotalTryGetRowByIdCalls);

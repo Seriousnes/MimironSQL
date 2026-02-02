@@ -12,7 +12,8 @@ public readonly record struct DbdLayoutEntry(
     bool IsVerified,
     bool IsNonInline,
     bool IsId,
-    bool IsRelation);
+    bool IsRelation,
+    string? InlineTypeToken);
 
 public static class DbdLayoutEntryParser
 {
@@ -62,6 +63,7 @@ public static class DbdLayoutEntryParser
         Db2ValueType valueType;
         var referencedTableName = (string?)null;
         var isVerified = true;
+        var inlineTypeToken = (string?)null;
 
         var lt = text.IndexOf('<');
         if (lt >= 0)
@@ -75,6 +77,7 @@ public static class DbdLayoutEntryParser
 
             name = text[..lt].Trim();
             var typeInner = text[(lt + 1)..gt].Trim();
+            inlineTypeToken = typeInner;
             valueType = MapInlineType(typeInner);
         }
         else
@@ -104,7 +107,7 @@ public static class DbdLayoutEntryParser
             isVerified = col.IsVerified;
         }
 
-        entry = new DbdLayoutEntry(name, valueType, referencedTableName, elementCount, isVerified, isNonInline, isId, isRelation);
+        entry = new DbdLayoutEntry(name, valueType, referencedTableName, elementCount, isVerified, isNonInline, isId, isRelation, inlineTypeToken);
         return true;
     }
 

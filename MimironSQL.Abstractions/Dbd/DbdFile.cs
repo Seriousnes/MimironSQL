@@ -1,9 +1,10 @@
 namespace MimironSQL.Dbd;
 
-public sealed class DbdFile(Dictionary<string, DbdColumn> columnsByName, List<DbdLayout> layouts)
+public sealed class DbdFile(Dictionary<string, DbdColumn> columnsByName, List<DbdLayout> layouts, List<DbdBuildBlock> globalBuilds)
 {
     public IReadOnlyDictionary<string, DbdColumn> ColumnsByName { get; } = columnsByName;
     public IReadOnlyList<DbdLayout> Layouts { get; } = layouts;
+    public IReadOnlyList<DbdBuildBlock> GlobalBuilds { get; } = globalBuilds;
 
     public static DbdFile Parse(Stream stream)
     {
@@ -11,6 +12,7 @@ public sealed class DbdFile(Dictionary<string, DbdColumn> columnsByName, List<Db
 
         var columnsByName = new Dictionary<string, DbdColumn>(StringComparer.Ordinal);
         var layouts = new List<DbdLayout>();
+        var globalBuilds = new List<DbdBuildBlock>();
 
         DbdLayout? currentLayout = null;
         var activeBuilds = new List<DbdBuildBlock>();
@@ -50,11 +52,11 @@ public sealed class DbdFile(Dictionary<string, DbdColumn> columnsByName, List<Db
             if (line.StartsWith("BUILD ", StringComparison.Ordinal))
             {
                 inColumns = false;
-                if (currentLayout is null)
-                    continue;
-
                 var newBuild = new DbdBuildBlock(line);
-                currentLayout.Builds.Add(newBuild);
+                if (currentLayout is null)
+                    globalBuilds.Add(newBuild);
+                else
+                    currentLayout.Builds.Add(newBuild);
 
                 // DBDs often list multiple BUILD lines, then a single set of entries that applies to all of them.
                 // Once we start reading entries, a new BUILD indicates a new entry block.
@@ -86,7 +88,7 @@ public sealed class DbdFile(Dictionary<string, DbdColumn> columnsByName, List<Db
             }
         }
 
-        return new DbdFile(columnsByName, layouts);
+        return new DbdFile(columnsByName, layouts, globalBuilds);
     }
 
     public bool TryGetLayout(uint layoutHash, out DbdLayout layout)

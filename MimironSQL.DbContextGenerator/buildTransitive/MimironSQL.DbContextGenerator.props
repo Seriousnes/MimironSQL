@@ -1,0 +1,9 @@
+<Project>
+  <PropertyGroup>
+    <!--
+      Generator reads WoWDBDefs inputs from disk.
+      Consumers are NOT required to set this; buildTransitive targets will download into the default cache.
+    -->
+    <MimironSqlWowDbDefsRoot Condition="'$(MimironSqlWowDbDefsRoot)'==''">$(LOCALAPPDATA)\MimironSQL\wowdbdefs</MimironSqlWowDbDefsRoot>
+  </PropertyGroup>
+</Project>

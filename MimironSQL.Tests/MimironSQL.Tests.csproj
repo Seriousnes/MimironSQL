@@ -22,6 +22,19 @@
 
   <ItemGroup>
     <ProjectReference Include="..\MimironSQL\MimironSQL.csproj" />
+    <ProjectReference Include="..\MimironSQL.Formats.Wdc5\MimironSQL.Formats.Wdc5.csproj" />
+    <ProjectReference Include="..\MimironSQL.DbContextGenerator\MimironSQL.DbContextGenerator.csproj" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
+  <Target Name="AddDbContextGeneratorAnalyzer" BeforeTargets="CoreCompile">
+    <ItemGroup>
+      <Analyzer Include="..\MimironSQL.DbContextGenerator\bin\$(Configuration)\netstandard2.0\*.dll" />
+    </ItemGroup>
+  </Target>
+
+  <ItemGroup>
+    <AdditionalFiles Include=".env" />
+    <AdditionalFiles Include="TestData\**\*.dbd" />
   </ItemGroup>
 
   <ItemGroup>

@@ -7,9 +7,16 @@ public interface IRowHandle
 
 public readonly struct RowHandle : IRowHandle
 {
-    public int SectionIndex { get; init; }
-    public int RowIndexInSection { get; init; }
-    public int RowId { get; init; }
+    public int SectionIndex { get; }
+    public int RowIndexInSection { get; }
+    public int RowId { get; }
+
+    public RowHandle(int sectionIndex, int rowIndexInSection, int rowId)
+    {
+        SectionIndex = sectionIndex;
+        RowIndexInSection = rowIndexInSection;
+        RowId = rowId;
+    }
 
     public RowHandle Handle => this;
 }

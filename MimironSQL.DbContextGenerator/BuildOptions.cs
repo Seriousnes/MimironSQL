@@ -1,4 +1,4 @@
-namespace CASC.Net.Generators;
+namespace MimironSQL.DbContextGenerator;
 
 internal static class GeneratorConstants
 {

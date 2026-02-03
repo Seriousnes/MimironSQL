@@ -13,8 +13,8 @@ public sealed class Wdc5Section
     public int StringTableBaseOffset { get; init; } = 0;
     public byte[] StringTableBytes { get; init; } = [];
     public int[] IndexData { get; init; } = [];
-    public Dictionary<int, int> CopyData { get; init; } = new();
-    public Dictionary<int, int> ParentLookupEntries { get; init; } = new();
+    public Dictionary<int, int> CopyData { get; init; } = [];
+    public Dictionary<int, int> ParentLookupEntries { get; init; } = [];
     public SparseEntry[] SparseEntries { get; init; } = [];
     public int[] SparseRecordStartBits { get; init; } = [];
 
@@ -65,7 +65,7 @@ public sealed class Wdc5Section
         long previousStartBytes = -1;
         for (var i = 0; i < entries.Length; i++)
         {
-            var startBytes = (long)entries[i].Offset - sectionFileOffset;
+            var startBytes = entries[i].Offset - sectionFileOffset;
             if (startBytes < 0 || startBytes > recordDataSizeBytes)
                 throw new InvalidDataException("Sparse entry offset is outside the section record data.");
 

@@ -20,35 +20,53 @@ for project in "${csprojs[@]}"; do
   fi
 done
 
-declare -A selected
-for project in "${!packable[@]}"; do
+declare -A referenced_by
+for project in "${csprojs[@]}"; do
+  project_dir="$(dirname "$project")"
+
+  while IFS= read -r include; do
+    [[ -z "$include" ]] && continue
+
+    include="${include//\\//}"
+    referenced_project="$(realpath --relative-to="$repo_root" "$project_dir/$include")"
+    referenced_by["$referenced_project"]+="$project"$'\n'
+  done < <(sed -n 's/.*<ProjectReference Include="\([^"]*\)".*/\1/p' "$project")
+done
+
+declare -A changed_projects
+for project in "${csprojs[@]}"; do
   project_dir="$(dirname "$project")"
   if grep -q "^$project_dir/" "$changed_files_path"; then
-    selected["$project"]=1
+    changed_projects["$project"]=1
   fi
 done
 
-changed=1
-while [[ $changed -eq 1 ]]; do
-  changed=0
-  for project in "${!packable[@]}"; do
-    [[ -n "${selected[$project]:-}" ]] && continue
+declare -A visited
+queue=()
 
-    project_dir="$(dirname "$project")"
+for project in "${!changed_projects[@]}"; do
+  visited["$project"]=1
+  queue+=("$project")
+done
 
-    while IFS= read -r include; do
-      [[ -z "$include" ]] && continue
+while [[ ${#queue[@]} -ne 0 ]]; do
+  project="${queue[0]}"
+  queue=("${queue[@]:1}")
 
-      include="${include//\\//}"
-      referenced_project="$(realpath --relative-to="$repo_root" "$project_dir/$include")"
+  while IFS= read -r dependent; do
+    [[ -z "$dependent" ]] && continue
+    if [[ -z "${visited[$dependent]:-}" ]]; then
+      visited["$dependent"]=1
+      queue+=("$dependent")
+    fi
+  done < <(printf '%s' "${referenced_by[$project]:-}")
+done
 
-      if [[ -n "${selected[$referenced_project]:-}" ]]; then
-        selected["$project"]=1
-        changed=1
-        break
-      fi
-    done < <(sed -n 's/.*<ProjectReference Include="\([^"]*\)".*/\1/p' "$project")
-  done
+declare -A selected
+for project in "${!visited[@]}"; do
+  if [[ -n "${packable[$project]:-}" ]]; then
+    selected["$project"]=1
+  fi
 done
 
 if [[ ${#selected[@]} -eq 0 ]]; then

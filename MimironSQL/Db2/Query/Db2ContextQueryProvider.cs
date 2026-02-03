@@ -26,7 +26,7 @@ internal sealed class Db2ContextQueryProvider(Db2Context context) : IQueryProvid
                 .GetMethod(nameof(CreateQueryable), System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!;
 
             var generic = factoryMethod.MakeGenericMethod(elementType);
-            return (Func<IQueryProvider, Expression, IQueryable>)generic.CreateDelegate(typeof(Func<IQueryProvider, Expression, IQueryable>));
+            return generic.CreateDelegate<Func<IQueryProvider, Expression, IQueryable>>();
         })(this, expression);
     }
 
@@ -58,15 +58,13 @@ internal sealed class Db2ContextQueryProvider(Db2Context context) : IQueryProvid
                 .GetMethod(nameof(CreatePerTableProvider), System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!;
 
             var generic = factoryMethod.MakeGenericMethod(key.EntityType, key.RowType);
-            return (Func<Db2Context, IDb2File, Db2TableSchema, Db2Model, IQueryProvider>)
-                generic.CreateDelegate(typeof(Func<Db2Context, IDb2File, Db2TableSchema, Db2Model, IQueryProvider>));
+            return generic.CreateDelegate<Func<Db2Context, IDb2File, Db2TableSchema, Db2Model, IQueryProvider>>();
         })(_context, file, schema, _context.Model);
 
         return provider.Execute<TResult>(expression);
     }
 
-    private static IQueryable CreateQueryable<TElement>(IQueryProvider provider, Expression expression)
-        => new Db2Queryable<TElement>(provider, expression);
+    private static Db2Queryable<TElement> CreateQueryable<TElement>(IQueryProvider provider, Expression expression) => new(provider, expression);
 
     private static Db2QueryProvider<TEntity, TRow> CreatePerTableProvider<TEntity, TRow>(
         Db2Context context,
@@ -76,7 +74,7 @@ internal sealed class Db2ContextQueryProvider(Db2Context context) : IQueryProvid
         where TRow : struct, IRowHandle
     {
         var typedFile = (IDb2File<TRow>)file;
-        return new Db2QueryProvider<TEntity, TRow>(typedFile, schema, model, context.GetOrOpenTableRawTyped<TRow>);
+        return new Db2QueryProvider<TEntity, TRow>(typedFile, model, context.GetOrOpenTableRawTyped<TRow>);
     }
 
     private static (Type EntityType, string TableName) GetRootTable(Expression expression)
@@ -85,9 +83,10 @@ internal sealed class Db2ContextQueryProvider(Db2Context context) : IQueryProvid
         while (current is MethodCallExpression m)
             current = m.Arguments[0];
 
-        if (current is ConstantExpression { Value: IDb2Table table })
-            return (table.EntityType, table.TableName);
-
-        throw new NotSupportedException("Unable to locate the root Db2Table for this query.");
+        return current switch
+        {
+            ConstantExpression { Value: IDb2Table table } => (table.EntityType, table.TableName),
+            _ => throw new NotSupportedException("Unable to locate the root Db2Table for this query."),
+        };
     }
 }

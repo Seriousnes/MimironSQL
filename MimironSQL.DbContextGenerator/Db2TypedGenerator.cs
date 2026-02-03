@@ -4,7 +4,7 @@ using System.Text;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Text;
 
-namespace CASC.Net.Generators;
+namespace MimironSQL.DbContextGenerator;
 
 [Generator(LanguageNames.CSharp)]
 public sealed class Db2TypedGenerator : IIncrementalGenerator
@@ -87,31 +87,23 @@ public sealed class Db2TypedGenerator : IIncrementalGenerator
                 var newScore = Score(table, safeTableName);
 
                 TableSpec chosen;
-                TableSpec skipped;
 
                 if (newScore > existingScore)
                 {
                     chosen = table;
-                    skipped = existing;
                 }
                 else if (newScore < existingScore)
                 {
                     chosen = existing;
-                    skipped = table;
                 }
                 else
                 {
                     // Tie-break deterministically.
-                    if (string.Compare(existing.TableName, table.TableName, StringComparison.OrdinalIgnoreCase) <= 0)
+                    chosen = string.Compare(existing.TableName, table.TableName, StringComparison.OrdinalIgnoreCase) switch
                     {
-                        chosen = existing;
-                        skipped = table;
-                    }
-                    else
-                    {
-                        chosen = table;
-                        skipped = existing;
-                    }
+                        <= 0 => existing,
+                        _ => table,
+                    };
                 }
 
                 if (!ReferenceEquals(uniqueBySafeName[safeTableName], chosen))
@@ -126,10 +118,9 @@ public sealed class Db2TypedGenerator : IIncrementalGenerator
                     chosen.TableName));
             }
 
-            resolvedTables = uniqueBySafeName.Values
+            resolvedTables = [.. uniqueBySafeName.Values
                 .OrderBy(static t => IdentifierHelper.ToSafeTypeName(t.TableName), StringComparer.OrdinalIgnoreCase)
-                .ThenBy(static t => t.TableName, StringComparer.OrdinalIgnoreCase)
-                .ToImmutableArray();
+                .ThenBy(static t => t.TableName, StringComparer.OrdinalIgnoreCase)];
 
             var ns = GeneratorConstants.RootNamespace;
 
@@ -147,7 +138,15 @@ public sealed class Db2TypedGenerator : IIncrementalGenerator
         });
     }
 
-    private sealed record ManifestFile(string Path, ManifestMapping Mapping);
+    private sealed class ManifestFile(string path, ManifestMapping mapping)
+    {
+        public string Path { get; } = path;
+        public ManifestMapping Mapping { get; } = mapping;
+    }
 
-    private sealed record DbdFile(string Path, ParsedTable Table);
+    private sealed class DbdFile(string path, ParsedTable table)
+    {
+        public string Path { get; } = path;
+        public ParsedTable Table { get; } = table;
+    }
 }

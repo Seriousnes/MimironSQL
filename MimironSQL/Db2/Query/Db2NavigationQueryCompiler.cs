@@ -12,8 +12,7 @@ internal static class Db2NavigationQueryCompiler
 {
     public static bool TryCompileSemiJoinPredicate<TEntity, TRow>(
         Db2Model model,
-        IDb2File<TRow> rootFile,
-        Db2TableSchema rootSchema,
+        IDb2File<TRow> rootFile,        
         Func<string, (IDb2File<TRow> File, Db2TableSchema Schema)> tableResolver,
         Expression<Func<TEntity, bool>> predicate,
         out Func<TRow, bool> rowPredicate)
@@ -365,7 +364,7 @@ internal static class Db2NavigationQueryCompiler
 
         var typedPredicate = dependentPredicate is null
             ? null
-            : (LambdaExpression)Expression.Lambda(
+            : Expression.Lambda(
                 typeof(Func<,>).MakeGenericType(navigation.TargetClrType, typeof(bool)),
                 dependentPredicate.Body,
                 dependentPredicate.Parameters);

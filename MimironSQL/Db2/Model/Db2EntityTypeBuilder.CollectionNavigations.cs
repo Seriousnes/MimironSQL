@@ -35,7 +35,7 @@ public sealed partial class Db2EntityTypeBuilder<T>
         var nav = new Db2CollectionNavigationMetadata(navMember, targetClrType);
         Metadata.CollectionNavigations.Add(nav);
 
-        _modelBuilder.Entity(typeof(TTarget));
+        _modelBuilder.Entity<TTarget>();
         return new Db2CollectionNavigationBuilder<T, TTarget>(_modelBuilder, nav);
     }
 }

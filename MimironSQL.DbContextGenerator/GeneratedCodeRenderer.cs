@@ -1,7 +1,7 @@
 using System.Collections.Immutable;
 using System.Text;
 
-namespace CASC.Net.Generators;
+namespace MimironSQL.DbContextGenerator;
 
 internal static class GeneratedCodeRenderer
 {
@@ -40,7 +40,7 @@ internal static class GeneratedCodeRenderer
 
     public static string RenderRow(string rootNamespace, TableSpec table)
     {
-        var safeTableName = IdentifierHelper.ToSafeTypeName(table.TableName);        
+        var safeTableName = IdentifierHelper.ToSafeTypeName(table.TableName);
 
         var rowType = $"{safeTableName}";
         var materializerType = $"{safeTableName}Materializer";
@@ -63,19 +63,26 @@ internal static class GeneratedCodeRenderer
         var maxArrays = DbdLayoutSynthesis.ComputeMaxArrayLengths(table);
 
         var presentInAllLayouts = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        if (layouts.Length > 0)
+        switch (layouts.Length)
         {
-            presentInAllLayouts.UnionWith(table.Columns.Select(static c => c.Name));
-            foreach (var layout in layouts)
-            {
-                var set = new HashSet<string>(layout.PhysicalColumns.Select(static c => c.DbdName), StringComparer.OrdinalIgnoreCase);
-                presentInAllLayouts.RemoveWhere(name => !set.Contains(name));
-            }
-        }
-        else
-        {
-            // No parsed version info; treat all columns as present.
-            presentInAllLayouts.UnionWith(table.Columns.Select(static c => c.Name));
+            case > 0:
+                {
+                    presentInAllLayouts.UnionWith(table.Columns.Select(static c => c.Name));
+                    foreach (var layout in layouts)
+                    {
+                        var set = new HashSet<string>(layout.PhysicalColumns.Select(static c => c.DbdName), StringComparer.OrdinalIgnoreCase);
+                        presentInAllLayouts.RemoveWhere(name => !set.Contains(name));
+                    }
+
+                    break;
+                }
+
+            default:
+                {
+                    // No parsed version info; treat all columns as present.
+                    presentInAllLayouts.UnionWith(table.Columns.Select(static c => c.Name));
+                    break;
+                }
         }
 
         string GetEntityCSharpType(ColumnSpec col)
@@ -120,21 +127,25 @@ internal static class GeneratedCodeRenderer
         {
             var layout = layouts[layoutIndex];
             sb.AppendLine($"    internal {rowType}(");
-            if (layout.PhysicalColumns.Length == 0)
+            switch (layout.PhysicalColumns.Length)
             {
-                sb.AppendLine($"        __Db2Layout{layoutIndex} _)");
-            }
-            else
-            {
-                sb.AppendLine($"        __Db2Layout{layoutIndex} _,");
-                for (var i = 0; i < layout.PhysicalColumns.Length; i++)
-                {
-                    var pc = layout.PhysicalColumns[i];
-                    var element = TypeMapping.GetCSharpElementType(pc.DbdType);
-                    var paramType = pc.ArrayLength is not null ? element + "[]" : element;
-                    var suffix = i == layout.PhysicalColumns.Length - 1 ? ")" : ",";
-                    sb.AppendLine($"        {paramType} {pc.PropertyName}{suffix}");
-                }
+                case 0:
+                    sb.AppendLine($"        __Db2Layout{layoutIndex} _)");
+                    break;
+                default:
+                    {
+                        sb.AppendLine($"        __Db2Layout{layoutIndex} _,");
+                        for (var i = 0; i < layout.PhysicalColumns.Length; i++)
+                        {
+                            var pc = layout.PhysicalColumns[i];
+                            var element = TypeMapping.GetCSharpElementType(pc.DbdType);
+                            var paramType = pc.ArrayLength is not null ? element + "[]" : element;
+                            var suffix = i == layout.PhysicalColumns.Length - 1 ? ")" : ",";
+                            sb.AppendLine($"        {paramType} {pc.PropertyName}{suffix}");
+                        }
+
+                        break;
+                    }
             }
 
             sb.AppendLine("        : this(");
@@ -146,7 +157,6 @@ internal static class GeneratedCodeRenderer
             for (var i = 0; i < table.Columns.Length; i++)
             {
                 var col = table.Columns[i];
-                var propName = columnProperties[i];
                 var element = TypeMapping.GetCSharpElementType(col.DbdType);
                 var isArray = maxArrays.MaxByColumnName.TryGetValue(col.Name, out _);
                 var isOptional = !presentInAllLayouts.Contains(col.Name);
@@ -188,10 +198,15 @@ internal static class GeneratedCodeRenderer
 
             foreach (var bc in layout.BuildConstraints)
             {
-                if (bc is DbdLayoutSynthesis.BuildConstraint.Exact exact)
-                    sb.AppendLine($"                        new Db2GeneratedBuildConstraint.Exact(WowBuildVersion.Parse(\"{EscapeString(exact.Version)}\")),");
-                else if (bc is DbdLayoutSynthesis.BuildConstraint.Range range)
-                    sb.AppendLine($"                        new Db2GeneratedBuildConstraint.Range(WowBuildVersion.Parse(\"{EscapeString(range.From)}\"), WowBuildVersion.Parse(\"{EscapeString(range.To)}\")),");
+                switch (bc)
+                {
+                    case DbdLayoutSynthesis.BuildConstraint.Exact exact:
+                        sb.AppendLine($"                        new Db2GeneratedBuildConstraint.Exact(WowBuildVersion.Parse(\"{EscapeString(exact.Version)}\")),");
+                        break;
+                    case DbdLayoutSynthesis.BuildConstraint.Range range:
+                        sb.AppendLine($"                        new Db2GeneratedBuildConstraint.Range(WowBuildVersion.Parse(\"{EscapeString(range.From)}\"), WowBuildVersion.Parse(\"{EscapeString(range.To)}\")),");
+                        break;
+                }
             }
 
             sb.AppendLine("                    },");
@@ -243,15 +258,21 @@ internal static class GeneratedCodeRenderer
             }
             else
             {
-                if (elementType == "string")
+                switch (elementType)
                 {
-                    var get = $"row.Get<string>(\"{fieldName}\")";
-                    expr = isOptional ? get : $"{get} ?? string.Empty";
-                }
-                else
-                {
-                    var get = $"row.Get<{elementType}>(\"{fieldName}\")";
-                    expr = isOptional ? $"row[\"{fieldName}\"] is null ? ({elementType}?)null : {get}" : get;
+                    case "string":
+                        {
+                            var get = $"row.Get<string>(\"{fieldName}\")";
+                            expr = isOptional ? get : $"{get} ?? string.Empty";
+                            break;
+                        }
+
+                    default:
+                        {
+                            var get = $"row.Get<{elementType}>(\"{fieldName}\")";
+                            expr = isOptional ? $"row[\"{fieldName}\"] is null ? ({elementType}?)null : {get}" : get;
+                            break;
+                        }
                 }
             }
 
@@ -315,15 +336,9 @@ internal static class GeneratedCodeRenderer
             var hasIntKey = TryGetSingleIntKeyPropertyName(table, out var keyPropertyName);
             var createSetPrefix = $"CreateSet<{rowFullName}>(";
 
-            string createSetSuffix;
-            if (hasIntKey)
-            {
-                createSetSuffix = $", static r => r.{keyPropertyName})";
-            }
-            else
-            {
-                createSetSuffix = ")";
-            }
+            var createSetSuffix = hasIntKey
+                ? $", static r => r.{keyPropertyName})"
+                : ")";
 
             if (table.ForeignKeys.Length == 0)
             {
@@ -394,12 +409,13 @@ internal static class GeneratedCodeRenderer
         static string IdentifierKey(string identifier)
             => identifier.StartsWith("@", StringComparison.Ordinal) ? identifier.Substring(1) : identifier;
 
-        var used = new HashSet<string>(StringComparer.Ordinal);
-
-        // Avoid generating members that conflict with the enclosing type name (CS0542),
-        // and with the explicit members we emit ourselves.
-        used.Add(IdentifierKey(enclosingTypeName));
-        used.Add("From");
+        var used = new HashSet<string>(StringComparer.Ordinal)
+        {
+            // Avoid generating members that conflict with the enclosing type name (CS0542),
+            // and with the explicit members we emit ourselves.
+            IdentifierKey(enclosingTypeName),
+            "From"
+        };
         var result = new string[columns.Length];
 
         for (var i = 0; i < columns.Length; i++)
@@ -437,19 +453,26 @@ internal static class GeneratedCodeRenderer
         // In that case we must not emit a key selector (CreateSet expects a non-nullable int key).
         var layouts = DbdLayoutSynthesis.Create(table, columnPropertyNames);
         var presentInAllLayouts = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        if (layouts.Length > 0)
+        switch (layouts.Length)
         {
-            presentInAllLayouts.UnionWith(table.Columns.Select(static c => c.Name));
-            foreach (var layout in layouts)
-            {
-                var set = new HashSet<string>(layout.PhysicalColumns.Select(static c => c.DbdName), StringComparer.OrdinalIgnoreCase);
-                presentInAllLayouts.RemoveWhere(name => !set.Contains(name));
-            }
-        }
-        else
-        {
-            // No parsed version info; treat all columns as present.
-            presentInAllLayouts.UnionWith(table.Columns.Select(static c => c.Name));
+            case > 0:
+                {
+                    presentInAllLayouts.UnionWith(table.Columns.Select(static c => c.Name));
+                    foreach (var layout in layouts)
+                    {
+                        var set = new HashSet<string>(layout.PhysicalColumns.Select(static c => c.DbdName), StringComparer.OrdinalIgnoreCase);
+                        presentInAllLayouts.RemoveWhere(name => !set.Contains(name));
+                    }
+
+                    break;
+                }
+
+            default:
+                {
+                    // No parsed version info; treat all columns as present.
+                    presentInAllLayouts.UnionWith(table.Columns.Select(static c => c.Name));
+                    break;
+                }
         }
 
         if (table.Keys.Length == 0)

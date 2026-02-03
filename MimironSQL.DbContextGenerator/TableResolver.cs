@@ -1,6 +1,6 @@
 using System.Collections.Immutable;
 
-namespace CASC.Net.Generators;
+namespace MimironSQL.DbContextGenerator;
 
 internal static class TableResolver
 {
@@ -11,10 +11,9 @@ internal static class TableResolver
 
         var builder = ImmutableArray.CreateBuilder<TableSpec>();
 
-        foreach (var table in parsedTables)
+        foreach (var table in parsedTables.Where(t => manifest.TableToDb2FileDataId.ContainsKey(t.TableName)))
         {
-            if (table is null || !manifest.TableToDb2FileDataId.TryGetValue(table.TableName, out var fileDataId))
-                continue;
+            var fileDataId = manifest.TableToDb2FileDataId[table.TableName];
 
             builder.Add(new TableSpec(table.TableName, fileDataId, table.Columns, table.Keys, table.ForeignKeys, table.Versions));
         }

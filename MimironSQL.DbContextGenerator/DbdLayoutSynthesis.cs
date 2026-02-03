@@ -1,22 +1,42 @@
 using System.Collections.Immutable;
 using System.Text;
 
-namespace CASC.Net.Generators;
+namespace MimironSQL.DbContextGenerator;
 
 internal static class DbdLayoutSynthesis
 {
-    internal abstract record BuildConstraint
+    internal abstract class BuildConstraint
     {
-        public sealed record Exact(string Version) : BuildConstraint;
+        public sealed class Exact(string version) : BuildConstraint
+        {
+            public string Version { get; } = version;
+        }
 
-        public sealed record Range(string From, string To) : BuildConstraint;
+        public sealed class Range(string from, string to) : BuildConstraint
+        {
+            public string From { get; } = from;
+            public string To { get; } = to;
+        }
     }
 
-    internal sealed record PhysicalColumn(string DbdName, string PropertyName, string DbdType, int? ArrayLength);
+    internal sealed class PhysicalColumn(string dbdName, string propertyName, string dbdType, int? arrayLength)
+    {
+        public string DbdName { get; } = dbdName;
+        public string PropertyName { get; } = propertyName;
+        public string DbdType { get; } = dbdType;
+        public int? ArrayLength { get; } = arrayLength;
+    }
 
-    internal sealed record LayoutModel(ImmutableArray<BuildConstraint> BuildConstraints, ImmutableArray<PhysicalColumn> PhysicalColumns);
+    internal sealed class LayoutModel(ImmutableArray<DbdLayoutSynthesis.BuildConstraint> buildConstraints, ImmutableArray<DbdLayoutSynthesis.PhysicalColumn> physicalColumns)
+    {
+        public ImmutableArray<BuildConstraint> BuildConstraints { get; } = buildConstraints;
+        public ImmutableArray<PhysicalColumn> PhysicalColumns { get; } = physicalColumns;
+    }
 
-    internal sealed record ColumnMaxArrayLengths(IReadOnlyDictionary<string, int> MaxByColumnName);
+    internal sealed class ColumnMaxArrayLengths(IReadOnlyDictionary<string, int> maxByColumnName)
+    {
+        public IReadOnlyDictionary<string, int> MaxByColumnName { get; } = maxByColumnName;
+    }
 
     internal static LayoutModel[] Create(TableSpec table, string[] logicalPropertyNames)
     {
@@ -26,13 +46,13 @@ internal static class DbdLayoutSynthesis
             for (var i = 0; i < table.Columns.Length; i++)
             {
                 var c = table.Columns[i];
-                cols.Add(new PhysicalColumn(c.Name, logicalPropertyNames[i], c.DbdType, ArrayLength: null));
+                cols.Add(new PhysicalColumn(c.Name, logicalPropertyNames[i], c.DbdType, arrayLength: null));
             }
 
-            return new[]
-            {
-                new LayoutModel(BuildConstraints: ImmutableArray<BuildConstraint>.Empty, PhysicalColumns: cols.ToImmutable())
-            };
+            return
+            [
+                new LayoutModel([], cols.ToImmutable())
+            ];
         }
 
         var logicalNameToProperty = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -46,19 +66,15 @@ internal static class DbdLayoutSynthesis
         var signatureToIndex = new Dictionary<string, int>(StringComparer.Ordinal);
         var layouts = new List<(List<BuildConstraint> Builds, ImmutableArray<PhysicalColumn> Columns)>();
 
-        foreach (var version in table.Versions)
+        foreach (var version in table.Versions.Where(static v => v.Columns.Length != 0))
         {
-            if (version.Columns.Length == 0)
-                continue;
-
             var physical = ImmutableArray.CreateBuilder<PhysicalColumn>(version.Columns.Length);
             var sigBuilder = new StringBuilder();
 
-            foreach (var c in version.Columns)
+            foreach (var c in version.Columns.Where(c => logicalNameToProperty.ContainsKey(c.ColumnName)))
             {
                 var name = c.ColumnName;
-                if (!logicalNameToProperty.TryGetValue(name, out var propName))
-                    continue;
+                var propName = logicalNameToProperty[name];
 
                 var dbdType = logicalNameToType[name];
                 physical.Add(new PhysicalColumn(name, propName, dbdType, c.ArrayLength));
@@ -96,9 +112,7 @@ internal static class DbdLayoutSynthesis
             }
         }
 
-        return layouts
-            .Select(static t => new LayoutModel(t.Builds.ToImmutableArray(), t.Columns))
-            .ToArray();
+        return [.. layouts.Select(static t => new LayoutModel([.. t.Builds], t.Columns))];
     }
 
     internal static ColumnMaxArrayLengths ComputeMaxArrayLengths(TableSpec table)
@@ -106,10 +120,9 @@ internal static class DbdLayoutSynthesis
         var map = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         foreach (var version in table.Versions)
         {
-            foreach (var col in version.Columns)
+            foreach (var col in version.Columns.Where(static c => c.ArrayLength is { }))
             {
-                if (col.ArrayLength is not { } len)
-                    continue;
+                var len = col.ArrayLength.GetValueOrDefault();
 
                 if (!map.TryGetValue(col.ColumnName, out var existing) || len > existing)
                     map[col.ColumnName] = len;

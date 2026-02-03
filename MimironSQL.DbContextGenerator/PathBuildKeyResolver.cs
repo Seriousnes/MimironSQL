@@ -1,4 +1,4 @@
-namespace CASC.Net.Generators;
+namespace MimironSQL.DbContextGenerator;
 
 internal static class PathFlavorResolver
 {
@@ -27,7 +27,7 @@ internal static class PathFlavorResolver
         if (remainder.Length == 0)
             return null;
 
-        var sepIndex = remainder.IndexOfAny(new[] { '\\', '/' });
+        var sepIndex = remainder.IndexOfAny(['\\', '/']);
         if (sepIndex <= 0)
             return null;
 

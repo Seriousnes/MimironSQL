@@ -1,11 +1,19 @@
 using System.Collections.Immutable;
 
-namespace CASC.Net.Generators;
+namespace MimironSQL.DbContextGenerator;
 
-internal sealed record TableSpec(
-	string TableName,
-	int FileDataId,
-	ImmutableArray<ColumnSpec> Columns,
-	ImmutableArray<KeySpec> Keys,
-	ImmutableArray<ForeignKeySpec> ForeignKeys,
-	ImmutableArray<DbdVersionDefinition> Versions);
+internal sealed class TableSpec(
+    string tableName,
+    int fileDataId,
+    ImmutableArray<ColumnSpec> columns,
+    ImmutableArray<KeySpec> keys,
+    ImmutableArray<ForeignKeySpec> foreignKeys,
+    ImmutableArray<DbdVersionDefinition> versions)
+{
+    public string TableName { get; } = tableName;
+    public int FileDataId { get; } = fileDataId;
+    public ImmutableArray<ColumnSpec> Columns { get; } = columns;
+    public ImmutableArray<KeySpec> Keys { get; } = keys;
+    public ImmutableArray<ForeignKeySpec> ForeignKeys { get; } = foreignKeys;
+    public ImmutableArray<DbdVersionDefinition> Versions { get; } = versions;
+}

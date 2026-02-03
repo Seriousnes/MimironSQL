@@ -1,14 +1,9 @@
 using MimironSQL.Db2.Model;
-using MimironSQL.Tests.Fixtures;
 
 namespace MimironSQL.Tests.ErrorTestConfigurations;
 
 internal sealed class ConfigWithoutParameterlessConstructor : IDb2EntityTypeConfiguration<Map>
 {
-    public ConfigWithoutParameterlessConstructor(string parameter)
-    {
-    }
-
     public void Configure(Db2EntityTypeBuilder<Map> builder)
         => builder.ToTable("Map");
 }

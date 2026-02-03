@@ -11,11 +11,13 @@ internal ref struct Wdc5RowReader(ReadOnlySpan<byte> bytes, int positionBits)
 
     public ulong ReadUInt64(int numBits)
     {
-        if ((uint)numBits > 64)
-            throw new ArgumentOutOfRangeException(nameof(numBits));
-
-        if (numBits == 0)
-            return 0;
+        switch (numBits)
+        {
+            case > 64:
+                throw new ArgumentOutOfRangeException(nameof(numBits));
+            case 0:
+                return 0;
+        }
 
         // DB2 spec: read as little-endian, right-shift by (field_offset_bits & 7), then mask.
         var startByteIndex = PositionBits >> 3;

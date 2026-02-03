@@ -1,7 +1,6 @@
 using MimironSQL.Db2.Model;
 using MimironSQL.Db2.Query;
 using MimironSQL.Providers;
-using MimironSQL.Tests.Fixtures;
 
 using Shouldly;
 
@@ -18,13 +17,13 @@ public sealed class Db2EntityConfigurationTests
 
         var context = new ConfigurationTestContext(dbdProvider, db2Provider);
 
-        var mapEntity = context.Model.GetEntityType(typeof(Map));
+        var mapEntity = context.Model.GetEntityType(typeof(Fixtures.Map));
         mapEntity.TableName.ShouldBe("Map");
         mapEntity.PrimaryKeyMember.Name.ShouldBe("ID", StringComparer.OrdinalIgnoreCase);
 
         context.Model.TryGetReferenceNavigation(
-            typeof(Map),
-            typeof(Map).GetProperty(nameof(Map.ParentMap))!,
+            typeof(Fixtures.Map),
+            typeof(Fixtures.Map).GetProperty(nameof(Fixtures.Map.ParentMap))!,
             out var nav).ShouldBeTrue();
 
         nav.SourceKeyFieldSchema.Name.ShouldBe("ParentMapID", StringComparer.OrdinalIgnoreCase);
@@ -111,8 +110,8 @@ public sealed class Db2EntityConfigurationTests
         var context = new SchemaOverrideTestContext(dbdProvider, db2Provider);
 
         context.Model.TryGetReferenceNavigation(
-            typeof(Map),
-            typeof(Map).GetProperty(nameof(Map.ParentMap))!,
+            typeof(Fixtures.Map),
+            typeof(Fixtures.Map).GetProperty(nameof(Fixtures.Map.ParentMap))!,
             out var nav).ShouldBeTrue();
 
         nav.OverridesSchema.ShouldBeTrue();
@@ -134,9 +133,9 @@ public sealed class Db2EntityConfigurationTests
     }
 }
 
-internal sealed class MapConfiguration : IDb2EntityTypeConfiguration<Map>
+internal sealed class MapConfiguration : IDb2EntityTypeConfiguration<Fixtures.Map>
 {
-    public void Configure(Db2EntityTypeBuilder<Map> builder)
+    public void Configure(Db2EntityTypeBuilder<Fixtures.Map> builder)
         => builder
             .ToTable("Map")
             .HasOne(m => m.ParentMap)
@@ -220,7 +219,7 @@ internal sealed class SchemaOverrideTestContext(IDbdProvider dbdProvider, IDb2St
 
     protected override void OnModelCreating(Db2ModelBuilder modelBuilder)
         => modelBuilder
-            .Entity<Map>()
+            .Entity<Fixtures.Map>()
             .HasOne(m => m.ParentMap)
             .WithSharedPrimaryKey(m => m.ParentMapID, pm => pm.Id)
             .OverridesSchema();
@@ -233,7 +232,7 @@ internal sealed class ConflictTestContext(IDbdProvider dbdProvider, IDb2StreamPr
 
     protected override void OnModelCreating(Db2ModelBuilder modelBuilder)
         => modelBuilder
-            .Entity<Map>()
+            .Entity<Fixtures.Map>()
             .HasOne(m => m.ParentMap)
             .WithSharedPrimaryKey(m => m.ParentMapID, pm => pm.Id);
 }

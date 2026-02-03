@@ -2,7 +2,7 @@ using System.Collections.Immutable;
 
 using Microsoft.CodeAnalysis.Text;
 
-namespace CASC.Net.Generators;
+namespace MimironSQL.DbContextGenerator;
 
 internal static class DbdParser
 {
@@ -82,71 +82,74 @@ internal static class DbdParser
                 continue;
             }
 
-            if (section == DbdSection.Columns)
+            switch (section)
             {
-                // Column definitions are only valid until the first blank line.
-                if (!inColumnDefinitions)
-                    continue;
+                case DbdSection.Columns:
+                    {
+                        // Column definitions are only valid until the first blank line.
+                        if (!inColumnDefinitions)
+                            continue;
 
-                var withoutComment = StripLineComment(trimmed);
-                if (withoutComment.Length == 0)
-                    continue;
+                        var withoutComment = StripLineComment(trimmed);
+                        if (withoutComment.Length == 0)
+                            continue;
 
-                if (!TrySplitFirstWhitespace(withoutComment, out var dbdType, out var rest))
-                    continue;
+                        if (!TrySplitFirstWhitespace(withoutComment, out var dbdType, out var rest))
+                            continue;
 
-                // The column name is the next token.
-                if (!TrySplitFirstWhitespace(rest, out var name, out _))
-                    name = rest;
+                        // The column name is the next token.
+                        if (!TrySplitFirstWhitespace(rest, out var name, out _))
+                            name = rest;
 
-                dbdType = dbdType.Trim();
-                name = name.Trim();
-                if (dbdType.Length == 0 || name.Length == 0)
-                    continue;
+                        dbdType = dbdType.Trim();
+                        name = name.Trim();
+                        if (dbdType.Length == 0 || name.Length == 0)
+                            continue;
 
-                // In WoWDBDefs, '?' indicates "unverified" not "nullable".
-                name = StripTrailingQuestionMark(name);
+                        // In WoWDBDefs, '?' indicates "unverified" not "nullable".
+                        name = StripTrailingQuestionMark(name);
 
-                // Array lengths and field sizes are specified in version blocks, not in COLUMNS.
-                columns.Add(new ColumnSpec(dbdType, name, ArrayLength: null));
+                        // Array lengths and field sizes are specified in version blocks, not in COLUMNS.
+                        columns.Add(new ColumnSpec(dbdType, name, arrayLength: null));
 
-                if (TryParseForeignKey(dbdType, out var targetTableName, out var targetColumnName))
-                    foreignKeys.Add(new ForeignKeySpec(name, targetTableName, targetColumnName));
+                        if (TryParseForeignKey(dbdType, out var targetTableName, out var targetColumnName))
+                            foreignKeys.Add(new ForeignKeySpec(name, targetTableName, targetColumnName));
 
-                continue;
-            }
+                        continue;
+                    }
 
-            if (section == DbdSection.Keys)
-            {
-                // DBD key lines are build/schema-dependent; keep parsing flexible.
-                // Accept whitespace/comma separated column names, ignoring obvious prefixes.
-                var tokens = trimmed.Split(new[] { ' ', '\t', ',' }, StringSplitOptions.RemoveEmptyEntries)
-                    .Select(t => t.Trim())
-                    .Where(t => t.Length > 0)
-                    .ToArray();
+                case DbdSection.Keys:
+                    {
+                        // DBD key lines are build/schema-dependent; keep parsing flexible.
+                        // Accept whitespace/comma separated column names, ignoring obvious prefixes.
+                        var tokens = trimmed.Split([' ', '\t', ','], StringSplitOptions.RemoveEmptyEntries)
+                            .Select(t => t.Trim())
+                            .Where(t => t.Length > 0)
+                            .ToArray();
 
-                if (tokens.Length == 0)
-                    continue;
+                        if (tokens.Length == 0)
+                            continue;
 
-                var tokenOffset = 0;
-                var first = tokens[0];
-                if (string.Equals(first, "PRIMARY", StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(first, "PRIMARYKEY", StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(first, "PRIMARY_KEY", StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(first, "KEY", StringComparison.OrdinalIgnoreCase))
-                {
-                    tokenOffset = 1;
-                }
+                        var tokenOffset = 0;
+                        var first = tokens[0];
+                        if (string.Equals(first, "PRIMARY", StringComparison.OrdinalIgnoreCase)
+                            || string.Equals(first, "PRIMARYKEY", StringComparison.OrdinalIgnoreCase)
+                            || string.Equals(first, "PRIMARY_KEY", StringComparison.OrdinalIgnoreCase)
+                            || string.Equals(first, "KEY", StringComparison.OrdinalIgnoreCase))
+                        {
+                            tokenOffset = 1;
+                        }
 
-                var cols = tokens.Skip(tokenOffset)
-                    .Select(t => t.Trim())
-                    .Where(t => t.Length > 0)
-                    .ToImmutableArray();
+                        var cols = tokens.Skip(tokenOffset)
+                            .Select(t => t.Trim())
+                            .Where(t => t.Length > 0)
+                            .ToImmutableArray();
 
-                if (cols.Length > 0)
-                    keys.Add(new KeySpec(cols));
+                        if (cols.Length > 0)
+                            keys.Add(new KeySpec(cols));
 
-                continue;
+                        continue;
+                    }
             }
 
             // After the COLUMNS section ends, interpret the remainder as version definitions.
@@ -156,12 +159,8 @@ internal static class DbdParser
             if (trimmed.StartsWith("LAYOUT ", StringComparison.Ordinal))
             {
                 var payload = trimmed.Substring("LAYOUT ".Length).Trim();
-                foreach (var part in payload.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries))
+                foreach (var token in payload.Split([','], StringSplitOptions.RemoveEmptyEntries).Select(static p => p.Trim()).Where(static t => t is { Length: > 0 }))
                 {
-                    var token = part.Trim();
-                    if (token.Length == 0)
-                        continue;
-
                     if (uint.TryParse(token, System.Globalization.NumberStyles.HexNumber, provider: null, out var hash))
                         currentLayoutHashes.Add(hash);
                 }
@@ -172,23 +171,23 @@ internal static class DbdParser
             if (trimmed.StartsWith("BUILD ", StringComparison.Ordinal))
             {
                 var payload = trimmed.Substring("BUILD ".Length).Trim();
-                foreach (var part in payload.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries))
+                foreach (var token in payload.Split([','], StringSplitOptions.RemoveEmptyEntries).Select(static p => p.Trim()).Where(static t => t is { Length: > 0 }))
                 {
-                    var token = part.Trim();
-                    if (token.Length == 0)
-                        continue;
-
                     var dash = token.IndexOf('-');
-                    if (dash > 0 && dash < token.Length - 1)
+                    switch (dash)
                     {
-                        var from = token.Substring(0, dash).Trim();
-                        var to = token.Substring(dash + 1).Trim();
-                        if (from.Length > 0 && to.Length > 0)
-                            currentBuilds.Add(new DbdBuildSpec.Range(from, to));
-                    }
-                    else
-                    {
-                        currentBuilds.Add(new DbdBuildSpec.Exact(token));
+                        case > 0 when dash < token.Length - 1:
+                            {
+                                var from = token.Substring(0, dash).Trim();
+                                var to = token.Substring(dash + 1).Trim();
+                                if (from.Length > 0 && to.Length > 0)
+                                    currentBuilds.Add(new DbdBuildSpec.Range(from, to));
+                                break;
+                            }
+
+                        default:
+                            currentBuilds.Add(new DbdBuildSpec.Exact(token));
+                            break;
                     }
                 }
 
@@ -209,10 +208,11 @@ internal static class DbdParser
 
         FinalizeCurrentVersionBlockIfAny();
 
-        if (columns.Count == 0)
-            return null;
-
-        return new ParsedTable(tableName.Trim(), columns.ToImmutable(), keys.ToImmutable(), foreignKeys.ToImmutable(), versions.ToImmutable());
+        return columns.Count switch
+        {
+            0 => null,
+            _ => new ParsedTable(tableName.Trim(), columns.ToImmutable(), keys.ToImmutable(), foreignKeys.ToImmutable(), versions.ToImmutable()),
+        };
     }
 
     private enum DbdSection
@@ -244,10 +244,13 @@ internal static class DbdParser
                 continue;
             }
 
-            if (c == '_')
-                continue;
-
-            return false;
+            switch (c)
+            {
+                case '_':
+                    continue;
+                default:
+                    return false;
+            }
         }
 
         return hasLetter;
@@ -273,10 +276,11 @@ internal static class DbdParser
     private static string StripLineComment(string value)
     {
         var index = value.IndexOf("//", StringComparison.Ordinal);
-        if (index < 0)
-            return value.Trim();
-
-        return value.Substring(0, index).Trim();
+        return index switch
+        {
+            < 0 => value.Trim(),
+            _ => value.Substring(0, index).Trim(),
+        };
     }
 
     private static string StripTrailingQuestionMark(string value)
@@ -305,7 +309,7 @@ internal static class DbdParser
             if (end > 1)
             {
                 var annotationPayload = s.Substring(1, end - 1);
-                foreach (var part in annotationPayload.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries))
+                foreach (var part in annotationPayload.Split([','], StringSplitOptions.RemoveEmptyEntries))
                 {
                     var tok = part.Trim();
                     if (tok.Length == 0)

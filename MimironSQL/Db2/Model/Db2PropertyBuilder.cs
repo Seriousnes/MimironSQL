@@ -49,9 +49,10 @@ public sealed class Db2PropertyBuilder<T>
         if (member.Expression != property.Parameters[0])
             throw new NotSupportedException("Property selector only supports direct member access on the root entity parameter.");
 
-        if (p.GetMethod is not { IsPublic: true })
-            throw new NotSupportedException($"Property '{p.DeclaringType?.FullName}.{p.Name}' must have a public getter for column mapping.");
-
-        return p;
+        return p.GetMethod switch
+        {
+            not { IsPublic: true } => throw new NotSupportedException($"Property '{p.DeclaringType?.FullName}.{p.Name}' must have a public getter for column mapping."),
+            _ => p,
+        };
     }
 }

@@ -20,10 +20,9 @@
 	</PropertyGroup>
 
 	<ItemGroup>
+		<ProjectReference Include="..\MimironSQL.Contracts\MimironSQL.Contracts.csproj" />
 		<ProjectReference Include="..\MimironSQL.Providers\MimironSQL.Providers.csproj" />
-		<ProjectReference Include="..\Salsa20\Salsa20.csproj" />
-		<ProjectReference Include="..\MimironSQL.Abstractions\MimironSQL.Abstractions.csproj" />
-		<ProjectReference Include="..\MimironSQL.Formats.Wdc5\MimironSQL.Formats.Wdc5.csproj" />
+		<ProjectReference Include="..\MimironSQL.Dbd\MimironSQL.Dbd.csproj" />
 	</ItemGroup>
 	
 </Project>

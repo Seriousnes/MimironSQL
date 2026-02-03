@@ -1,5 +1,8 @@
 using System.Collections.Immutable;
 
-namespace CASC.Net.Generators;
+namespace MimironSQL.DbContextGenerator;
 
-internal sealed record KeySpec(ImmutableArray<string> ColumnNames);
+internal sealed class KeySpec(ImmutableArray<string> columnNames)
+{
+    public ImmutableArray<string> ColumnNames { get; } = columnNames;
+}

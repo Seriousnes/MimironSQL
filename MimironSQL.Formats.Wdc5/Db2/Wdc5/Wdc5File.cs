@@ -145,38 +145,46 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
         var palletData = new uint[columnMeta.Length][];
         for (var i = 0; i < columnMeta.Length; i++)
         {
-            if (columnMeta[i].CompressionType is CompressionType.Pallet or CompressionType.PalletArray)
+            switch (columnMeta[i].CompressionType)
             {
-                var count = checked((int)columnMeta[i].AdditionalDataSize / 4);
-                var bytes = reader.ReadBytes(count * 4);
-                var values = new uint[count];
-                MemoryMarshal.Cast<byte, uint>(bytes).CopyTo(values);
-                palletData[i] = values;
-            }
-            else
-            {
-                palletData[i] = [];
+                case CompressionType.Pallet or CompressionType.PalletArray:
+                    {
+                        var count = checked((int)columnMeta[i].AdditionalDataSize / 4);
+                        var bytes = reader.ReadBytes(count * 4);
+                        var values = new uint[count];
+                        MemoryMarshal.Cast<byte, uint>(bytes).CopyTo(values);
+                        palletData[i] = values;
+                        break;
+                    }
+
+                default:
+                    palletData[i] = [];
+                    break;
             }
         }
 
         var commonData = new Dictionary<int, uint>[columnMeta.Length];
         for (var i = 0; i < columnMeta.Length; i++)
         {
-            if (columnMeta[i] is { CompressionType: CompressionType.Common })
+            switch (columnMeta[i])
             {
-                var count = checked((int)columnMeta[i].AdditionalDataSize / 8);
-                var dict = new Dictionary<int, uint>(count);
-                for (var j = 0; j < count; j++)
-                {
-                    var id = reader.ReadInt32();
-                    var value = reader.ReadUInt32();
-                    dict[id] = value;
-                }
-                commonData[i] = dict;
-            }
-            else
-            {
-                commonData[i] = new Dictionary<int, uint>();
+                case { CompressionType: CompressionType.Common }:
+                    {
+                        var count = checked((int)columnMeta[i].AdditionalDataSize / 8);
+                        var dict = new Dictionary<int, uint>(count);
+                        for (var j = 0; j < count; j++)
+                        {
+                            var id = reader.ReadInt32();
+                            var value = reader.ReadUInt32();
+                            dict[id] = value;
+                        }
+                        commonData[i] = dict;
+                        break;
+                    }
+
+                default:
+                    commonData[i] = [];
+                    break;
             }
         }
 
@@ -361,12 +369,7 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
             {
                 var reader = CreateReaderAtRowStart(section, rowIndex, out _, out _, out _);
                 var id = GetVirtualId(section, rowIndex, reader);
-                yield return new RowHandle
-                {
-                    SectionIndex = sectionIndex,
-                    RowIndexInSection = rowIndex,
-                    RowId = id
-                };
+                yield return new RowHandle(sectionIndex, rowIndex, id);
             }
         }
     }
@@ -402,12 +405,7 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
             return false;
         }
 
-        handle = new RowHandle
-        {
-            SectionIndex = location.SectionIndex,
-            RowIndexInSection = location.RowIndexInSection,
-            RowId = requestedId
-        };
+        handle = new RowHandle(location.SectionIndex, location.RowIndexInSection, requestedId);
         return true;
     }
 
@@ -440,17 +438,15 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
         var globalRowIndex = section.FirstGlobalRecordIndex + row.RowIndexInSection;
 
         var offset = ReadField<int>(row, fieldIndex);
-        if (offset < 0)
+        switch (offset)
         {
-            stringTableIndex = 0;
-            return false;
-        }
-
-        if (offset == 0)
-        {
-            // Empty string (points to the section's string-table base null terminator).
-            stringTableIndex = (int)section.StringTableBaseOffset;
-            return true;
+            case < 0:
+                stringTableIndex = 0;
+                return false;
+            case 0:
+                // Empty string (points to the section's string-table base null terminator).
+                stringTableIndex = section.StringTableBaseOffset;
+                return true;
         }
 
         var recordOffset = (long)(globalRowIndex * Header.RecordSize) - RecordsBlobSizeBytes;
@@ -637,13 +633,12 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
 
         if (fieldIndex < 0)
         {
-            if (fieldIndex == Db2VirtualFieldIndex.Id)
-                return CastVirtualField<T>(destinationId);
-
-            if (fieldIndex == Db2VirtualFieldIndex.ParentRelation)
-                return CastVirtualField<T>(parentRelationId);
-
-            throw new NotSupportedException($"Unsupported virtual field index {fieldIndex}.");
+            return fieldIndex switch
+            {
+                Db2VirtualFieldIndex.Id => CastVirtualField<T>(destinationId),
+                Db2VirtualFieldIndex.ParentRelation => CastVirtualField<T>(parentRelationId),
+                _ => throw new NotSupportedException($"Unsupported virtual field index {fieldIndex}."),
+            };
         }
 
         if ((uint)fieldIndex >= (uint)Header.FieldsCount)
@@ -876,13 +871,12 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
 
         if (fieldIndex < 0)
         {
-            if (fieldIndex == Db2VirtualFieldIndex.Id)
-                return Convert.ChangeType(destinationId, type);
-
-            if (fieldIndex == Db2VirtualFieldIndex.ParentRelation)
-                return Convert.ChangeType(parentRelationId, type);
-
-            throw new NotSupportedException($"Unsupported virtual field index {fieldIndex}.");
+            return fieldIndex switch
+            {
+                Db2VirtualFieldIndex.Id => Convert.ChangeType(destinationId, type),
+                Db2VirtualFieldIndex.ParentRelation => Convert.ChangeType(parentRelationId, type),
+                _ => throw new NotSupportedException($"Unsupported virtual field index {fieldIndex}."),
+            };
         }
 
         if ((uint)fieldIndex >= (uint)Header.FieldsCount)
@@ -1001,8 +995,8 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
     {
         if ((uint)fieldIndex >= (uint)Header.FieldsCount)
             throw new ArgumentOutOfRangeException(nameof(fieldIndex));
-        return TryGetDenseString(section, globalRowIndex, readerAtStart, id, fieldIndex, out value)
-            || TryGetInlineString(section, readerAtStart, recordBytes, rowEndExclusive, id, fieldIndex, out value);
+        return TryGetDenseString(section, globalRowIndex, readerAtStart, id, fieldIndex, out value) || 
+               TryGetInlineString(readerAtStart, recordBytes, rowEndExclusive, id, fieldIndex, out value);
     }
 
     private bool TryGetDenseString(Wdc5Section section, int globalRowIndex, Wdc5RowReader readerAtStart, int id, int fieldIndex, out string value)
@@ -1027,16 +1021,14 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
         }
 
         var offset = Wdc5FieldDecoder.ReadScalar<int>(id, ref localReader2, fieldMeta2, columnMeta2, PalletData[fieldIndex], CommonData[fieldIndex]);
-        if (offset == 0)
+        switch (offset)
         {
-            value = string.Empty;
-            return true;
-        }
-
-        if (offset < 0)
-        {
-            value = string.Empty;
-            return false;
+            case 0:
+                value = string.Empty;
+                return true;
+            case < 0:
+                value = string.Empty;
+                return false;
         }
 
         var recordOffset = (long)(globalRowIndex * Header.RecordSize) - RecordsBlobSizeBytes;
@@ -1062,7 +1054,7 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
         return TryReadNullTerminatedUtf8(DenseStringTableBytes.Span, startIndex: (int)stringIndex, endExclusive: sectionEndExclusive, out value);
     }
 
-    private bool TryGetInlineString(Wdc5Section section, Wdc5RowReader readerAtStart, ReadOnlySpan<byte> recordBytes, int rowEndExclusive, int id, int fieldIndex, out string value)
+    private bool TryGetInlineString(Wdc5RowReader readerAtStart, ReadOnlySpan<byte> recordBytes, int rowEndExclusive, int id, int fieldIndex, out string value)
     {
         if (!Header.Flags.HasFlag(Db2Flags.Sparse))
         {
@@ -1090,28 +1082,32 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
         ref readonly var fieldMeta = ref FieldMeta[fieldIndex];
         ref readonly var columnMeta = ref ColumnMeta[fieldIndex];
 
-        if (columnMeta is { CompressionType: CompressionType.None })
+        switch (columnMeta)
         {
-            var bitSize = 32 - fieldMeta.Bits;
-            if (bitSize <= 0)
-                bitSize = columnMeta.Immediate.BitWidth;
-
-            if (bitSize == 32)
-            {
-                var currentBytePos = reader.PositionBits >> 3;
-                var terminatorIndex = recordBytes[currentBytePos..endExclusive].IndexOf((byte)0);
-                if (terminatorIndex >= 0)
+            case { CompressionType: CompressionType.None }:
                 {
-                    reader.PositionBits += (terminatorIndex + 1) * 8;
-                    return;
-                }
-            }
+                    var bitSize = 32 - fieldMeta.Bits;
+                    if (bitSize <= 0)
+                        bitSize = columnMeta.Immediate.BitWidth;
 
-            reader.PositionBits += bitSize;
-        }
-        else
-        {
-            _ = Wdc5FieldDecoder.ReadScalar<long>(id, ref reader, fieldMeta, columnMeta, PalletData[fieldIndex], CommonData[fieldIndex]);
+                    if (bitSize == 32)
+                    {
+                        var currentBytePos = reader.PositionBits >> 3;
+                        var terminatorIndex = recordBytes[currentBytePos..endExclusive].IndexOf((byte)0);
+                        if (terminatorIndex >= 0)
+                        {
+                            reader.PositionBits += (terminatorIndex + 1) * 8;
+                            return;
+                        }
+                    }
+
+                    reader.PositionBits += bitSize;
+                    break;
+                }
+
+            default:
+                _ = Wdc5FieldDecoder.ReadScalar<long>(id, ref reader, fieldMeta, columnMeta, PalletData[fieldIndex], CommonData[fieldIndex]);
+                break;
         }
     }
 
@@ -1127,16 +1123,14 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
 
         var span = bytes[startIndex..endExclusive];
         var terminatorIndex = span.IndexOf((byte)0);
-        if (terminatorIndex < 0)
+        switch (terminatorIndex)
         {
-            value = string.Empty;
-            return false;
-        }
-
-        if (terminatorIndex == 0)
-        {
-            value = string.Empty;
-            return true;
+            case < 0:
+                value = string.Empty;
+                return false;
+            case 0:
+                value = string.Empty;
+                return true;
         }
 
         try
@@ -1193,18 +1187,11 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
         return array;
     }
 
-    private readonly struct DecryptedRowLease : IDisposable
+    private readonly struct DecryptedRowLease(byte[] buffer, int clearLength, int rowSizeBytes) : IDisposable
     {
-        private readonly byte[]? _buffer;
-        private readonly int _clearLength;
-        private readonly int _rowSizeBytes;
-
-        public DecryptedRowLease(byte[] buffer, int clearLength, int rowSizeBytes)
-        {
-            _buffer = buffer;
-            _clearLength = clearLength;
-            _rowSizeBytes = rowSizeBytes;
-        }
+        private readonly byte[]? _buffer = buffer;
+        private readonly int _clearLength = clearLength;
+        private readonly int _rowSizeBytes = rowSizeBytes;
 
         public ReadOnlySpan<byte> Bytes => _buffer.AsSpan(0, _rowSizeBytes);
 

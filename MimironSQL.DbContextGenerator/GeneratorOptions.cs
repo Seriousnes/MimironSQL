@@ -1,15 +1,16 @@
 using Microsoft.CodeAnalysis.Diagnostics;
 
-namespace CASC.Net.Generators;
+namespace MimironSQL.DbContextGenerator;
 
-internal sealed record GeneratorOptions(
-    string WowDbDefsRoot)
+internal sealed class GeneratorOptions(string wowDbDefsRoot)
 {
+    public string WowDbDefsRoot { get; } = wowDbDefsRoot;
+
     public static GeneratorOptions From(AnalyzerConfigOptions globalOptions)
     {
         globalOptions.TryGetValue("build_property.CascNetWowDbDefsRoot", out var wowDbDefsRoot);
 
         return new GeneratorOptions(
-            WowDbDefsRoot: wowDbDefsRoot?.Trim() ?? string.Empty);
+            wowDbDefsRoot?.Trim() ?? string.Empty);
     }
 }

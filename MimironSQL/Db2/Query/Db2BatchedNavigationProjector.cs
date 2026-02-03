@@ -113,7 +113,7 @@ internal static class Db2BatchedNavigationProjector
                 assignments.Add(Expression.Assign(locals.KeyVar, keyExpr));
 
                 // found = lookup.TryGetRow(key, out row)
-                var tryGetMethod = typeof(NavigationLookup<TRow>).GetMethod(nameof(NavigationLookup<TRow>.TryGetRow))!;
+                var tryGetMethod = typeof(NavigationLookup<TRow>).GetMethod(nameof(NavigationLookup<>.TryGetRow))!;
                 var lookupExpr = Expression.Constant(lookup);
                 var tryGetCall = Expression.Call(lookupExpr, tryGetMethod, locals.KeyVar, locals.RowVar);
                 assignments.Add(Expression.Assign(locals.FoundVar, tryGetCall));
@@ -193,33 +193,37 @@ internal static class Db2BatchedNavigationProjector
             node = (MemberExpression)base.VisitMember(node);
 
             // x.Nav.Member
-            if (node.Expression is MemberExpression { Member: PropertyInfo or FieldInfo } nav && nav.Expression == entityParam)
+            switch (node.Expression)
             {
-                if (!lookupByNavigation.TryGetValue(nav.Member, out var lookup))
+                case MemberExpression { Member: PropertyInfo or FieldInfo } nav when nav.Expression == entityParam:
+                    {
+                        if (!lookupByNavigation.TryGetValue(nav.Member, out var lookup))
+                            return node;
+
+                        // Get or create shared locals for this navigation
+                        if (!NavigationLocals.TryGetValue(nav.Member, out var locals))
+                        {
+                            var navName = nav.Member.Name;
+                            locals = new NavigationLocalVars(
+                                Expression.Variable(typeof(int), $"{navName}_key"),
+                                Expression.Variable(typeof(TRow), $"{navName}_row"),
+                                Expression.Variable(typeof(bool), $"{navName}_found"));
+                            NavigationLocals[nav.Member] = locals;
+                        }
+
+                        var accessor = lookup.GetAccessor(node.Member);
+                        var lookupExpression = Expression.Constant(lookup);
+
+                        // Just use the pre-initialized locals: if (found) read else default
+                        var read = BuildReadExpression(lookupExpression, locals.RowVar, accessor, node.Type);
+                        var defaultValue = Expression.Default(node.Type);
+
+                        return Expression.Condition(locals.FoundVar, read, defaultValue);
+                    }
+
+                default:
                     return node;
-
-                // Get or create shared locals for this navigation
-                if (!NavigationLocals.TryGetValue(nav.Member, out var locals))
-                {
-                    var navName = nav.Member.Name;
-                    locals = new NavigationLocalVars(
-                        Expression.Variable(typeof(int), $"{navName}_key"),
-                        Expression.Variable(typeof(TRow), $"{navName}_row"),
-                        Expression.Variable(typeof(bool), $"{navName}_found"));
-                    NavigationLocals[nav.Member] = locals;
-                }
-
-                var accessor = lookup.GetAccessor(node.Member);
-                var lookupExpression = Expression.Constant(lookup);
-
-                // Just use the pre-initialized locals: if (found) read else default
-                var read = BuildReadExpression(lookupExpression, locals.RowVar, accessor, node.Type);
-                var defaultValue = Expression.Default(node.Type);
-
-                return Expression.Condition(locals.FoundVar, read, defaultValue);
             }
-
-            return node;
         }
 
         private static Expression BuildReadExpression(ConstantExpression lookupExpression, Expression rowExpression, Db2FieldAccessor accessor, Type targetType)
@@ -241,7 +245,7 @@ internal static class Db2BatchedNavigationProjector
 
                 var arrayType = elementType.MakeArrayType();
                 var readArrayMethod = typeof(NavigationLookup<TRow>)
-                    .GetMethod(nameof(NavigationLookup<TRow>.ReadField), BindingFlags.Public | BindingFlags.Instance)!
+                    .GetMethod(nameof(NavigationLookup<>.ReadField), BindingFlags.Public | BindingFlags.Instance)!
                     .MakeGenericMethod(arrayType);
 
                 var readArray = Expression.Call(lookupExpression, readArrayMethod, rowExpression, Expression.Constant(accessor.Field.ColumnStartIndex));
@@ -263,12 +267,12 @@ internal static class Db2BatchedNavigationProjector
 
             var readType = targetType.UnwrapNullable();
             var readMethod = typeof(NavigationLookup<TRow>)
-                .GetMethod(nameof(NavigationLookup<TRow>.ReadField), BindingFlags.Public | BindingFlags.Instance)!
+                .GetMethod(nameof(NavigationLookup<>.ReadField), BindingFlags.Public | BindingFlags.Instance)!
                 .MakeGenericMethod(readType);
 
             var read = Expression.Call(lookupExpression, readMethod, rowExpression, Expression.Constant(accessor.Field.ColumnStartIndex));
 
             return targetType.IsNullable() ? Expression.Convert(read, targetType) : read;
-        }        
+        }
     }
 }

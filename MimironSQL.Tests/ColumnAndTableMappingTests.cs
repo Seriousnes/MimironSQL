@@ -195,7 +195,7 @@ internal sealed class TableAttributeAndToTableConflictContext(IDbdProvider dbdPr
 internal sealed class SpellName_InvalidFieldColumnAttributeTarget : Db2Entity
 {
     [Column("Name_lang")]
-    public string Name_lang = string.Empty;
+    public readonly string Name_lang = string.Empty;
 }
 
 internal sealed class InvalidColumnAttributeTargetContext(IDbdProvider dbdProvider, IDb2StreamProvider db2StreamProvider)

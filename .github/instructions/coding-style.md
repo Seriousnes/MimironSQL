@@ -26,6 +26,56 @@ Notes:
 
 Rationale: we already avoid static factory-like constructors; `static` “load/build” helpers are effectively the same pattern.
 
+## Loops Patterns
+
+### Implicit Loop filters
+❌ BAD
+```csharp
+foreach (var i in type.GetInterfaces())
+{
+    if (!i.IsGenericType)
+        continue;
+
+    if (i.GetGenericTypeDefinition() != typeof(IEnumerable<>))
+        continue;
+
+    elementType = i.GetGenericArguments()[0];
+    return true;
+}
+```
+
+✅ GOOD
+```csharp
+foreach (var i in type.GetInterfaces().Where(x => !x.IsGenericType && i.GetGenericTypeDefinition() != typeof(IEnumerable<>)))
+{
+    elementType = i.GetGenericArguments()[0];
+    return true;
+}
+```
+
+### Mapping iteration variable
+❌ BAD
+```csharp
+foreach (var part in payload.Split([','], StringSplitOptions.RemoveEmptyEntries))
+{
+    var token = part.Trim();
+    if (token.Length == 0)
+        continue;
+
+    if (uint.TryParse(token, System.Globalization.NumberStyles.HexNumber, provider: null, out var hash))
+        currentLayoutHashes.Add(hash);
+}
+```
+
+✅ GOOD
+```csharp
+foreach (var part in payload.Split([','], StringSplitOptions.RemoveEmptyEntries).Select(p => p.Trim()).Where(t => t is { Length: > 0 }))
+{
+    if (uint.TryParse(token, System.Globalization.NumberStyles.HexNumber, provider: null, out var hash))
+        currentLayoutHashes.Add(hash);
+}
+```
+
 ## No discard parameters in signatures
 
 - Avoid discards (`_`) in method signatures.
@@ -51,6 +101,40 @@ Goal: keep pattern matching usage consistent and readable.
     - `activeBuilds is { Count: not 0 }`
     - `section is { TactKeyLookup: not 0 }`
     - `columnMeta is { Pallet.Cardinality: 1 }`
+
+### Inline null-check + assignment
+
+- Prefer inline pattern matching for “get value and null-check” flows, instead of assigning a local then checking it.
+- If the matched value is **not used** in the block, use a discard designation (`_`).
+- If the matched value **is used** in the block, use a meaningful variable name.
+
+❌ BAD
+```csharp
+var ctor = type.GetConstructor(Type.EmptyTypes);
+if (ctor is not null)
+{
+    instance = (IDb2Format)Activator.CreateInstance(type)!;
+    return true;
+}
+```
+
+✅ GOOD (value not used)
+```csharp
+if (type.GetConstructor(Type.EmptyTypes) is { } _)
+{
+    instance = (IDb2Format)Activator.CreateInstance(type)!;
+    return true;
+}
+```
+
+✅ GOOD (value used)
+```csharp
+if (type.GetConstructor(Type.EmptyTypes) is { } ctor)
+{
+    instance = (IDb2Format)ctor.Invoke(parameters: null)!;
+    return true;
+}
+```
 
 ### Don’t
 

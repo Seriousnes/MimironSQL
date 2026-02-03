@@ -101,19 +101,23 @@ internal static class Db2RowProjectorCompiler
 
         protected override Expression VisitUnary(UnaryExpression node)
         {
-            if (node is { NodeType: ExpressionType.Convert } && node.Operand is MemberExpression m && m.Expression == entityParam)
+            switch (node)
             {
-                if (m.Member is not PropertyInfo)
-                    throw new NotSupportedException($"Member '{entityType.ClrType.FullName}.{m.Member.Name}' must be a public property.");
+                case { NodeType: ExpressionType.Convert } when node.Operand is MemberExpression m && m.Expression == entityParam:
+                    {
+                        if (m.Member is not PropertyInfo)
+                            throw new NotSupportedException($"Member '{entityType.ClrType.FullName}.{m.Member.Name}' must be a public property.");
 
-                var field = entityType.ResolveFieldSchema(m.Member, context: "row projection");
-                var accessor = getAccessor(field.Name);
-                requirements.RequireMember(m.Member, m.Type == typeof(string) ? Db2RequiredColumnKind.String : Db2RequiredColumnKind.Scalar);
-                var read = BuildReadExpression(accessor.Field, m.Type);
-                return Expression.Convert(read, node.Type);
+                        var field = entityType.ResolveFieldSchema(m.Member, context: "row projection");
+                        var accessor = getAccessor(field.Name);
+                        requirements.RequireMember(m.Member, m.Type == typeof(string) ? Db2RequiredColumnKind.String : Db2RequiredColumnKind.Scalar);
+                        var read = BuildReadExpression(accessor.Field, m.Type);
+                        return Expression.Convert(read, node.Type);
+                    }
+
+                default:
+                    return base.VisitUnary(node);
             }
-
-            return base.VisitUnary(node);
         }
 
         protected override Expression VisitBinary(BinaryExpression node)

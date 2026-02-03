@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFramework>netstandard2.0</TargetFramework>
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
@@ -12,13 +12,28 @@
     <TargetsForTfmSpecificContentInPackage>$(TargetsForTfmSpecificContentInPackage);PackBuildOutputs</TargetsForTfmSpecificContentInPackage>
 		<developmentDependency>true</developmentDependency>
     <NoWarn>$(NoWarn);NU5110;NU5111</NoWarn>
+    <PackageId>MimironSQL.DbContextGenerator</PackageId>
+    <Version>0.1.0</Version>
+    <Authors>Seriousnes</Authors>
+    <Company>Seriousnes</Company>
+    <Description>Db2Context source generator for MimironSQL (WoWDBDefs DBD-driven)</Description>
+    <PackageProjectUrl>https://github.com/Seriousnes/MimironSQL</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/Seriousnes/MimironSQL</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageTags>warcraft;wow;db2;source-generator;roslyn</PackageTags>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.12.0" PrivateAssets="all" />
     <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" Version="3.3.4" PrivateAssets="all" />
- 		<PackageReference Include="MimironSQL.Abstractions" Version="1.0.19" />
+    <PackageReference Include="System.Text.Json" Version="10.0.2" />
 </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\MimironSQL.Contracts\MimironSQL.Contracts.csproj" />
+    <ProjectReference Include="..\MimironSQL.Dbd\MimironSQL.Dbd.csproj" />
+  </ItemGroup>
 
   <ItemGroup>
     <None Include="buildTransitive\MimironSQL.DbContextGenerator.props" Pack="true" PackagePath="buildTransitive\" />
@@ -26,14 +41,10 @@
     <None Include="buildTransitive\DownloadWowDbDefs.ps1" Pack="true" PackagePath="buildTransitive\" />
   </ItemGroup>
   
-	<ItemGroup Condition="Exists('$(TargetPath)')">
-		<Analyzer Include="$(TargetPath)"/>
-	</ItemGroup>
-
 	<Target Name="PackBuildOutputs" DependsOnTargets="SatelliteDllsProjectOutputGroup;DebugSymbolsProjectOutputGroup">
 		<ItemGroup>
-			<TfmSpecificPackageFile Include="$(TargetDir)\*.dll" PackagePath="analyzers\dotnet\cs"/>
-			<TfmSpecificPackageFile Include="@(SatelliteDllsProjectOutputGroupOutput->'%(FinalOutputPath)')" PackagePath="analyzers\dotnet\cs\%(SatelliteDllsProjectOutputGroupOutput.Culture)\"/>
+			<TfmSpecificPackageFile Include="$(TargetDir)\*.dll" PackagePath="analyzers\dotnet\cs" />
+			<TfmSpecificPackageFile Include="@(SatelliteDllsProjectOutputGroupOutput->'%(FinalOutputPath)')" PackagePath="analyzers\dotnet\cs\%(SatelliteDllsProjectOutputGroupOutput.Culture)\" />
 		</ItemGroup>
 	</Target>
 

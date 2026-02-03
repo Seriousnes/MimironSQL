@@ -4,6 +4,7 @@ using MimironSQL.Db2;
 using MimironSQL.Db2.Model;
 using MimironSQL.Db2.Query;
 using MimironSQL.Formats;
+using MimironSQL.Formats.Wdc5;
 using MimironSQL.Providers;
 
 using Shouldly;
@@ -19,6 +20,7 @@ public sealed class ForeignKeyAttributeNavigationTests
         var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
         var context = new MapForeignKeyAttributeOnNavigationContext(dbdProvider, db2Provider);
+        context.EnsureModelCreated();
 
         var map = context.Maps;
         var parentMapIdField = map.Schema.Fields.First(f => f.Name.Equals("ParentMapID", StringComparison.OrdinalIgnoreCase));
@@ -48,6 +50,7 @@ public sealed class ForeignKeyAttributeNavigationTests
         var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
         var context = new MapForeignKeyAttributeOnFkContext(dbdProvider, db2Provider);
+        context.EnsureModelCreated();
 
         var map = context.Maps;
         var parentMapIdField = map.Schema.Fields.First(f => f.Name.Equals("ParentMapID", StringComparison.OrdinalIgnoreCase));
@@ -77,7 +80,11 @@ public sealed class ForeignKeyAttributeNavigationTests
         var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
 
-        var ex = Should.Throw<NotSupportedException>(() => _ = new MapForeignKeyFluentConflictContext(dbdProvider, db2Provider));
+        var ex = Should.Throw<NotSupportedException>(() =>
+        {
+            var context = new MapForeignKeyFluentConflictContext(dbdProvider, db2Provider);
+            context.EnsureModelCreated();
+        });
         ex.Message.ShouldContain("[ForeignKey]");
         ex.Message.ShouldContain(nameof(Map_ForeignKeyOnNavigation.ParentMap));
     }
@@ -93,7 +100,7 @@ internal sealed class Map_ForeignKeyOnNavigation : Db2Entity
 }
 
 internal sealed class MapForeignKeyAttributeOnNavigationContext(IDbdProvider dbdProvider, IDb2StreamProvider db2StreamProvider)
-    : Db2Context(dbdProvider, db2StreamProvider)
+    : Db2Context(dbdProvider, db2StreamProvider, Wdc5Format.Instance)
 {
     public Db2Table<Map_ForeignKeyOnNavigation> Maps { get; init; } = null!;
 }
@@ -108,7 +115,7 @@ internal sealed class Map_ForeignKeyOnFk : Db2Entity
 }
 
 internal sealed class MapForeignKeyAttributeOnFkContext(IDbdProvider dbdProvider, IDb2StreamProvider db2StreamProvider)
-    : Db2Context(dbdProvider, db2StreamProvider)
+    : Db2Context(dbdProvider, db2StreamProvider, Wdc5Format.Instance)
 {
     public Db2Table<Map_ForeignKeyOnFk> Maps { get; init; } = null!;
 }
@@ -123,11 +130,11 @@ internal sealed class Map_ForeignKeyOnNavigation_FluentConflict : Db2Entity
 }
 
 internal sealed class MapForeignKeyFluentConflictContext(IDbdProvider dbdProvider, IDb2StreamProvider db2StreamProvider)
-    : Db2Context(dbdProvider, db2StreamProvider)
+    : Db2Context(dbdProvider, db2StreamProvider, Wdc5Format.Instance)
 {
     public Db2Table<Map_ForeignKeyOnNavigation_FluentConflict> Maps { get; init; } = null!;
 
-    protected override void OnModelCreating(Db2ModelBuilder modelBuilder)
+    public override void OnModelCreating(Db2ModelBuilder modelBuilder)
         => modelBuilder
             .Entity<Map_ForeignKeyOnNavigation_FluentConflict>()
             .HasOne(m => m.ParentMap)

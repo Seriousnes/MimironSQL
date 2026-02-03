@@ -15,6 +15,7 @@ public sealed class NavigationProjectionTests
         var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
         var context = new TestDb2Context(dbdProvider, db2Provider);
+        context.EnsureModelCreated();
 
         var names = context.MapChallengeMode
             .Where(x => x.MapID == 2441)
@@ -32,6 +33,7 @@ public sealed class NavigationProjectionTests
         var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
         var context = new TestDb2Context(dbdProvider, db2Provider);
+        context.EnsureModelCreated();
 
         Wdc5FileLookupSnapshot snapshot;
         using (Wdc5FileLookupTracker.Start())
@@ -56,6 +58,7 @@ public sealed class NavigationProjectionTests
         var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
         var context = new PruningTestDb2Context(dbdProvider, db2Provider);
+        context.EnsureModelCreated();
 
         MapWithCtor.InstancesCreated = 0;
 
@@ -80,6 +83,7 @@ public sealed class NavigationProjectionTests
         var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
         var context = new TestDb2Context(dbdProvider, db2Provider);
+        context.EnsureModelCreated();
 
         var results = context.MapChallengeMode
             .Where(x => x.MapID == 2441)
@@ -98,6 +102,7 @@ public sealed class NavigationProjectionTests
         var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
         var context = new TestDb2Context(dbdProvider, db2Provider);
+        context.EnsureModelCreated();
 
         Wdc5FileLookupSnapshot snapshot;
         using (Wdc5FileLookupTracker.Start())
@@ -122,6 +127,7 @@ public sealed class NavigationProjectionTests
         var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
         var context = new TestDb2Context(dbdProvider, db2Provider);
+        context.EnsureModelCreated();
 
         var results = context.Spell
             .Where(s => s.Id > 0)
@@ -140,6 +146,7 @@ public sealed class NavigationProjectionTests
         var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
         var context = new TestDb2Context(dbdProvider, db2Provider);
+        context.EnsureModelCreated();
 
         var results = context.Spell
             .Where(s => s.Id > 0)

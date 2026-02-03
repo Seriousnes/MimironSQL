@@ -5,6 +5,7 @@ using MimironSQL.Providers;
 
 using System.Collections.Concurrent;
 using System.Reflection;
+using System.Threading;
 
 namespace MimironSQL.Db2.Query;
 
@@ -15,192 +16,61 @@ public abstract class Db2Context
     private static readonly ConcurrentDictionary<PropertyInfo, Action<Db2Context, IDb2Table>> TablePropertySetters = new();
     private static readonly ConcurrentDictionary<(Type EntityType, Type RowType), Func<Db2Context, string, Db2TableSchema, IDb2File, IDb2Table>> CreateTypedTableDelegates = new();
 
-    private readonly SchemaMapper _schemaMapper;
-    private readonly IDb2StreamProvider _db2StreamProvider;
-    private readonly Db2ContextQueryProvider _queryProvider;
-    private readonly Dictionary<string, (IDb2File File, Db2TableSchema Schema)> _cache = new(StringComparer.OrdinalIgnoreCase);
+    private readonly SchemaMapper schemaMapper;
+    private readonly IDb2StreamProvider db2StreamProvider;
+    private readonly Db2ContextQueryProvider queryProvider;
+    private readonly Dictionary<string, (IDb2File File, Db2TableSchema Schema)> cache = new(StringComparer.OrdinalIgnoreCase);
 
-    private Db2Model? _model;
-    private IDb2Format? _format;
-    private bool _isInitialized;
-    private bool _isInitializing;
+    private readonly IDb2Format format;
 
-    protected Db2Context(IDbdProvider dbdProvider, IDb2StreamProvider db2StreamProvider)
-        : this(dbdProvider, db2StreamProvider, registerFormats: null, deferInitialization: false)
+    private Db2Model? model;
+    private readonly Lock modelCreationLock = new();
+
+    protected Db2Context(IDbdProvider dbdProvider, IDb2StreamProvider db2StreamProvider, IDb2Format format)
     {
+        schemaMapper = new SchemaMapper(dbdProvider);
+        this.db2StreamProvider = db2StreamProvider;
+        queryProvider = new Db2ContextQueryProvider(this);
+
+        this.format = format;
     }
 
-    private Db2Context(IDbdProvider dbdProvider, IDb2StreamProvider db2StreamProvider, Action<Db2FormatRegistry>? registerFormats, bool deferInitialization = true)
+    public void EnsureModelCreated()
     {
-        _schemaMapper = new SchemaMapper(dbdProvider);
-        _db2StreamProvider = db2StreamProvider;
-        _queryProvider = new Db2ContextQueryProvider(this);
+        if (model is not null)
+            return;
 
-        if (!deferInitialization)
-            RegisterFormatInternal(registerFormats ?? RegisterDiscoveredFormat);
+        using var _ = modelCreationLock.EnterScope();
+        model ??= BuildModel();
+        InitializeTableProperties(model);
     }
 
-    protected virtual void OnModelCreating(Db2ModelBuilder modelBuilder)
+    public virtual void OnModelCreating(Db2ModelBuilder modelBuilder)
     {
     }
 
     internal Db2Model Model
+        => model ?? throw new InvalidOperationException("The context model has not been created. Call EnsureModelCreated() before querying.");
+
+    private void ThrowIfModelNotCreated()
     {
-        get
-        {
-            EnsureInitialized();
-            return _model!;
-        }
-    }
-
-    public void RegisterFormat(params IDb2Format[] formats)
-    {
-        ArgumentNullException.ThrowIfNull(formats);
-        RegisterFormat(registry =>
-        {
-            foreach (var format in formats)
-                registry.Register(format);
-        });
-    }
-
-    public void RegisterFormat(Action<Db2FormatRegistry> registerFormats)
-    {
-        ArgumentNullException.ThrowIfNull(registerFormats);
-
-        if (_isInitialized)
-            throw new InvalidOperationException("Format registration must occur before the context is initialized.");
-
-        RegisterFormatInternal(registerFormats);
-    }
-
-    private void RegisterFormatInternal(Action<Db2FormatRegistry> registerFormats)
-    {
-        if (_format is not null)
-            throw new InvalidOperationException("A format has already been registered for this context instance.");
-
-        var registry = new Db2FormatRegistry();
-        registerFormats(registry);
-
-        if (registry.Formats is not { Count: 1 })
-            throw new InvalidOperationException($"Expected exactly one registered format for this context instance, but got {registry.Formats.Count}.");
-
-        _format = registry.Formats[0];
-        InitializeAfterFormatRegistration();
-    }
-
-    private static void RegisterDiscoveredFormat(Db2FormatRegistry registry)
-    {
-        ArgumentNullException.ThrowIfNull(registry);
-        registry.Register(DiscoverSingleFormat());
-    }
-
-    private static IDb2Format DiscoverSingleFormat()
-    {
-        var candidates = new List<(Type Type, IDb2Format Instance)>();
-
-        foreach (var type in AppDomain.CurrentDomain.GetAssemblies()
-            .SelectMany(static a => GetLoadableTypes(a))
-            .OfType<Type>()
-            .Where(static t => !t.IsAbstract && !t.IsInterface && typeof(IDb2Format).IsAssignableFrom(t)))
-        {
-            if (TryCreateFormatInstance(type, out var instance))
-                candidates.Add((type, instance));
-        }
-
-        switch (candidates.Count)
-        {
-            case 1:
-                return candidates[0].Instance;
-            case 0:
-                throw new InvalidOperationException(
-                            "No DB2 format has been registered for this context instance, and no default format could be discovered. " +
-                            "Call RegisterFormat(...) (e.g., context.RegisterFormat(new MyFormat())).");
-            default:
-                var discovered = string.Join(", ", candidates.Select(c => c.Type.FullName).OrderBy(n => n, StringComparer.Ordinal));
-                throw new InvalidOperationException(
-                    "No DB2 format has been registered for this context instance, and multiple candidate formats were discovered. " +
-                    $"Call RegisterFormat(...) to choose exactly one. Discovered: {discovered}.");
-        }
-    }
-
-    private static bool TryCreateFormatInstance(Type type, out IDb2Format instance)
-    {
-        const BindingFlags Flags = BindingFlags.Public | BindingFlags.Static;
-
-        var instanceField = type.GetField("Instance", Flags);
-        if (instanceField is not null && type.IsAssignableFrom(instanceField.FieldType))
-        {
-            if (instanceField.GetValue(null) is IDb2Format fieldValue)
-            {
-                instance = fieldValue;
-                return true;
-            }
-        }
-
-        if (type.GetConstructor(Type.EmptyTypes) is { } _)
-        {
-            instance = (IDb2Format)Activator.CreateInstance(type)!;
-            return true;
-        }
-
-        instance = default!;
-        return false;
-    }
-
-    private static Type?[] GetLoadableTypes(Assembly assembly)
-    {
-        try
-        {
-            return assembly.GetTypes();
-        }
-        catch (ReflectionTypeLoadException ex)
-        {
-            return ex.Types;
-        }
-    }
-
-    private void EnsureInitialized()
-    {
-        if (_isInitialized || _isInitializing)
-            return;
-
-        if (_format is null)
-        {
-            RegisterFormatInternal(RegisterDiscoveredFormat);
-            return;
-        }
-
-        InitializeAfterFormatRegistration();
-    }
-
-    private void InitializeAfterFormatRegistration()
-    {
-        if (_isInitialized)
-            return;
-
-        if (_isInitializing)
-            return;
-
-        _isInitializing = true;
-
-        _model = BuildModel();
-        InitializeTableProperties();
-        _isInitialized = true;
-        _isInitializing = false;
+        if (model is null)
+            throw new InvalidOperationException("The context model has not been created. Call EnsureModelCreated() before querying.");
     }
 
     internal (IDb2File File, Db2TableSchema Schema) GetOrOpenTableRaw(string tableName)
     {
-        EnsureInitialized();
+        if (model is null && !modelCreationLock.IsHeldByCurrentThread)
+            throw new InvalidOperationException("The context model has not been created. Call EnsureModelCreated() before querying.");
 
-        if (_cache.TryGetValue(tableName, out var cached))
+        if (cache.TryGetValue(tableName, out var cached))
             return cached;
 
-        using var stream = _db2StreamProvider.OpenDb2Stream(tableName);
-        var file = _format!.OpenFile(stream);
-        var layout = _format.GetLayout(file);
-        var schema = _schemaMapper.GetSchema(tableName, layout);
-        _cache[tableName] = (file, schema);
+        using var stream = db2StreamProvider.OpenDb2Stream(tableName);
+        var file = format.OpenFile(stream);
+        var layout = format.GetLayout(file);
+        var schema = schemaMapper.GetSchema(tableName, layout);
+        cache[tableName] = (file, schema);
         return (file, schema);
     }
 
@@ -211,9 +81,8 @@ public abstract class Db2Context
         return ((IDb2File<TRow>)file, schema);
     }
 
-    private void InitializeTableProperties()
+    private void InitializeTableProperties(Db2Model db2Model)
     {
-        var model = _model!;
         var derivedType = GetType();
         foreach (var p in derivedType.GetProperties(BindingFlags.Instance | BindingFlags.Public))
         {
@@ -227,7 +96,7 @@ public abstract class Db2Context
                 continue;
 
             var entityType = pt.GetGenericArguments()[0];
-            var tableName = model.TryGetEntityType(entityType, out var configured)
+            var tableName = db2Model.TryGetEntityType(entityType, out var configured)
                 ? configured.TableName
                 : entityType.Name;
 
@@ -294,20 +163,22 @@ public abstract class Db2Context
     private Db2Table<TEntity> CreateTypedTable<TEntity, TRow>(string tableName, Db2TableSchema schema, IDb2File file)
         where TRow : struct
     {
-        var entityType = _model!.GetEntityType(typeof(TEntity));
+        ThrowIfModelNotCreated();
+
+        var entityType = model!.GetEntityType(typeof(TEntity));
         if (!entityType.TableName.Equals(tableName, StringComparison.OrdinalIgnoreCase))
             entityType = entityType.WithSchema(tableName, schema);
 
-        return new Db2Table<TEntity, TRow>(tableName, schema, entityType, _queryProvider, (IDb2File<TRow>)file);
+        return new Db2Table<TEntity, TRow>(tableName, schema, entityType, queryProvider, (IDb2File<TRow>)file);
     }
 
     protected Db2Table<T> Table<T>(string? tableName = null)
     {
-        EnsureInitialized();
+        ThrowIfModelNotCreated();
         return tableName switch
         {
             not null => OpenTableGeneric<T>(tableName),
-            _ => _model!.TryGetEntityType(typeof(T), out var configured)
+            _ => model!.TryGetEntityType(typeof(T), out var configured)
                                 ? OpenTableGeneric<T>(configured.TableName)
                                 : OpenTableGeneric<T>(typeof(T).Name),
         };

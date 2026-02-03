@@ -1,5 +1,6 @@
 using MimironSQL.Db2.Model;
 using MimironSQL.Db2.Query;
+using MimironSQL.Formats.Wdc5;
 using MimironSQL.Providers;
 using MimironSQL.Tests.Fixtures;
 
@@ -17,7 +18,10 @@ public sealed class Db2ModelValidationTests
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
 
         var ex = Should.Throw<NotSupportedException>(() =>
-            _ = new MissingPkFieldInSchemaTestContext(dbdProvider, db2Provider));
+        {
+            var context = new MissingPkFieldInSchemaTestContext(dbdProvider, db2Provider);
+            context.EnsureModelCreated();
+        });
 
         ex.Message.ShouldContain("Field 'NonExistentKey' not found in schema");
         ex.Message.ShouldContain("primary key member");
@@ -32,7 +36,10 @@ public sealed class Db2ModelValidationTests
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
 
         var ex = Should.Throw<NotSupportedException>(() =>
-            _ = new MissingFkFieldInSchemaTestContext(dbdProvider, db2Provider));
+        {
+            var context = new MissingFkFieldInSchemaTestContext(dbdProvider, db2Provider);
+            context.EnsureModelCreated();
+        });
 
         ex.Message.ShouldContain("Field 'NonExistentForeignKey' not found in schema");
         ex.Message.ShouldContain("source key member");
@@ -47,7 +54,10 @@ public sealed class Db2ModelValidationTests
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
 
         var ex = Should.Throw<NotSupportedException>(() =>
-            _ = new MissingTargetPkFieldInSchemaTestContext(dbdProvider, db2Provider));
+        {
+            var context = new MissingTargetPkFieldInSchemaTestContext(dbdProvider, db2Provider);
+            context.EnsureModelCreated();
+        });
 
         ex.Message.ShouldContain("Field 'FakeTargetKey' not found in schema");
         ex.Message.ShouldContain("target key member");
@@ -63,6 +73,9 @@ public sealed class Db2ModelValidationTests
 
         var context1 = new TestDb2Context(dbdProvider, db2Provider);
         var context2 = new TestDb2Context(dbdProvider, db2Provider);
+
+        context1.EnsureModelCreated();
+        context2.EnsureModelCreated();
 
         var mapEntity1 = context1.Model.GetEntityType(typeof(Fixtures.Map));
         var mapEntity2 = context2.Model.GetEntityType(typeof(Fixtures.Map));
@@ -87,6 +100,8 @@ public sealed class Db2ModelValidationTests
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
         var context = new TestDb2Context(dbdProvider, db2Provider);
 
+        context.EnsureModelCreated();
+
         var mapEntity = context.Model.GetEntityType(typeof(Fixtures.Map));
 
         mapEntity.PrimaryKeyFieldSchema.Name.ShouldNotBeNullOrWhiteSpace();
@@ -109,6 +124,8 @@ public sealed class Db2ModelValidationTests
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
         var context = new HasPrincipalKeySuccessTestContext(dbdProvider, db2Provider);
 
+        context.EnsureModelCreated();
+
         // Verify the navigation was configured successfully
         context.Model.TryGetReferenceNavigation(
             typeof(EntityWithCustomPrincipalKey),
@@ -123,11 +140,11 @@ public sealed class Db2ModelValidationTests
 }
 
 internal sealed class MissingPkFieldInSchemaTestContext(IDbdProvider dbdProvider, IDb2StreamProvider db2StreamProvider)
-    : Db2Context(dbdProvider, db2StreamProvider)
+    : Db2Context(dbdProvider, db2StreamProvider, Wdc5Format.Instance)
 {
     public Db2Table<EntityWithNonExistentPkField> Test { get; init; } = null!;
 
-    protected override void OnModelCreating(Db2ModelBuilder modelBuilder)
+    public override void OnModelCreating(Db2ModelBuilder modelBuilder)
         => modelBuilder
             .Entity<EntityWithNonExistentPkField>()
             .ToTable("Map")
@@ -135,12 +152,12 @@ internal sealed class MissingPkFieldInSchemaTestContext(IDbdProvider dbdProvider
 }
 
 internal sealed class MissingFkFieldInSchemaTestContext(IDbdProvider dbdProvider, IDb2StreamProvider db2StreamProvider)
-    : Db2Context(dbdProvider, db2StreamProvider)
+    : Db2Context(dbdProvider, db2StreamProvider, Wdc5Format.Instance)
 {
     public Db2Table<Map> Map { get; init; } = null!;
     public Db2Table<EntityWithNonExistentFkField> Test { get; init; } = null!;
 
-    protected override void OnModelCreating(Db2ModelBuilder modelBuilder)
+    public override void OnModelCreating(Db2ModelBuilder modelBuilder)
         => modelBuilder
             .Entity<EntityWithNonExistentFkField>()
             .ToTable("Map")
@@ -149,11 +166,11 @@ internal sealed class MissingFkFieldInSchemaTestContext(IDbdProvider dbdProvider
 }
 
 internal sealed class MissingTargetPkFieldInSchemaTestContext(IDbdProvider dbdProvider, IDb2StreamProvider db2StreamProvider)
-    : Db2Context(dbdProvider, db2StreamProvider)
+    : Db2Context(dbdProvider, db2StreamProvider, Wdc5Format.Instance)
 {
     public Db2Table<EntityWithValidFk> Test { get; init; } = null!;
 
-    protected override void OnModelCreating(Db2ModelBuilder modelBuilder)
+    public override void OnModelCreating(Db2ModelBuilder modelBuilder)
     {
         modelBuilder
             .Entity<MapTargetWithFakeKey>()
@@ -195,11 +212,11 @@ internal sealed class MapTargetWithFakeKey
 }
 
 internal sealed class HasPrincipalKeySuccessTestContext(IDbdProvider dbdProvider, IDb2StreamProvider db2StreamProvider)
-    : Db2Context(dbdProvider, db2StreamProvider)
+    : Db2Context(dbdProvider, db2StreamProvider, Wdc5Format.Instance)
 {
     public Db2Table<EntityWithCustomPrincipalKey> Test { get; init; } = null!;
 
-    protected override void OnModelCreating(Db2ModelBuilder modelBuilder)
+    public override void OnModelCreating(Db2ModelBuilder modelBuilder)
     {
         modelBuilder
             .Entity<Map>()

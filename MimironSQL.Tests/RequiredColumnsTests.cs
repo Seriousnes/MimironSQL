@@ -20,6 +20,7 @@ public sealed class RequiredColumnsTests
         var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
         var context = new PruningTestDb2Context(dbdProvider, db2Provider);
+        context.EnsureModelCreated();
 
         var mapFile = context.GetOrOpenTableRawTyped<RowHandle>(context.Map.TableName).File;
         var mapEntityType = context.Model.GetEntityType(typeof(MapWithCtor));
@@ -43,6 +44,7 @@ public sealed class RequiredColumnsTests
         var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
         var context = new PruningTestDb2Context(dbdProvider, db2Provider);
+        context.EnsureModelCreated();
 
         var mapFile = context.GetOrOpenTableRawTyped<RowHandle>(context.Map.TableName).File;
         var mapEntityType = context.Model.GetEntityType(typeof(MapWithCtor));
@@ -62,6 +64,7 @@ public sealed class RequiredColumnsTests
         var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
         var context = new TestDb2Context(dbdProvider, db2Provider);
+        context.EnsureModelCreated();
 
         Expression<Func<Fixtures.Spell, bool>> predicate = s => s.SpellName.Name_lang.Contains("Fire");
 

@@ -2,7 +2,7 @@ using System.Text.Json;
 
 using Microsoft.CodeAnalysis.Text;
 
-namespace CASC.Net.Generators;
+namespace MimironSQL.DbContextGenerator;
 
 internal static class ManifestParser
 {

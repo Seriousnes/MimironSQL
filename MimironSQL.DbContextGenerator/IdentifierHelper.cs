@@ -1,6 +1,6 @@
 using System.Text;
 
-namespace CASC.Net.Generators;
+namespace MimironSQL.DbContextGenerator;
 
 internal static class IdentifierHelper
 {
@@ -61,7 +61,7 @@ internal static class IdentifierHelper
         if (string.IsNullOrWhiteSpace(name))
             return "Unknown";
 
-        var parts = name.Split(new[] { '_', '-', ' ' }, StringSplitOptions.RemoveEmptyEntries);
+        var parts = name.Split(['_', '-', ' '], StringSplitOptions.RemoveEmptyEntries);
         var sb = new StringBuilder();
         foreach (var p in parts)
         {

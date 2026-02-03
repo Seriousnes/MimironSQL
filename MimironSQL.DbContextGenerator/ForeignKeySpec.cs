@@ -1,3 +1,15 @@
-namespace CASC.Net.Generators;
+namespace MimironSQL.DbContextGenerator;
 
-internal sealed record ForeignKeySpec(string ColumnName, string TargetTableName, string TargetColumnName);
+internal sealed class ForeignKeySpec
+{
+	public string ColumnName { get; }
+	public string TargetTableName { get; }
+	public string TargetColumnName { get; }
+
+	public ForeignKeySpec(string columnName, string targetTableName, string targetColumnName)
+	{
+		ColumnName = columnName;
+		TargetTableName = targetTableName;
+		TargetColumnName = targetColumnName;
+	}
+}

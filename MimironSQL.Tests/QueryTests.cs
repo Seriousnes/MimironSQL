@@ -21,7 +21,7 @@ public class QueryTests
         var map = context.Map;
 
         var results = map
-            .Where(x => x.Directory.Contains("o"))
+            .Where(x => x.Directory.Contains('o'))
             .Take(25);
 
         results.Count().ShouldBeGreaterThan(0);
@@ -296,20 +296,20 @@ public class QueryTests
 
         var mapFile = context.GetOrOpenTableRawTyped<RowHandle>(map.TableName).File;
 
-        var candidate = mapFile.EnumerateRows()
+        var (Id, ParentId) = mapFile.EnumerateRows()
             .Select(r => (Id: r.RowId, ParentId: mapFile.ReadField<int>(r, parentMapIdField.ColumnStartIndex)))
             .FirstOrDefault(x => x.ParentId > 0 && mapFile.TryGetRowById(x.ParentId, out _));
 
-        candidate.ParentId.ShouldBeGreaterThan(0);
+        ParentId.ShouldBeGreaterThan(0);
 
         var entity = map
-            .Where(x => x.Id == candidate.Id)
+            .Where(x => x.Id == Id)
             .Include(x => x.ParentMap)
             .Single();
 
-        entity.ParentMapID.ShouldBe(candidate.ParentId);
+        entity.ParentMapID.ShouldBe(ParentId);
         entity.ParentMap.ShouldNotBeNull();
-        entity.ParentMap!.Id.ShouldBe(candidate.ParentId);
+        entity.ParentMap!.Id.ShouldBe(ParentId);
     }
 
     [Fact]
@@ -367,20 +367,20 @@ public class QueryTests
 
         var mapFile = context.GetOrOpenTableRawTyped<RowHandle>(map.TableName).File;
 
-        var candidate = mapFile.EnumerateRows()
+        var (Id, ParentId) = mapFile.EnumerateRows()
             .Select(r => (Id: r.RowId, ParentId: mapFile.ReadField<int>(r, parentMapIdField.ColumnStartIndex)))
             .FirstOrDefault(x => x.ParentId > 0 && mapFile.TryGetRowById(x.ParentId, out _));
 
-        candidate.ParentId.ShouldBeGreaterThan(0);
+        ParentId.ShouldBeGreaterThan(0);
 
         var entity = map
-            .Where(x => x.Id == candidate.Id)
+            .Where(x => x.Id == Id)
             .Include(x => x.ParentMap)
             .Single();
 
-        entity.ParentMapID.ShouldBe(candidate.ParentId);
+        entity.ParentMapID.ShouldBe(ParentId);
         entity.ParentMap.ShouldNotBeNull();
-        entity.ParentMap!.Id.ShouldBe(candidate.ParentId);
+        entity.ParentMap!.Id.ShouldBe(ParentId);
     }
 
     [Theory]
@@ -394,7 +394,7 @@ public class QueryTests
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
         var context = new TestDb2Context(dbdProvider, db2Provider);
 
-        var expected = new Spell
+        var expected = new Fixtures.Spell
         {
             Id = id,
             NameSubtext_lang = expectedNameSubtext ?? string.Empty,
@@ -537,28 +537,28 @@ public class QueryTests
 
         var allIds = mapFile.EnumerateRows().Select(r => r.RowId).ToHashSet();
 
-        var candidate = mapFile.EnumerateRows()
+        var (Id, ParentId) = mapFile.EnumerateRows()
             .Select(r => (Id: r.RowId, ParentId: mapFile.ReadField<int>(r, parentMapIdField.ColumnStartIndex)))
             .FirstOrDefault(x => x.ParentId > 0 && allIds.Contains(x.ParentId));
 
-        candidate.ParentId.ShouldBeGreaterThan(0);
+        ParentId.ShouldBeGreaterThan(0);
 
         Wdc5FileLookupSnapshot snapshot;
-        Map entity;
+        Fixtures.Map entity;
 
         using (Wdc5FileLookupTracker.Start())
         {
             entity = map
-                .Where(x => x.Id == candidate.Id)
+                .Where(x => x.Id == Id)
                 .Include(x => x.ParentMap)
                 .Single();
 
             snapshot = Wdc5FileLookupTracker.Snapshot();
         }
 
-        entity.ParentMapID.ShouldBe(candidate.ParentId);
+        entity.ParentMapID.ShouldBe(ParentId);
         entity.ParentMap.ShouldNotBeNull();
-        entity.ParentMap!.Id.ShouldBe(candidate.ParentId);
+        entity.ParentMap!.Id.ShouldBe(ParentId);
 
         snapshot.TotalTryGetRowByIdCalls.ShouldBe(0);
     }
@@ -583,7 +583,7 @@ public class QueryTests
         candidateId.ShouldBeGreaterThan(0);
 
         Wdc5FileLookupSnapshot snapshot;
-        Spell entity;
+        Fixtures.Spell entity;
 
         using (Wdc5FileLookupTracker.Start())
         {
@@ -759,15 +759,15 @@ public class QueryTests
         var mapChallengeModeSchema = context.GetOrOpenTableRawTyped<RowHandle>(nameof(MapChallengeMode)).Schema;
         mapChallengeModeSchema.TryGetField("MapID", out var mapIdField).ShouldBeTrue();
 
-        var first = mapChallengeModeFile.EnumerateRows()
+        var (Id, MapId) = mapChallengeModeFile.EnumerateRows()
             .Select(r => (Id: r.RowId, MapId: (int)mapChallengeModeFile.ReadField<ushort>(r, mapIdField.ColumnStartIndex)))
             .First(x => x.Id != 0 && x.MapId != 0);
 
         var result = context.Map
-            .Where(m => m.MapChallengeModes.Any(mc => mc.Id == first.Id))
+            .Where(m => m.MapChallengeModes.Any(mc => mc.Id == Id))
             .Single();
 
-        result.Id.ShouldBe(first.MapId);
+        result.Id.ShouldBe(MapId);
     }
 
     [Fact]
@@ -875,10 +875,10 @@ public class QueryTests
         // Ensure the fixture has at least one missing parent navigation (ParentMapID == 0).
         map.Where(m => m.ParentMapID == 0).Take(1).Any().ShouldBeTrue("Fixture should contain at least one Map row with ParentMapID == 0");
 
-        List<Map> results = [];
+        List<Fixtures.Map> results = [];
         Should.NotThrow(() =>
             results = [.. map
-                .Where(m => m.ParentMap.Id > 0 && m.Directory.Contains("o"))
+                .Where(m => m.ParentMap.Id > 0 && m.Directory.Contains('o'))
                 .Take(50)]);
 
         results.All(r => r.ParentMapID != 0 && allMapIds.Contains(r.ParentMapID)).ShouldBeTrue();

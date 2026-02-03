@@ -47,7 +47,7 @@ public sealed class RequiredColumnsTests
         var mapFile = context.GetOrOpenTableRawTyped<RowHandle>(context.Map.TableName).File;
         var mapEntityType = context.Model.GetEntityType(typeof(MapWithCtor));
 
-        Expression<Func<MapWithCtor, bool>> predicate = x => x.Id > 0 && x.Directory.Contains("o");
+        Expression<Func<MapWithCtor, bool>> predicate = x => x.Id > 0 && x.Directory.Contains('o');
         Db2RowPredicateCompiler.TryCompile<MapWithCtor, RowHandle>(mapFile, mapEntityType, predicate, out _, out var requirements).ShouldBeTrue();
 
         requirements.Columns.Any(c => c.Kind == Db2RequiredColumnKind.Scalar && c.Field.IsId).ShouldBeTrue();
@@ -63,7 +63,7 @@ public sealed class RequiredColumnsTests
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
         var context = new TestDb2Context(dbdProvider, db2Provider);
 
-        Expression<Func<Spell, bool>> predicate = s => s.SpellName.Name_lang.Contains("Fire");
+        Expression<Func<Fixtures.Spell, bool>> predicate = s => s.SpellName.Name_lang.Contains("Fire");
 
         Db2NavigationQueryTranslator.TryTranslateStringPredicate(context.Model, predicate, out var plan).ShouldBeTrue();
 

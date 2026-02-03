@@ -1,3 +1,15 @@
-namespace CASC.Net.Generators;
+namespace MimironSQL.DbContextGenerator;
 
-internal sealed record ColumnSpec(string DbdType, string Name, int? ArrayLength);
+internal sealed class ColumnSpec
+{
+	public string DbdType { get; }
+	public string Name { get; }
+	public int? ArrayLength { get; }
+
+	public ColumnSpec(string dbdType, string name, int? arrayLength)
+	{
+		DbdType = dbdType;
+		Name = name;
+		ArrayLength = arrayLength;
+	}
+}

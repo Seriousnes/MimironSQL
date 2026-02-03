@@ -361,12 +361,7 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
             {
                 var reader = CreateReaderAtRowStart(section, rowIndex, out _, out _, out _);
                 var id = GetVirtualId(section, rowIndex, reader);
-                yield return new RowHandle
-                {
-                    SectionIndex = sectionIndex,
-                    RowIndexInSection = rowIndex,
-                    RowId = id
-                };
+                yield return new RowHandle(sectionIndex, rowIndex, id);
             }
         }
     }
@@ -402,12 +397,7 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
             return false;
         }
 
-        handle = new RowHandle
-        {
-            SectionIndex = location.SectionIndex,
-            RowIndexInSection = location.RowIndexInSection,
-            RowId = requestedId
-        };
+        handle = new RowHandle(location.SectionIndex, location.RowIndexInSection, requestedId);
         return true;
     }
 

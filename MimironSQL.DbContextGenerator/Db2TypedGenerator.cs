@@ -4,7 +4,7 @@ using System.Text;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Text;
 
-namespace CASC.Net.Generators;
+namespace MimironSQL.DbContextGenerator;
 
 [Generator(LanguageNames.CSharp)]
 public sealed class Db2TypedGenerator : IIncrementalGenerator
@@ -126,10 +126,9 @@ public sealed class Db2TypedGenerator : IIncrementalGenerator
                     chosen.TableName));
             }
 
-            resolvedTables = uniqueBySafeName.Values
+            resolvedTables = [.. uniqueBySafeName.Values
                 .OrderBy(static t => IdentifierHelper.ToSafeTypeName(t.TableName), StringComparer.OrdinalIgnoreCase)
-                .ThenBy(static t => t.TableName, StringComparer.OrdinalIgnoreCase)
-                .ToImmutableArray();
+                .ThenBy(static t => t.TableName, StringComparer.OrdinalIgnoreCase)];
 
             var ns = GeneratorConstants.RootNamespace;
 
@@ -147,7 +146,27 @@ public sealed class Db2TypedGenerator : IIncrementalGenerator
         });
     }
 
-    private sealed record ManifestFile(string Path, ManifestMapping Mapping);
+    private sealed class ManifestFile
+    {
+        public string Path { get; }
+        public ManifestMapping Mapping { get; }
 
-    private sealed record DbdFile(string Path, ParsedTable Table);
+        public ManifestFile(string path, ManifestMapping mapping)
+        {
+            Path = path;
+            Mapping = mapping;
+        }
+    }
+
+    private sealed class DbdFile
+    {
+        public string Path { get; }
+        public ParsedTable Table { get; }
+
+        public DbdFile(string path, ParsedTable table)
+        {
+            Path = path;
+            Table = table;
+        }
+    }
 }

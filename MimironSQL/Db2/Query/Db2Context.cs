@@ -1,7 +1,6 @@
 using MimironSQL.Db2.Model;
 using MimironSQL.Db2.Schema;
 using MimironSQL.Formats;
-using MimironSQL.Formats.Wdc5;
 using MimironSQL.Providers;
 
 using System.Collections.Concurrent;
@@ -38,7 +37,7 @@ public abstract class Db2Context
         _queryProvider = new Db2ContextQueryProvider(this);
 
         if (!deferInitialization)
-            RegisterFormatInternal(registerFormats ?? Wdc5Format.Register);
+            RegisterFormatInternal(registerFormats ?? RegisterDiscoveredFormat);
     }
 
     protected virtual void OnModelCreating(Db2ModelBuilder modelBuilder)
@@ -89,6 +88,87 @@ public abstract class Db2Context
         InitializeAfterFormatRegistration();
     }
 
+    private static void RegisterDiscoveredFormat(Db2FormatRegistry registry)
+    {
+        ArgumentNullException.ThrowIfNull(registry);
+        registry.Register(DiscoverSingleFormat());
+    }
+
+    private static IDb2Format DiscoverSingleFormat()
+    {
+        var candidates = new List<(Type Type, IDb2Format Instance)>();
+
+        foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+        {
+            foreach (var type in GetLoadableTypes(assembly))
+            {
+                if (type is null)
+                    continue;
+
+                if (type.IsAbstract || type.IsInterface)
+                    continue;
+
+                if (!typeof(IDb2Format).IsAssignableFrom(type))
+                    continue;
+
+                if (TryCreateFormatInstance(type, out var instance))
+                    candidates.Add((type, instance));
+            }
+        }
+
+        if (candidates.Count == 1)
+            return candidates[0].Instance;
+
+        if (candidates.Count == 0)
+        {
+            throw new InvalidOperationException(
+                "No DB2 format has been registered for this context instance, and no default format could be discovered. " +
+                "Call RegisterFormat(...) (e.g., context.RegisterFormat(new MyFormat())).");
+        }
+
+        var discovered = string.Join(", ", candidates.Select(c => c.Type.FullName).OrderBy(n => n, StringComparer.Ordinal));
+        throw new InvalidOperationException(
+            "No DB2 format has been registered for this context instance, and multiple candidate formats were discovered. " +
+            $"Call RegisterFormat(...) to choose exactly one. Discovered: {discovered}.");
+    }
+
+    private static bool TryCreateFormatInstance(Type type, out IDb2Format instance)
+    {
+        const BindingFlags Flags = BindingFlags.Public | BindingFlags.Static;
+
+        var instanceField = type.GetField("Instance", Flags);
+        if (instanceField is not null && type.IsAssignableFrom(instanceField.FieldType))
+        {
+            if (instanceField.GetValue(null) is IDb2Format fieldValue)
+            {
+                instance = fieldValue;
+                return true;
+            }
+        }
+
+        var ctor = type.GetConstructor(Type.EmptyTypes);
+        if (ctor is not null)
+        {
+            instance = (IDb2Format)Activator.CreateInstance(type)!;
+            return true;
+        }
+
+        instance = default!;
+        return false;
+    }
+
+    private static IEnumerable<Type?> GetLoadableTypes(Assembly assembly)
+    {
+        try
+        {
+            return assembly.GetTypes();
+        }
+        catch (ReflectionTypeLoadException ex)
+        {
+            return ex.Types;
+        }
+    }
+
     private void EnsureInitialized()
     {
         if (_isInitialized)
@@ -99,7 +179,7 @@ public abstract class Db2Context
 
         if (_format is null)
         {
-            RegisterFormatInternal(Wdc5Format.Register);
+            RegisterFormatInternal(RegisterDiscoveredFormat);
             return;
         }
 
@@ -194,6 +274,8 @@ public abstract class Db2Context
         var builder = new Db2ModelBuilder();
         builder.ApplyTablePropertyConventions(GetType());
         OnModelCreating(builder);
+
+        builder.ApplyAttributeNavigationConventions();
 
         builder.ApplySchemaNavigationConventions(tableName => GetOrOpenTableRaw(tableName).Schema);
         return builder.Build(tableName => GetOrOpenTableRaw(tableName).Schema);

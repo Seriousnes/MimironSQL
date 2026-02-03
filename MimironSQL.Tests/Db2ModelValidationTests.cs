@@ -64,16 +64,16 @@ public sealed class Db2ModelValidationTests
         var context1 = new TestDb2Context(dbdProvider, db2Provider);
         var context2 = new TestDb2Context(dbdProvider, db2Provider);
 
-        var mapEntity1 = context1.Model.GetEntityType(typeof(Map));
-        var mapEntity2 = context2.Model.GetEntityType(typeof(Map));
+        var mapEntity1 = context1.Model.GetEntityType(typeof(Fixtures.Map));
+        var mapEntity2 = context2.Model.GetEntityType(typeof(Fixtures.Map));
 
         mapEntity1.TableName.ShouldBe(mapEntity2.TableName);
         mapEntity1.PrimaryKeyMember.Name.ShouldBe(mapEntity2.PrimaryKeyMember.Name);
         mapEntity1.PrimaryKeyFieldSchema.Name.ShouldBe(mapEntity2.PrimaryKeyFieldSchema.Name);
         mapEntity1.PrimaryKeyFieldSchema.ColumnStartIndex.ShouldBe(mapEntity2.PrimaryKeyFieldSchema.ColumnStartIndex);
 
-        context1.Model.TryGetReferenceNavigation(typeof(Map), typeof(Map).GetProperty(nameof(Map.ParentMap))!, out var nav1).ShouldBeTrue();
-        context2.Model.TryGetReferenceNavigation(typeof(Map), typeof(Map).GetProperty(nameof(Map.ParentMap))!, out var nav2).ShouldBeTrue();
+        context1.Model.TryGetReferenceNavigation(typeof(Fixtures.Map), typeof(Fixtures.Map).GetProperty(nameof(Fixtures.Map.ParentMap))!, out var nav1).ShouldBeTrue();
+        context2.Model.TryGetReferenceNavigation(typeof(Fixtures.Map), typeof(Fixtures.Map).GetProperty(nameof(Fixtures.Map.ParentMap))!, out var nav2).ShouldBeTrue();
 
         nav1.SourceKeyFieldSchema.Name.ShouldBe(nav2.SourceKeyFieldSchema.Name);
         nav1.TargetKeyFieldSchema.Name.ShouldBe(nav2.TargetKeyFieldSchema.Name);
@@ -87,12 +87,12 @@ public sealed class Db2ModelValidationTests
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
         var context = new TestDb2Context(dbdProvider, db2Provider);
 
-        var mapEntity = context.Model.GetEntityType(typeof(Map));
+        var mapEntity = context.Model.GetEntityType(typeof(Fixtures.Map));
 
         mapEntity.PrimaryKeyFieldSchema.Name.ShouldNotBeNullOrWhiteSpace();
         mapEntity.PrimaryKeyFieldSchema.IsId.ShouldBeTrue();
 
-        context.Model.TryGetReferenceNavigation(typeof(Map), typeof(Map).GetProperty(nameof(Map.ParentMap))!, out var nav).ShouldBeTrue();
+        context.Model.TryGetReferenceNavigation(typeof(Fixtures.Map), typeof(Fixtures.Map).GetProperty(nameof(Fixtures.Map.ParentMap))!, out var nav).ShouldBeTrue();
 
         nav.SourceKeyFieldSchema.Name.ShouldNotBeNullOrWhiteSpace();
         nav.TargetKeyFieldSchema.Name.ShouldNotBeNullOrWhiteSpace();

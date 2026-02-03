@@ -1,7 +1,7 @@
 using System.Collections.Immutable;
 using System.Text;
 
-namespace CASC.Net.Generators;
+namespace MimironSQL.DbContextGenerator;
 
 internal static class GeneratedCodeRenderer
 {

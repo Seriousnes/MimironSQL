@@ -1,5 +1,4 @@
 using MimironSQL.Db2.Model;
-using MimironSQL.Tests.Fixtures;
 
 namespace MimironSQL.Tests.ErrorTestConfigurations;
 

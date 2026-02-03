@@ -132,8 +132,22 @@ internal static class Db2RowPredicateCompiler
                 var methodName = node.Method.Name;
                 if (methodName is nameof(string.Contains) or nameof(string.StartsWith) or nameof(string.EndsWith))
                 {
-                    if (node.Arguments is not { Count: 1 } || node.Arguments[0] is not ConstantExpression { Value: string needle })
-                        throw new NotSupportedException("Only constant string needles are supported for string predicates.");
+                    if (node.Arguments is not { Count: 1 })
+                        throw new NotSupportedException("Only single-argument string predicates are supported.");
+
+                    string needle;
+                    if (node.Arguments[0] is ConstantExpression { Value: string s })
+                    {
+                        needle = s;
+                    }
+                    else if (methodName == nameof(string.Contains) && node.Arguments[0] is ConstantExpression { Value: char c })
+                    {
+                        needle = c.ToString();
+                    }
+                    else
+                    {
+                        throw new NotSupportedException("Only constant string or char needles are supported for string predicates.");
+                    }
 
                     if (m.Member is not PropertyInfo)
                         throw new NotSupportedException($"Member '{entityType.ClrType.FullName}.{m.Member.Name}' must be a public property.");

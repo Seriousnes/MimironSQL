@@ -2,7 +2,7 @@ using System.Collections.Immutable;
 
 using Microsoft.CodeAnalysis.Text;
 
-namespace CASC.Net.Generators;
+namespace MimironSQL.DbContextGenerator;
 
 internal static class DbdParser
 {
@@ -108,7 +108,7 @@ internal static class DbdParser
                 name = StripTrailingQuestionMark(name);
 
                 // Array lengths and field sizes are specified in version blocks, not in COLUMNS.
-                columns.Add(new ColumnSpec(dbdType, name, ArrayLength: null));
+                columns.Add(new ColumnSpec(dbdType, name, arrayLength: null));
 
                 if (TryParseForeignKey(dbdType, out var targetTableName, out var targetColumnName))
                     foreignKeys.Add(new ForeignKeySpec(name, targetTableName, targetColumnName));
@@ -120,7 +120,7 @@ internal static class DbdParser
             {
                 // DBD key lines are build/schema-dependent; keep parsing flexible.
                 // Accept whitespace/comma separated column names, ignoring obvious prefixes.
-                var tokens = trimmed.Split(new[] { ' ', '\t', ',' }, StringSplitOptions.RemoveEmptyEntries)
+                var tokens = trimmed.Split([' ', '\t', ','], StringSplitOptions.RemoveEmptyEntries)
                     .Select(t => t.Trim())
                     .Where(t => t.Length > 0)
                     .ToArray();
@@ -156,7 +156,7 @@ internal static class DbdParser
             if (trimmed.StartsWith("LAYOUT ", StringComparison.Ordinal))
             {
                 var payload = trimmed.Substring("LAYOUT ".Length).Trim();
-                foreach (var part in payload.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries))
+                foreach (var part in payload.Split([','], StringSplitOptions.RemoveEmptyEntries))
                 {
                     var token = part.Trim();
                     if (token.Length == 0)
@@ -172,7 +172,7 @@ internal static class DbdParser
             if (trimmed.StartsWith("BUILD ", StringComparison.Ordinal))
             {
                 var payload = trimmed.Substring("BUILD ".Length).Trim();
-                foreach (var part in payload.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries))
+                foreach (var part in payload.Split([','], StringSplitOptions.RemoveEmptyEntries))
                 {
                     var token = part.Trim();
                     if (token.Length == 0)
@@ -305,7 +305,7 @@ internal static class DbdParser
             if (end > 1)
             {
                 var annotationPayload = s.Substring(1, end - 1);
-                foreach (var part in annotationPayload.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries))
+                foreach (var part in annotationPayload.Split([','], StringSplitOptions.RemoveEmptyEntries))
                 {
                     var tok = part.Trim();
                     if (tok.Length == 0)

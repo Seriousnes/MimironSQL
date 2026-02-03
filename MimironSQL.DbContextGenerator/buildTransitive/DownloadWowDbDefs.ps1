@@ -23,7 +23,7 @@ if ((Test-Path $markerPath) -and (Test-Path $manifestPath)) {
     return
 }
 
-$releaseApiUrl = 'https://api.github.com/repos/wowdev/WoWDBDefs/releases/latest'
+$releaseApiUrl = 'https://api.github.com/repos/wowdev/WoWDBDefs/releases/tags/202602031746'
 
 $headers = @{
     'User-Agent' = 'MimironSQL-wowdbdefs-downloader'

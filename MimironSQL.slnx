@@ -4,7 +4,8 @@
   <Project Path="MimironSQL.Dbd/MimironSQL.Dbd.csproj" />
   <Project Path="MimironSQL.Benchmarks/MimironSQL.Benchmarks.csproj" />
   <Project Path="MimironSQL.Formats.Wdc5/MimironSQL.Formats.Wdc5.csproj" />
-  <Project Path="MimironSQL.Providers/MimironSQL.Providers.csproj" />
+  <Project Path="MimironSQL.Providers.CASC/MimironSQL.Providers.CASC.csproj" />
+  <Project Path="MimironSQL.Providers.FileSystem/MimironSQL.Providers.FileSystem.csproj" />
   <Project Path="MimironSQL.Tests/MimironSQL.Tests.csproj" />
   <Project Path="MimironSQL/MimironSQL.csproj" />
   <Project Path="Salsa20/Salsa20.csproj" />

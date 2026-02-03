@@ -19,7 +19,7 @@ public sealed class Db2ReferenceNavigationBuilder<TSource, TTarget>(Db2ModelBuil
         _metadata.SourceKeyMember = GetMember(sourceKey);
         _metadata.TargetKeyMember = GetMember(targetKey);
 
-        _modelBuilder.Entity(typeof(TTarget));
+        _modelBuilder.Entity<TTarget>();
         return this;
 
         static MemberInfo GetMember(LambdaExpression expression)
@@ -37,10 +37,11 @@ public sealed class Db2ReferenceNavigationBuilder<TSource, TTarget>(Db2ModelBuil
             if (member.Expression != expression.Parameters[0])
                 throw new NotSupportedException("Key selector only supports direct member access on the root entity parameter.");
 
-            if (p.GetMethod is not { IsPublic: true })
-                throw new NotSupportedException($"Key property '{p.DeclaringType?.FullName}.{p.Name}' must have a public getter.");
-
-            return p;
+            return p.GetMethod switch
+            {
+                not { IsPublic: true } => throw new NotSupportedException($"Key property '{p.DeclaringType?.FullName}.{p.Name}' must have a public getter."),
+                _ => p,
+            };
         }
     }
 
@@ -58,7 +59,7 @@ public sealed class Db2ReferenceNavigationBuilder<TSource, TTarget>(Db2ModelBuil
         _metadata.Kind = Db2ReferenceNavigationKind.ForeignKeyToPrimaryKey;
         _metadata.SourceKeyMember = GetMember(foreignKey);
 
-        _modelBuilder.Entity(typeof(TTarget));
+        _modelBuilder.Entity<TTarget>();
         return this;
 
         static MemberInfo GetMember(LambdaExpression expression)
@@ -76,10 +77,11 @@ public sealed class Db2ReferenceNavigationBuilder<TSource, TTarget>(Db2ModelBuil
             if (member.Expression != expression.Parameters[0])
                 throw new NotSupportedException("FK selector only supports direct member access on the root entity parameter.");
 
-            if (p.GetMethod is not { IsPublic: true })
-                throw new NotSupportedException($"FK property '{p.DeclaringType?.FullName}.{p.Name}' must have a public getter.");
-
-            return p;
+            return p.GetMethod switch
+            {
+                not { IsPublic: true } => throw new NotSupportedException($"FK property '{p.DeclaringType?.FullName}.{p.Name}' must have a public getter."),
+                _ => p,
+            };
         }
     }
 
@@ -90,7 +92,7 @@ public sealed class Db2ReferenceNavigationBuilder<TSource, TTarget>(Db2ModelBuil
 
         _metadata.TargetKeyMember = GetMember(principalKey);
 
-        _modelBuilder.Entity(typeof(TTarget));
+        _modelBuilder.Entity<TTarget>();
         return this;
 
         static MemberInfo GetMember(LambdaExpression expression)
@@ -108,10 +110,11 @@ public sealed class Db2ReferenceNavigationBuilder<TSource, TTarget>(Db2ModelBuil
             if (member.Expression != expression.Parameters[0])
                 throw new NotSupportedException("Principal key selector only supports direct member access on the root entity parameter.");
 
-            if (p.GetMethod is not { IsPublic: true })
-                throw new NotSupportedException($"Principal key property '{p.DeclaringType?.FullName}.{p.Name}' must have a public getter.");
-
-            return p;
+            return p.GetMethod switch
+            {
+                not { IsPublic: true } => throw new NotSupportedException($"Principal key property '{p.DeclaringType?.FullName}.{p.Name}' must have a public getter."),
+                _ => p,
+            };
         }
     }
 }

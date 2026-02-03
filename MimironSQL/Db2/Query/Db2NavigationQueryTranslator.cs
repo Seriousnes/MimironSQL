@@ -446,41 +446,45 @@ internal static class Db2NavigationQueryTranslator
 
         expression = expression.UnwrapConvert()!;
 
-        if (expression is BinaryExpression { NodeType: ExpressionType.Equal } eq)
+        switch (expression)
         {
-            if (!TryGetString(eq.Left, rootParam, out var constant) && !TryGetString(eq.Right, rootParam, out constant))
-                return false;
+            case BinaryExpression { NodeType: ExpressionType.Equal } eq:
+                {
+                    if (!TryGetString(eq.Left, rootParam, out var constant) && !TryGetString(eq.Right, rootParam, out constant))
+                        return false;
 
-            var memberSide = ExpressionEquals(eq.Left, constant.Expression) ? eq.Right : eq.Left;
-            if (!TryGetNavThenMemberAccess(memberSide, rootParam, out navMember, out targetMember))
-                return false;
+                    var memberSide = ExpressionEquals(eq.Left, constant.Expression) ? eq.Right : eq.Left;
+                    if (!TryGetNavThenMemberAccess(memberSide, rootParam, out navMember, out targetMember))
+                        return false;
 
-            needle = constant.Value;
-            matchKind = Db2NavigationStringMatchKind.Equals;
-            return true;
+                    needle = constant.Value;
+                    matchKind = Db2NavigationStringMatchKind.Equals;
+                    return true;
+                }
+
+            case MethodCallExpression { Method.DeclaringType: { } dt } call when dt == typeof(string):
+                {
+                    if (call.Arguments is not { Count: 1 } || !TryGetString(call.Arguments[0], rootParam, out var constant))
+                        return false;
+
+                    if (!TryGetNavThenMemberAccess(call.Object, rootParam, out navMember, out targetMember))
+                        return false;
+
+                    needle = constant.Value;
+                    matchKind = call.Method.Name switch
+                    {
+                        nameof(string.Contains) => Db2NavigationStringMatchKind.Contains,
+                        nameof(string.StartsWith) => Db2NavigationStringMatchKind.StartsWith,
+                        nameof(string.EndsWith) => Db2NavigationStringMatchKind.EndsWith,
+                        _ => Db2NavigationStringMatchKind.Equals,
+                    };
+
+                    return call.Method.Name is nameof(string.Contains) or nameof(string.StartsWith) or nameof(string.EndsWith);
+                }
+
+            default:
+                return false;
         }
-
-        if (expression is MethodCallExpression { Method.DeclaringType: { } dt } call && dt == typeof(string))
-        {
-            if (call.Arguments is not { Count: 1 } || !TryGetString(call.Arguments[0], rootParam, out var constant))
-                return false;
-
-            if (!TryGetNavThenMemberAccess(call.Object, rootParam, out navMember, out targetMember))
-                return false;
-
-            needle = constant.Value;
-            matchKind = call.Method.Name switch
-            {
-                nameof(string.Contains) => Db2NavigationStringMatchKind.Contains,
-                nameof(string.StartsWith) => Db2NavigationStringMatchKind.StartsWith,
-                nameof(string.EndsWith) => Db2NavigationStringMatchKind.EndsWith,
-                _ => Db2NavigationStringMatchKind.Equals,
-            };
-
-            return call.Method.Name is nameof(string.Contains) or nameof(string.StartsWith) or nameof(string.EndsWith);
-        }
-
-        return false;
 
         static bool TryGetNavThenMemberAccess(
             Expression? expr,

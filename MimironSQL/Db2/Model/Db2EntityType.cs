@@ -56,10 +56,11 @@ public sealed class Db2EntityType(
             return configured;
 
         var attr = property.GetCustomAttribute<ColumnAttribute>(inherit: false);
-        if (attr is not null && !string.IsNullOrWhiteSpace(attr.Name))
-            return attr.Name;
-
-        return property.Name;
+        return attr switch
+        {
+            not null when !string.IsNullOrWhiteSpace(attr.Name) => attr.Name,
+            _ => property.Name,
+        };
     }
 
     internal Db2EntityType WithSchema(string tableName, Db2TableSchema schema)

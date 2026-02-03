@@ -11,15 +11,7 @@ public sealed class DbdLayout(uint[] hashes) : IDbdLayout
     IReadOnlyList<IDbdBuildBlock> IDbdLayout.Builds => Builds;
 
     public bool ContainsHash(uint hash)
-    {
-        foreach (var h in Hashes)
-        {
-            if (h == hash)
-                return true;
-        }
-
-        return false;
-    }
+        => Hashes.Contains(hash);
 
     public static DbdLayout ParseHeader(string line)
     {

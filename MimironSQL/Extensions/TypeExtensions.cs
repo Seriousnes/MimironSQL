@@ -2,7 +2,7 @@ namespace MimironSQL.Extensions;
 
 internal static class TypeExtensions
 {
-    private static readonly HashSet<Type> scalarTypes = 
+    private static readonly HashSet<Type> scalarTypes =
         [
             typeof(bool),
             typeof(byte),

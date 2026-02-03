@@ -22,14 +22,14 @@ public sealed class Phase4RobustnessTests
         var parentMapIdField = map.Schema.Fields.First(f => f.Name.Equals("ParentMapID", StringComparison.OrdinalIgnoreCase));
 
         // Find a map with ParentMapID = 0
-        var (Id, ParentId) = mapFile.EnumerateRows()
+        var (id, _) = mapFile.EnumerateRows()
             .Select(r => (Id: r.RowId, ParentId: mapFile.ReadField<int>(r, parentMapIdField.ColumnStartIndex)))
             .FirstOrDefault(x => x.ParentId == 0);
 
-        Id.ShouldBeGreaterThan(0, "Test requires a map with ParentMapID=0");
+        id.ShouldBeGreaterThan(0, "Test requires a map with ParentMapID=0");
 
         var entity = map
-            .Where(x => x.Id == Id)
+            .Where(x => x.Id == id)
             .Include(x => x.ParentMap)
             .Single();
 

@@ -5,18 +5,11 @@ public interface IRowHandle
     RowHandle Handle { get; }
 }
 
-public struct RowHandle : IRowHandle
+public readonly struct RowHandle(int sectionIndex, int rowIndexInSection, int rowId) : IRowHandle
 {
-    public int SectionIndex { get; }
-    public int RowIndexInSection { get; }
-    public int RowId { get; }
-
-    public RowHandle(int sectionIndex, int rowIndexInSection, int rowId)
-    {
-        SectionIndex = sectionIndex;
-        RowIndexInSection = rowIndexInSection;
-        RowId = rowId;
-    }
+    public int SectionIndex { get; } = sectionIndex;
+    public int RowIndexInSection { get; } = rowIndexInSection;
+    public int RowId { get; } = rowId;
 
     public RowHandle Handle => this;
 }

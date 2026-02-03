@@ -16,7 +16,7 @@ public sealed class Db2CollectionNavigationBuilder<TSource, TTarget>(Db2ModelBui
         _metadata.Kind = Db2CollectionNavigationKind.ForeignKeyArrayToPrimaryKey;
         _metadata.SourceKeyCollectionMember = GetMember(foreignKeyIds);
 
-        _modelBuilder.Entity(typeof(TTarget));
+        _modelBuilder.Entity<TTarget>();
         return this;
 
         static MemberInfo GetMember(LambdaExpression expression)
@@ -34,10 +34,11 @@ public sealed class Db2CollectionNavigationBuilder<TSource, TTarget>(Db2ModelBui
             if (member.Expression != expression.Parameters[0])
                 throw new NotSupportedException("FK array selector only supports direct member access on the root entity parameter.");
 
-            if (p.GetMethod is not { IsPublic: true })
-                throw new NotSupportedException($"FK array property '{p.DeclaringType?.FullName}.{p.Name}' must have a public getter.");
-
-            return p;
+            return p.GetMethod switch
+            {
+                not { IsPublic: true } => throw new NotSupportedException($"FK array property '{p.DeclaringType?.FullName}.{p.Name}' must have a public getter."),
+                _ => p,
+            };
         }
     }
 
@@ -48,7 +49,7 @@ public sealed class Db2CollectionNavigationBuilder<TSource, TTarget>(Db2ModelBui
         _metadata.Kind = Db2CollectionNavigationKind.DependentForeignKeyToPrimaryKey;
         _metadata.DependentForeignKeyMember = GetMember(foreignKey);
 
-        _modelBuilder.Entity(typeof(TTarget));
+        _modelBuilder.Entity<TTarget>();
         return this;
 
         static MemberInfo GetMember(LambdaExpression expression)
@@ -66,10 +67,11 @@ public sealed class Db2CollectionNavigationBuilder<TSource, TTarget>(Db2ModelBui
             if (member.Expression != expression.Parameters[0])
                 throw new NotSupportedException("FK selector only supports direct member access on the root entity parameter.");
 
-            if (p.GetMethod is not { IsPublic: true })
-                throw new NotSupportedException($"FK property '{p.DeclaringType?.FullName}.{p.Name}' must have a public getter.");
-
-            return p;
+            return p.GetMethod switch
+            {
+                not { IsPublic: true } => throw new NotSupportedException($"FK property '{p.DeclaringType?.FullName}.{p.Name}' must have a public getter."),
+                _ => p,
+            };
         }
     }
 
@@ -96,10 +98,11 @@ public sealed class Db2CollectionNavigationBuilder<TSource, TTarget>(Db2ModelBui
             if (member.Expression != expression.Parameters[0])
                 throw new NotSupportedException("Principal key selector only supports direct member access on the root entity parameter.");
 
-            if (p.GetMethod is not { IsPublic: true })
-                throw new NotSupportedException($"Principal key property '{p.DeclaringType?.FullName}.{p.Name}' must have a public getter.");
-
-            return p;
+            return p.GetMethod switch
+            {
+                not { IsPublic: true } => throw new NotSupportedException($"Principal key property '{p.DeclaringType?.FullName}.{p.Name}' must have a public getter."),
+                _ => p,
+            };
         }
     }
 

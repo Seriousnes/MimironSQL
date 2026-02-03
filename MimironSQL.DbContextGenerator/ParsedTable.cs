@@ -2,90 +2,54 @@ using System.Collections.Immutable;
 
 namespace MimironSQL.DbContextGenerator;
 
-internal sealed class ParsedTable
+internal sealed class ParsedTable(
+    string tableName,
+    ImmutableArray<ColumnSpec> columns,
+    ImmutableArray<KeySpec> keys,
+    ImmutableArray<ForeignKeySpec> foreignKeys,
+    ImmutableArray<DbdVersionDefinition> versions)
 {
-	public string TableName { get; }
-	public ImmutableArray<ColumnSpec> Columns { get; }
-	public ImmutableArray<KeySpec> Keys { get; }
-	public ImmutableArray<ForeignKeySpec> ForeignKeys { get; }
-	public ImmutableArray<DbdVersionDefinition> Versions { get; }
-
-	public ParsedTable(
-		string tableName,
-		ImmutableArray<ColumnSpec> columns,
-		ImmutableArray<KeySpec> keys,
-		ImmutableArray<ForeignKeySpec> foreignKeys,
-		ImmutableArray<DbdVersionDefinition> versions)
-	{
-		TableName = tableName;
-		Columns = columns;
-		Keys = keys;
-		ForeignKeys = foreignKeys;
-		Versions = versions;
-	}
+    public string TableName { get; } = tableName;
+    public ImmutableArray<ColumnSpec> Columns { get; } = columns;
+    public ImmutableArray<KeySpec> Keys { get; } = keys;
+    public ImmutableArray<ForeignKeySpec> ForeignKeys { get; } = foreignKeys;
+    public ImmutableArray<DbdVersionDefinition> Versions { get; } = versions;
 }
 
-internal sealed class DbdVersionDefinition
+internal sealed class DbdVersionDefinition(
+    ImmutableArray<uint> layoutHashes,
+    ImmutableArray<DbdBuildSpec> builds,
+    ImmutableArray<DbdPhysicalColumnSpec> columns)
 {
-	public ImmutableArray<uint> LayoutHashes { get; }
-	public ImmutableArray<DbdBuildSpec> Builds { get; }
-	public ImmutableArray<DbdPhysicalColumnSpec> Columns { get; }
-
-	public DbdVersionDefinition(
-		ImmutableArray<uint> layoutHashes,
-		ImmutableArray<DbdBuildSpec> builds,
-		ImmutableArray<DbdPhysicalColumnSpec> columns)
-	{
-		LayoutHashes = layoutHashes;
-		Builds = builds;
-		Columns = columns;
-	}
+    public ImmutableArray<uint> LayoutHashes { get; } = layoutHashes;
+    public ImmutableArray<DbdBuildSpec> Builds { get; } = builds;
+    public ImmutableArray<DbdPhysicalColumnSpec> Columns { get; } = columns;
 }
 
 internal abstract class DbdBuildSpec
 {
-	public sealed class Exact : DbdBuildSpec
-	{
-		public string Version { get; }
+    public sealed class Exact(string version) : DbdBuildSpec
+    {
+        public string Version { get; } = version;
+    }
 
-		public Exact(string version)
-		{
-			Version = version;
-		}
-	}
-
-	public sealed class Range : DbdBuildSpec
-	{
-		public string From { get; }
-		public string To { get; }
-
-		public Range(string from, string to)
-		{
-			From = from;
-			To = to;
-		}
-	}
+    public sealed class Range(string from, string to) : DbdBuildSpec
+    {
+        public string From { get; } = from;
+        public string To { get; } = to;
+    }
 }
 
-internal sealed class DbdPhysicalColumnSpec
+internal sealed class DbdPhysicalColumnSpec(
+    string columnName,
+    int? arrayLength,
+    bool isId,
+    bool isRelation,
+    bool isNonInline)
 {
-	public string ColumnName { get; }
-	public int? ArrayLength { get; }
-	public bool IsId { get; }
-	public bool IsRelation { get; }
-	public bool IsNonInline { get; }
-
-	public DbdPhysicalColumnSpec(
-		string columnName,
-		int? arrayLength,
-		bool isId,
-		bool isRelation,
-		bool isNonInline)
-	{
-		ColumnName = columnName;
-		ArrayLength = arrayLength;
-		IsId = isId;
-		IsRelation = isRelation;
-		IsNonInline = isNonInline;
-	}
+    public string ColumnName { get; } = columnName;
+    public int? ArrayLength { get; } = arrayLength;
+    public bool IsId { get; } = isId;
+    public bool IsRelation { get; } = isRelation;
+    public bool IsNonInline { get; } = isNonInline;
 }

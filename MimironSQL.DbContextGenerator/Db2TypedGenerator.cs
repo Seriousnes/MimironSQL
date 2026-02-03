@@ -87,31 +87,23 @@ public sealed class Db2TypedGenerator : IIncrementalGenerator
                 var newScore = Score(table, safeTableName);
 
                 TableSpec chosen;
-                TableSpec skipped;
 
                 if (newScore > existingScore)
                 {
                     chosen = table;
-                    skipped = existing;
                 }
                 else if (newScore < existingScore)
                 {
                     chosen = existing;
-                    skipped = table;
                 }
                 else
                 {
                     // Tie-break deterministically.
-                    if (string.Compare(existing.TableName, table.TableName, StringComparison.OrdinalIgnoreCase) <= 0)
+                    chosen = string.Compare(existing.TableName, table.TableName, StringComparison.OrdinalIgnoreCase) switch
                     {
-                        chosen = existing;
-                        skipped = table;
-                    }
-                    else
-                    {
-                        chosen = table;
-                        skipped = existing;
-                    }
+                        <= 0 => existing,
+                        _ => table,
+                    };
                 }
 
                 if (!ReferenceEquals(uniqueBySafeName[safeTableName], chosen))
@@ -146,27 +138,15 @@ public sealed class Db2TypedGenerator : IIncrementalGenerator
         });
     }
 
-    private sealed class ManifestFile
+    private sealed class ManifestFile(string path, ManifestMapping mapping)
     {
-        public string Path { get; }
-        public ManifestMapping Mapping { get; }
-
-        public ManifestFile(string path, ManifestMapping mapping)
-        {
-            Path = path;
-            Mapping = mapping;
-        }
+        public string Path { get; } = path;
+        public ManifestMapping Mapping { get; } = mapping;
     }
 
-    private sealed class DbdFile
+    private sealed class DbdFile(string path, ParsedTable table)
     {
-        public string Path { get; }
-        public ParsedTable Table { get; }
-
-        public DbdFile(string path, ParsedTable table)
-        {
-            Path = path;
-            Table = table;
-        }
+        public string Path { get; } = path;
+        public ParsedTable Table { get; } = table;
     }
 }

@@ -17,7 +17,7 @@ public sealed class Wdc5ReadFieldTests
         var handle = file.EnumerateRowHandles().First();
 
         var id = file.ReadField<int>(handle, Db2VirtualFieldIndex.Id);
-        
+
         id.ShouldNotBe(-1);
     }
 
@@ -30,7 +30,7 @@ public sealed class Wdc5ReadFieldTests
         var handle = file.EnumerateRowHandles().First();
 
         var parentRelation = file.ReadField<int>(handle, Db2VirtualFieldIndex.ParentRelation);
-        
+
         parentRelation.ShouldBeGreaterThanOrEqualTo(0);
     }
 
@@ -43,7 +43,7 @@ public sealed class Wdc5ReadFieldTests
         var handle = file.EnumerateRowHandles().First();
 
         var value = file.ReadField<uint>(handle, 0);
-        
+
         value.ShouldBeGreaterThanOrEqualTo(0u);
     }
 
@@ -72,7 +72,7 @@ public sealed class Wdc5ReadFieldTests
 
         var id = file.ReadField<int>(handle, Db2VirtualFieldIndex.Id);
         var parentRelation = file.ReadField<int>(handle, Db2VirtualFieldIndex.ParentRelation);
-        
+
         id.ShouldNotBe(-1);
         parentRelation.ShouldBeGreaterThanOrEqualTo(0);
     }
@@ -86,9 +86,9 @@ public sealed class Wdc5ReadFieldTests
         var handle = file.EnumerateRowHandles().First();
 
         var allValues = new object[file.Header.FieldsCount + 2];
-        
+
         file.ReadAllFields(handle, allValues);
-        
+
         allValues[0].ShouldBeOfType<int>();
         allValues[1].ShouldBeOfType<int>();
         ((int)allValues[0]).ShouldNotBe(-1);

@@ -2,18 +2,11 @@ using MimironSQL.Db2;
 
 namespace MimironSQL.Dbd;
 
-public sealed class DbdColumn : IDbdColumn
+public sealed class DbdColumn(Db2ValueType valueType, string? referencedTableName, bool isVerified) : IDbdColumn
 {
-    public Db2ValueType ValueType { get; }
-    public string? ReferencedTableName { get; }
-    public bool IsVerified { get; }
-
-    public DbdColumn(Db2ValueType valueType, string? referencedTableName, bool isVerified)
-    {
-        ValueType = valueType;
-        ReferencedTableName = referencedTableName;
-        IsVerified = isVerified;
-    }
+    public Db2ValueType ValueType { get; } = valueType;
+    public string? ReferencedTableName { get; } = referencedTableName;
+    public bool IsVerified { get; } = isVerified;
 }
 
 public static class DbdColumnParser

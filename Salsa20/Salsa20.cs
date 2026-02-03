@@ -32,42 +32,41 @@ public sealed class Salsa20 : IDisposable
             throw new ArgumentException("Nonce must be 8 bytes", nameof(nonce));
 
         // Initialize based on key size (16 or 32 bytes)
-        if (key.Length == 32)
+        switch (key.Length)
         {
-            _state[0] = Sigma[0];
-            _state[1] = BinaryPrimitives.ReadUInt32LittleEndian(key[..4]);
-            _state[2] = BinaryPrimitives.ReadUInt32LittleEndian(key[4..8]);
-            _state[3] = BinaryPrimitives.ReadUInt32LittleEndian(key[8..12]);
-            _state[4] = BinaryPrimitives.ReadUInt32LittleEndian(key[12..16]);
-            _state[5] = Sigma[1];
+            case 32:
+                _state[0] = Sigma[0];
+                _state[1] = BinaryPrimitives.ReadUInt32LittleEndian(key[..4]);
+                _state[2] = BinaryPrimitives.ReadUInt32LittleEndian(key[4..8]);
+                _state[3] = BinaryPrimitives.ReadUInt32LittleEndian(key[8..12]);
+                _state[4] = BinaryPrimitives.ReadUInt32LittleEndian(key[12..16]);
+                _state[5] = Sigma[1];
 
-            _state[10] = Sigma[2];
-            _state[11] = BinaryPrimitives.ReadUInt32LittleEndian(key[16..20]);
-            _state[12] = BinaryPrimitives.ReadUInt32LittleEndian(key[20..24]);
-            _state[13] = BinaryPrimitives.ReadUInt32LittleEndian(key[24..28]);
-            _state[14] = BinaryPrimitives.ReadUInt32LittleEndian(key[28..32]);
-            _state[15] = Sigma[3];
-        }
-        else if (key.Length == 16)
-        {
-            _state[0] = Tau[0];
-            _state[1] = BinaryPrimitives.ReadUInt32LittleEndian(key[..4]);
-            _state[2] = BinaryPrimitives.ReadUInt32LittleEndian(key[4..8]);
-            _state[3] = BinaryPrimitives.ReadUInt32LittleEndian(key[8..12]);
-            _state[4] = BinaryPrimitives.ReadUInt32LittleEndian(key[12..]);
-            _state[5] = Tau[1];
+                _state[10] = Sigma[2];
+                _state[11] = BinaryPrimitives.ReadUInt32LittleEndian(key[16..20]);
+                _state[12] = BinaryPrimitives.ReadUInt32LittleEndian(key[20..24]);
+                _state[13] = BinaryPrimitives.ReadUInt32LittleEndian(key[24..28]);
+                _state[14] = BinaryPrimitives.ReadUInt32LittleEndian(key[28..32]);
+                _state[15] = Sigma[3];
+                break;
+            case 16:
+                _state[0] = Tau[0];
+                _state[1] = BinaryPrimitives.ReadUInt32LittleEndian(key[..4]);
+                _state[2] = BinaryPrimitives.ReadUInt32LittleEndian(key[4..8]);
+                _state[3] = BinaryPrimitives.ReadUInt32LittleEndian(key[8..12]);
+                _state[4] = BinaryPrimitives.ReadUInt32LittleEndian(key[12..]);
+                _state[5] = Tau[1];
 
-            _state[10] = Tau[2];
-            // Repeat key for 16-byte version
-            _state[11] = _state[1];
-            _state[12] = _state[2];
-            _state[13] = _state[3];
-            _state[14] = _state[4];
-            _state[15] = Tau[3];
-        }
-        else
-        {
-            throw new ArgumentException("Key must be 16 or 32 bytes", nameof(key));
+                _state[10] = Tau[2];
+                // Repeat key for 16-byte version
+                _state[11] = _state[1];
+                _state[12] = _state[2];
+                _state[13] = _state[3];
+                _state[14] = _state[4];
+                _state[15] = Tau[3];
+                break;
+            default:
+                throw new ArgumentException("Key must be 16 or 32 bytes", nameof(key));
         }
 
         // Set Nonce
@@ -104,7 +103,7 @@ public sealed class Salsa20 : IDisposable
             int count = Math.Min(remaining, BlockSizeBytes);
 
             // XOR source with keystream -> destination
-            Xor(source.Slice(offset, count), keyStreamBlock.Slice(0, count), destination.Slice(offset, count));
+            Xor(source.Slice(offset, count), keyStreamBlock[..count], destination.Slice(offset, count));
 
             // Increment 64-bit counter in the state
             IncrementCounter();
@@ -199,7 +198,7 @@ public sealed class Salsa20 : IDisposable
         for (int i = 0; i < StateSizeInts; i++)
         {
             uint val = x[i] + inputState[i];
-            BinaryPrimitives.WriteUInt32LittleEndian(output.Slice(i * 4), val);
+            BinaryPrimitives.WriteUInt32LittleEndian(output[(i * 4)..], val);
         }
     }
 

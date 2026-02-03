@@ -108,21 +108,25 @@ internal static class Db2RowPredicateCompiler
 
         protected override Expression VisitUnary(UnaryExpression node)
         {
-            if (node is { NodeType: ExpressionType.Convert } && node.Operand is MemberExpression m && m.Expression == entityParam)
+            switch (node)
             {
-                if (m.Member is not PropertyInfo)
-                    throw new NotSupportedException($"Member '{entityType.ClrType.FullName}.{m.Member.Name}' must be a public property.");
+                case { NodeType: ExpressionType.Convert } when node.Operand is MemberExpression m && m.Expression == entityParam:
+                    {
+                        if (m.Member is not PropertyInfo)
+                            throw new NotSupportedException($"Member '{entityType.ClrType.FullName}.{m.Member.Name}' must be a public property.");
 
-                var field = entityType.ResolveFieldSchema(m.Member, context: "row predicate");
-                var accessor = getAccessor(field.Name);
-                requirements.RequireMember(m.Member, m.Type == typeof(string) ? Db2RequiredColumnKind.String : Db2RequiredColumnKind.Scalar);
-                if (m.Type == typeof(string) && accessor.Field.IsVirtual)
-                    throw new NotSupportedException($"Virtual field '{accessor.Field.Name}' cannot be materialized as a string.");
-                var read = BuildReadExpression(accessor.Field, m.Type);
-                return Expression.Convert(read, node.Type);
+                        var field = entityType.ResolveFieldSchema(m.Member, context: "row predicate");
+                        var accessor = getAccessor(field.Name);
+                        requirements.RequireMember(m.Member, m.Type == typeof(string) ? Db2RequiredColumnKind.String : Db2RequiredColumnKind.Scalar);
+                        if (m.Type == typeof(string) && accessor.Field.IsVirtual)
+                            throw new NotSupportedException($"Virtual field '{accessor.Field.Name}' cannot be materialized as a string.");
+                        var read = BuildReadExpression(accessor.Field, m.Type);
+                        return Expression.Convert(read, node.Type);
+                    }
+
+                default:
+                    return base.VisitUnary(node);
             }
-
-            return base.VisitUnary(node);
         }
 
         protected override Expression VisitMethodCall(MethodCallExpression node)
@@ -136,17 +140,22 @@ internal static class Db2RowPredicateCompiler
                         throw new NotSupportedException("Only single-argument string predicates are supported.");
 
                     string needle;
-                    if (node.Arguments[0] is ConstantExpression { Value: string s })
+                    switch (node.Arguments[0])
                     {
-                        needle = s;
-                    }
-                    else if (methodName == nameof(string.Contains) && node.Arguments[0] is ConstantExpression { Value: char c })
-                    {
-                        needle = c.ToString();
-                    }
-                    else
-                    {
-                        throw new NotSupportedException("Only constant string or char needles are supported for string predicates.");
+                        case ConstantExpression { Value: string s }:
+                            needle = s;
+                            break;
+                        default:
+                            if (methodName == nameof(string.Contains) && node.Arguments[0] is ConstantExpression { Value: char c })
+                            {
+                                needle = c.ToString();
+                            }
+                            else
+                            {
+                                throw new NotSupportedException("Only constant string or char needles are supported for string predicates.");
+                            }
+
+                            break;
                     }
 
                     if (m.Member is not PropertyInfo)
@@ -184,7 +193,7 @@ internal static class Db2RowPredicateCompiler
                     }
 
                     var instance = BuildReadExpression(accessor.Field, typeof(string));
-                    var visitedArgs = node.Arguments.Select(a => (Expression)Visit(a)!);
+                    var visitedArgs = node.Arguments.Select(a => Visit(a)!);
                     return Expression.Call(instance, node.Method, visitedArgs);
                 }
             }

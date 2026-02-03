@@ -98,38 +98,29 @@ public abstract class Db2Context
     {
         var candidates = new List<(Type Type, IDb2Format Instance)>();
 
-        foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+        foreach (var type in AppDomain.CurrentDomain.GetAssemblies()
+            .SelectMany(static a => GetLoadableTypes(a))
+            .OfType<Type>()
+            .Where(static t => !t.IsAbstract && !t.IsInterface && typeof(IDb2Format).IsAssignableFrom(t)))
         {
-            foreach (var type in GetLoadableTypes(assembly))
-            {
-                if (type is null)
-                    continue;
-
-                if (type.IsAbstract || type.IsInterface)
-                    continue;
-
-                if (!typeof(IDb2Format).IsAssignableFrom(type))
-                    continue;
-
-                if (TryCreateFormatInstance(type, out var instance))
-                    candidates.Add((type, instance));
-            }
+            if (TryCreateFormatInstance(type, out var instance))
+                candidates.Add((type, instance));
         }
 
-        if (candidates.Count == 1)
-            return candidates[0].Instance;
-
-        if (candidates.Count == 0)
+        switch (candidates.Count)
         {
-            throw new InvalidOperationException(
-                "No DB2 format has been registered for this context instance, and no default format could be discovered. " +
-                "Call RegisterFormat(...) (e.g., context.RegisterFormat(new MyFormat())).");
+            case 1:
+                return candidates[0].Instance;
+            case 0:
+                throw new InvalidOperationException(
+                            "No DB2 format has been registered for this context instance, and no default format could be discovered. " +
+                            "Call RegisterFormat(...) (e.g., context.RegisterFormat(new MyFormat())).");
+            default:
+                var discovered = string.Join(", ", candidates.Select(c => c.Type.FullName).OrderBy(n => n, StringComparer.Ordinal));
+                throw new InvalidOperationException(
+                    "No DB2 format has been registered for this context instance, and multiple candidate formats were discovered. " +
+                    $"Call RegisterFormat(...) to choose exactly one. Discovered: {discovered}.");
         }
-
-        var discovered = string.Join(", ", candidates.Select(c => c.Type.FullName).OrderBy(n => n, StringComparer.Ordinal));
-        throw new InvalidOperationException(
-            "No DB2 format has been registered for this context instance, and multiple candidate formats were discovered. " +
-            $"Call RegisterFormat(...) to choose exactly one. Discovered: {discovered}.");
     }
 
     private static bool TryCreateFormatInstance(Type type, out IDb2Format instance)
@@ -146,8 +137,7 @@ public abstract class Db2Context
             }
         }
 
-        var ctor = type.GetConstructor(Type.EmptyTypes);
-        if (ctor is not null)
+        if (type.GetConstructor(Type.EmptyTypes) is { } _)
         {
             instance = (IDb2Format)Activator.CreateInstance(type)!;
             return true;
@@ -157,7 +147,7 @@ public abstract class Db2Context
         return false;
     }
 
-    private static IEnumerable<Type?> GetLoadableTypes(Assembly assembly)
+    private static Type?[] GetLoadableTypes(Assembly assembly)
     {
         try
         {
@@ -171,10 +161,7 @@ public abstract class Db2Context
 
     private void EnsureInitialized()
     {
-        if (_isInitialized)
-            return;
-
-        if (_isInitializing)
+        if (_isInitialized || _isInitializing)
             return;
 
         if (_format is null)
@@ -250,7 +237,7 @@ public abstract class Db2Context
                     .GetMethod(nameof(OpenTableByEntity), BindingFlags.Static | BindingFlags.NonPublic)!;
 
                 var generic = factoryMethod.MakeGenericMethod(entityType);
-                return (Func<Db2Context, string, IDb2Table>)generic.CreateDelegate(typeof(Func<Db2Context, string, IDb2Table>));
+                return generic.CreateDelegate<Func<Db2Context, string, IDb2Table>>();
             });
 
             var setter = TablePropertySetters.GetOrAdd(p, static p =>
@@ -281,7 +268,7 @@ public abstract class Db2Context
         return builder.Build(tableName => GetOrOpenTableRaw(tableName).Schema);
     }
 
-    private static IDb2Table OpenTableByEntity<TEntity>(Db2Context context, string tableName)
+    private static Db2Table<TEntity> OpenTableByEntity<TEntity>(Db2Context context, string tableName)
         => context.OpenTableGeneric<TEntity>(tableName);
 
     private Db2Table<T> OpenTableGeneric<T>(string tableName)
@@ -294,14 +281,13 @@ public abstract class Db2Context
                 .GetMethod(nameof(CreateTypedTableByTypes), BindingFlags.Static | BindingFlags.NonPublic)!;
 
             var generic = factoryMethod.MakeGenericMethod(types.EntityType, types.RowType);
-            return (Func<Db2Context, string, Db2TableSchema, IDb2File, IDb2Table>)generic.CreateDelegate(
-                typeof(Func<Db2Context, string, Db2TableSchema, IDb2File, IDb2Table>));
+            return generic.CreateDelegate<Func<Db2Context, string, Db2TableSchema, IDb2File, IDb2Table>>();
         });
 
         return (Db2Table<T>)create(this, tableName, schema, file);
     }
 
-    private static IDb2Table CreateTypedTableByTypes<TEntity, TRow>(Db2Context context, string tableName, Db2TableSchema schema, IDb2File file)
+    private static Db2Table<TEntity> CreateTypedTableByTypes<TEntity, TRow>(Db2Context context, string tableName, Db2TableSchema schema, IDb2File file)
         where TRow : struct
         => context.CreateTypedTable<TEntity, TRow>(tableName, schema, file);
 
@@ -318,12 +304,13 @@ public abstract class Db2Context
     protected Db2Table<T> Table<T>(string? tableName = null)
     {
         EnsureInitialized();
-        if (tableName is not null)
-            return OpenTableGeneric<T>(tableName);
-
-        return _model!.TryGetEntityType(typeof(T), out var configured)
-            ? OpenTableGeneric<T>(configured.TableName)
-            : OpenTableGeneric<T>(typeof(T).Name);
+        return tableName switch
+        {
+            not null => OpenTableGeneric<T>(tableName),
+            _ => _model!.TryGetEntityType(typeof(T), out var configured)
+                                ? OpenTableGeneric<T>(configured.TableName)
+                                : OpenTableGeneric<T>(typeof(T).Name),
+        };
     }
 }
 

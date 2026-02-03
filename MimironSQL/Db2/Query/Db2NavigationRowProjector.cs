@@ -159,7 +159,7 @@ internal static class Db2NavigationRowProjector
                     assignments.Add(Expression.Assign(locals.KeyVar, readKey));
 
                     // found = lookup.TryGetRow(key, out row)
-                    var tryGetMethod = typeof(NavigationLookup<TRow>).GetMethod(nameof(NavigationLookup<TRow>.TryGetRow))!;
+                    var tryGetMethod = typeof(NavigationLookup<TRow>).GetMethod(nameof(NavigationLookup<>.TryGetRow))!;
                     var lookupExpr = Expression.Constant(lookup);
                     var tryGetCall = Expression.Call(lookupExpr, tryGetMethod, locals.KeyVar, locals.RowVar);
                     assignments.Add(Expression.Assign(locals.FoundVar, tryGetCall));
@@ -301,7 +301,7 @@ internal static class Db2NavigationRowProjector
 
                     var arrayType = elementType.MakeArrayType();
                     var readArrayMethod = typeof(NavigationLookup<TRow>)
-                        .GetMethod(nameof(NavigationLookup<TRow>.ReadField), BindingFlags.Public | BindingFlags.Instance)!
+                        .GetMethod(nameof(NavigationLookup<>.ReadField), BindingFlags.Public | BindingFlags.Instance)!
                         .MakeGenericMethod(arrayType);
 
                     var readArray = Expression.Call(lookupExpression, readArrayMethod, rowExpression, Expression.Constant(accessor.Field.ColumnStartIndex));
@@ -323,7 +323,7 @@ internal static class Db2NavigationRowProjector
 
                 var readType = targetType.UnwrapNullable();
                 var readMethod = typeof(NavigationLookup<TRow>)
-                    .GetMethod(nameof(NavigationLookup<TRow>.ReadField), BindingFlags.Public | BindingFlags.Instance)!
+                    .GetMethod(nameof(NavigationLookup<>.ReadField), BindingFlags.Public | BindingFlags.Instance)!
                     .MakeGenericMethod(readType);
 
                 var read = Expression.Call(lookupExpression, readMethod, rowExpression, Expression.Constant(accessor.Field.ColumnStartIndex));

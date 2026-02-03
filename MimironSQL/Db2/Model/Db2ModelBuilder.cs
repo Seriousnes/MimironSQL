@@ -392,14 +392,16 @@ public sealed class Db2ModelBuilder
                 if (nav.Kind is not { } kind)
                     throw new NotSupportedException($"Navigation '{nav.NavigationMember.Name}' on '{clrType.FullName}' must be configured (e.g., WithSharedPrimaryKey).");
 
-                if (kind == Db2ReferenceNavigationKind.SharedPrimaryKeyOneToOne && (nav.SourceKeyMember is null || nav.TargetKeyMember is null))
-                    throw new NotSupportedException($"Shared primary key navigation '{nav.NavigationMember.Name}' on '{clrType.FullName}' must specify both key selectors.");
-
-                if (kind == Db2ReferenceNavigationKind.ForeignKeyToPrimaryKey && nav.SourceKeyMember is null)
-                    throw new NotSupportedException($"FK navigation '{nav.NavigationMember.Name}' on '{clrType.FullName}' must specify a foreign key selector (WithForeignKey) or be provided by schema conventions.");
-
-                if (kind == Db2ReferenceNavigationKind.ForeignKeyToPrimaryKey && nav.TargetKeyMember is null)
-                    nav.TargetKeyMember = ResolvePrimaryKeyMember(Entity(nav.TargetClrType));
+                switch (kind)
+                {
+                    case Db2ReferenceNavigationKind.SharedPrimaryKeyOneToOne when (nav.SourceKeyMember is null || nav.TargetKeyMember is null):
+                        throw new NotSupportedException($"Shared primary key navigation '{nav.NavigationMember.Name}' on '{clrType.FullName}' must specify both key selectors.");
+                    case Db2ReferenceNavigationKind.ForeignKeyToPrimaryKey when nav.SourceKeyMember is null:
+                        throw new NotSupportedException($"FK navigation '{nav.NavigationMember.Name}' on '{clrType.FullName}' must specify a foreign key selector (WithForeignKey) or be provided by schema conventions.");
+                    case Db2ReferenceNavigationKind.ForeignKeyToPrimaryKey when nav.TargetKeyMember is null:
+                        nav.TargetKeyMember = ResolvePrimaryKeyMember(Entity(nav.TargetClrType));
+                        break;
+                }
 
                 if (kind == Db2ReferenceNavigationKind.ForeignKeyToPrimaryKey && nav.TargetKeyMember is null)
                     throw new NotSupportedException($"FK navigation '{nav.NavigationMember.Name}' on '{clrType.FullName}' must resolve a target primary key.");
@@ -428,67 +430,71 @@ public sealed class Db2ModelBuilder
                 if (nav.Kind is not { } kind)
                     throw new NotSupportedException($"Collection navigation '{nav.NavigationMember.Name}' on '{clrType.FullName}' must be configured (e.g., WithForeignKeyArray). ");
 
-                if (kind == Db2CollectionNavigationKind.ForeignKeyArrayToPrimaryKey)
+                switch (kind)
                 {
-                    if (nav.SourceKeyCollectionMember is null)
-                        throw new NotSupportedException($"Collection navigation '{nav.NavigationMember.Name}' on '{clrType.FullName}' must specify a source key collection member (WithForeignKeyArray). ");
+                    case Db2CollectionNavigationKind.ForeignKeyArrayToPrimaryKey:
+                        {
+                            if (nav.SourceKeyCollectionMember is null)
+                                throw new NotSupportedException($"Collection navigation '{nav.NavigationMember.Name}' on '{clrType.FullName}' must specify a source key collection member (WithForeignKeyArray). ");
 
-                    var sourceKeyCollectionType = nav.SourceKeyCollectionMember.GetMemberType();
-                    if (!IsIntEnumerableType(sourceKeyCollectionType))
-                    {
-                        throw new NotSupportedException(
-                            $"Collection navigation '{clrType.FullName}.{nav.NavigationMember.Name}' expects an int key collection (e.g., int[] or ICollection<int>) but found '{sourceKeyCollectionType.FullName}'.");
-                    }
+                            var sourceKeyCollectionType = nav.SourceKeyCollectionMember.GetMemberType();
+                            if (!IsIntEnumerableType(sourceKeyCollectionType))
+                            {
+                                throw new NotSupportedException(
+                                    $"Collection navigation '{clrType.FullName}.{nav.NavigationMember.Name}' expects an int key collection (e.g., int[] or ICollection<int>) but found '{sourceKeyCollectionType.FullName}'.");
+                            }
 
-                    var sourceKeyFieldSchema = ResolveFieldSchema(schema, m, nav.SourceKeyCollectionMember, $"source key member '{nav.SourceKeyCollectionMember.Name}' in collection navigation '{clrType.FullName}.{nav.NavigationMember.Name}'");
+                            var sourceKeyFieldSchema = ResolveFieldSchema(schema, m, nav.SourceKeyCollectionMember, $"source key member '{nav.SourceKeyCollectionMember.Name}' in collection navigation '{clrType.FullName}.{nav.NavigationMember.Name}'");
 
-                    collectionNavigations[(clrType, nav.NavigationMember)] = new Db2CollectionNavigation(
-                        sourceClrType: clrType,
-                        navigationMember: nav.NavigationMember,
-                        targetClrType: nav.TargetClrType,
-                        kind: kind,
-                        sourceKeyCollectionMember: nav.SourceKeyCollectionMember,
-                        sourceKeyFieldSchema: sourceKeyFieldSchema,
-                        dependentForeignKeyMember: null,
-                        dependentForeignKeyFieldSchema: null,
-                        principalKeyMember: null,
-                        overridesSchema: nav.OverridesSchema);
+                            collectionNavigations[(clrType, nav.NavigationMember)] = new Db2CollectionNavigation(
+                                sourceClrType: clrType,
+                                navigationMember: nav.NavigationMember,
+                                targetClrType: nav.TargetClrType,
+                                kind: kind,
+                                sourceKeyCollectionMember: nav.SourceKeyCollectionMember,
+                                sourceKeyFieldSchema: sourceKeyFieldSchema,
+                                dependentForeignKeyMember: null,
+                                dependentForeignKeyFieldSchema: null,
+                                principalKeyMember: null,
+                                overridesSchema: nav.OverridesSchema);
 
-                    continue;
+                            continue;
+                        }
+
+                    case Db2CollectionNavigationKind.DependentForeignKeyToPrimaryKey:
+                        {
+                            if (nav.DependentForeignKeyMember is null)
+                                throw new NotSupportedException($"Collection navigation '{nav.NavigationMember.Name}' on '{clrType.FullName}' must specify a dependent foreign key selector (WithForeignKey). ");
+
+                            var principalKeyMember = nav.PrincipalKeyMember ?? ResolvePrimaryKeyMember(m);
+                            var principalKeyType = principalKeyMember.GetMemberType();
+                            if (!principalKeyType.IsScalarType())
+                                throw new NotSupportedException($"Principal key member '{clrType.FullName}.{principalKeyMember.Name}' must be a scalar type.");
+
+                            var dependentMetadata = Entity(nav.TargetClrType);
+                            var dependentTableName = dependentMetadata.TableName ?? nav.TargetClrType.Name;
+                            var dependentSchema = schemaResolver(dependentTableName);
+
+                            var dependentFkFieldSchema = ResolveFieldSchema(dependentSchema, dependentMetadata, nav.DependentForeignKeyMember, $"dependent FK member '{nav.DependentForeignKeyMember.Name}' in collection navigation '{clrType.FullName}.{nav.NavigationMember.Name}'");
+
+                            collectionNavigations[(clrType, nav.NavigationMember)] = new Db2CollectionNavigation(
+                                sourceClrType: clrType,
+                                navigationMember: nav.NavigationMember,
+                                targetClrType: nav.TargetClrType,
+                                kind: kind,
+                                sourceKeyCollectionMember: null,
+                                sourceKeyFieldSchema: null,
+                                dependentForeignKeyMember: nav.DependentForeignKeyMember,
+                                dependentForeignKeyFieldSchema: dependentFkFieldSchema,
+                                principalKeyMember: principalKeyMember,
+                                overridesSchema: nav.OverridesSchema);
+
+                            continue;
+                        }
+
+                    default:
+                        throw new NotSupportedException($"Collection navigation '{nav.NavigationMember.Name}' on '{clrType.FullName}' has unsupported kind '{kind}'.");
                 }
-
-                if (kind == Db2CollectionNavigationKind.DependentForeignKeyToPrimaryKey)
-                {
-                    if (nav.DependentForeignKeyMember is null)
-                        throw new NotSupportedException($"Collection navigation '{nav.NavigationMember.Name}' on '{clrType.FullName}' must specify a dependent foreign key selector (WithForeignKey). ");
-
-                    var principalKeyMember = nav.PrincipalKeyMember ?? ResolvePrimaryKeyMember(m);
-                    var principalKeyType = principalKeyMember.GetMemberType();
-                    if (!principalKeyType.IsScalarType())
-                        throw new NotSupportedException($"Principal key member '{clrType.FullName}.{principalKeyMember.Name}' must be a scalar type.");
-
-                    var dependentMetadata = Entity(nav.TargetClrType);
-                    var dependentTableName = dependentMetadata.TableName ?? nav.TargetClrType.Name;
-                    var dependentSchema = schemaResolver(dependentTableName);
-
-                    var dependentFkFieldSchema = ResolveFieldSchema(dependentSchema, dependentMetadata, nav.DependentForeignKeyMember, $"dependent FK member '{nav.DependentForeignKeyMember.Name}' in collection navigation '{clrType.FullName}.{nav.NavigationMember.Name}'");
-
-                    collectionNavigations[(clrType, nav.NavigationMember)] = new Db2CollectionNavigation(
-                        sourceClrType: clrType,
-                        navigationMember: nav.NavigationMember,
-                        targetClrType: nav.TargetClrType,
-                        kind: kind,
-                        sourceKeyCollectionMember: null,
-                        sourceKeyFieldSchema: null,
-                        dependentForeignKeyMember: nav.DependentForeignKeyMember,
-                        dependentForeignKeyFieldSchema: dependentFkFieldSchema,
-                        principalKeyMember: principalKeyMember,
-                        overridesSchema: nav.OverridesSchema);
-
-                    continue;
-                }
-
-                throw new NotSupportedException($"Collection navigation '{nav.NavigationMember.Name}' on '{clrType.FullName}' has unsupported kind '{kind}'.");
             }
         }
 
@@ -539,10 +545,11 @@ public sealed class Db2ModelBuilder
         if (member is not PropertyInfo p)
             return false;
 
-        if (p.GetCustomAttribute<ColumnAttribute>(inherit: false) is not null)
-            return true;
-
-        return metadata.ColumnNameMappings.ContainsKey(p.Name);
+        return p.GetCustomAttribute<ColumnAttribute>(inherit: false) switch
+        {
+            not null => true,
+            _ => metadata.ColumnNameMappings.ContainsKey(p.Name),
+        };
     }
 
     private static string ResolveColumnName(Db2EntityTypeMetadata metadata, PropertyInfo property)
@@ -551,10 +558,11 @@ public sealed class Db2ModelBuilder
             return configured;
 
         var attr = property.GetCustomAttribute<ColumnAttribute>(inherit: false);
-        if (attr is not null && !string.IsNullOrWhiteSpace(attr.Name))
-            return attr.Name;
-
-        return property.Name;
+        return attr switch
+        {
+            not null when !string.IsNullOrWhiteSpace(attr.Name) => attr.Name,
+            _ => property.Name,
+        };
     }
 
     private static MemberInfo ResolvePrimaryKeyMember(Db2EntityTypeMetadata metadata)
@@ -570,7 +578,7 @@ public sealed class Db2ModelBuilder
         throw new NotSupportedException($"Entity type '{metadata.ClrType.FullName}' has no key member. Configure a primary key in OnModelCreating (e.g., modelBuilder.Entity<{metadata.ClrType.Name}>().HasKey(x => x.Id)).");
     }
 
-    private static MemberInfo? FindMember(Type type, string name)
+    private static PropertyInfo? FindMember(Type type, string name)
     {
         var members = type.GetMember(name, BindingFlags.Instance | BindingFlags.Public);
         foreach (var m in members)
@@ -607,14 +615,8 @@ public sealed class Db2ModelBuilder
             return true;
         }
 
-        foreach (var i in type.GetInterfaces())
+        foreach (var i in type.GetInterfaces().Where(static i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IEnumerable<>)))
         {
-            if (!i.IsGenericType)
-                continue;
-
-            if (i.GetGenericTypeDefinition() != typeof(IEnumerable<>))
-                continue;
-
             elementType = i.GetGenericArguments()[0];
             return true;
         }

@@ -45,10 +45,9 @@ internal sealed class Db2EntityMaterializer<TEntity, TRow>
             .GetProperties(BindingFlags.Instance | BindingFlags.Public)
             .Where(p => p.GetMethod is { IsPublic: true });
 
-        foreach (var property in properties)
+        foreach (var property in properties.Where(p => entityType.TryResolveFieldSchema(p, out _)))
         {
-            if (!entityType.TryResolveFieldSchema(property, out var field))
-                continue;
+            entityType.TryResolveFieldSchema(property, out var field);
 
             var memberType = property.PropertyType;
 
@@ -74,7 +73,7 @@ internal sealed class Db2EntityMaterializer<TEntity, TRow>
                 memberBindings.Add(scalarBinding);
         }
 
-        return memberBindings;
+        return [.. memberBindings];
     }
 
     private static bool TryCreateSchemaArrayCollectionBinding(PropertyInfo property, Db2FieldSchema field, Type memberType, out Binding binding)
@@ -128,15 +127,19 @@ internal sealed class Db2EntityMaterializer<TEntity, TRow>
 
         var readArray = BuildReadExpression(file, handle, fieldIndex, arrayType);
 
-        if (property.SetMethod is { IsPublic: true })
+        switch (property.SetMethod)
         {
-            var memberAccess = Expression.Property(entity, property);
-            var assign = Expression.Assign(memberAccess, Expression.Convert(readArray, memberType));
-            var apply = Expression.Lambda<Action<TEntity, IDb2File<TRow>, RowHandle>>(assign, entity, file, handle).Compile();
-            return new Binding(apply);
+            case { IsPublic: true }:
+                {
+                    var memberAccess = Expression.Property(entity, property);
+                    var assign = Expression.Assign(memberAccess, Expression.Convert(readArray, memberType));
+                    var apply = Expression.Lambda<Action<TEntity, IDb2File<TRow>, RowHandle>>(assign, entity, file, handle).Compile();
+                    return new Binding(apply);
+                }
+
+            default:
+                throw new NotSupportedException($"Property '{property.Name}' must be writable for materialization.");
         }
-        
-        throw new NotSupportedException($"Property '{property.Name}' must be writable for materialization.");
     }
 
     private static bool TryCreateScalarBinding(PropertyInfo property, Db2FieldSchema field, Type memberType, out Binding binding)
@@ -172,15 +175,19 @@ internal sealed class Db2EntityMaterializer<TEntity, TRow>
 
         var read = BuildReadExpression(file, handle, fieldIndex, memberType);
 
-        if (property.SetMethod is { IsPublic: true })
+        switch (property.SetMethod)
         {
-            var memberAccess = Expression.Property(entity, property);
-            var assign = Expression.Assign(memberAccess, read);
-            var apply = Expression.Lambda<Action<TEntity, IDb2File<TRow>, RowHandle>>(assign, entity, file, handle).Compile();
-            return new Binding(apply);
-        }
+            case { IsPublic: true }:
+                {
+                    var memberAccess = Expression.Property(entity, property);
+                    var assign = Expression.Assign(memberAccess, read);
+                    var apply = Expression.Lambda<Action<TEntity, IDb2File<TRow>, RowHandle>>(assign, entity, file, handle).Compile();
+                    return new Binding(apply);
+                }
 
-        throw new NotSupportedException($"Property '{property.Name}' must be writable for materialization.");
+            default:
+                throw new NotSupportedException($"Property '{property.Name}' must be writable for materialization.");
+        }
     }
 
     private static MethodCallExpression BuildReadExpression(Expression fileExpression, Expression handleExpression, int fieldIndex, Type targetType)

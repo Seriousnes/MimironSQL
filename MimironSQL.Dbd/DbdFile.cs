@@ -59,10 +59,15 @@ public sealed class DbdFile(Dictionary<string, DbdColumn> columnsByName, List<Db
             {
                 inColumns = false;
                 var newBuild = new DbdBuildBlock(line.ToString());
-                if (currentLayout is null)
-                    globalBuilds.Add(newBuild);
-                else
-                    currentLayout.Builds.Add(newBuild);
+                switch (currentLayout)
+                {
+                    case null:
+                        globalBuilds.Add(newBuild);
+                        break;
+                    default:
+                        currentLayout.Builds.Add(newBuild);
+                        break;
+                }
 
                 // DBDs often list multiple BUILD lines, then a single set of entries that applies to all of them.
                 // Once we start reading entries, a new BUILD indicates a new entry block.

@@ -144,11 +144,8 @@ public sealed class Db2TypedGeneratorTests
         // Reference the full platform set (includes System.Runtime and friends).
         if (AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") is string tpa)
         {
-            foreach (var path in tpa.Split(Path.PathSeparator))
+            foreach (var path in tpa.Split(Path.PathSeparator).Select(static p => p.Trim()).Where(static p => p is { Length: > 0 }))
             {
-                if (string.IsNullOrWhiteSpace(path))
-                    continue;
-
                 refs.Add(MetadataReference.CreateFromFile(path));
             }
         }

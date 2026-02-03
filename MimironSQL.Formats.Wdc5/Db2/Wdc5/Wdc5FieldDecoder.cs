@@ -43,10 +43,11 @@ internal static class Wdc5FieldDecoder
                 {
                     var palletIndex = reader.ReadUInt32(columnMeta.Pallet.BitWidth);
 
-                    if (columnMeta is { Pallet.Cardinality: 1 })
-                        return Wdc5Value.UnsafeRead32<T>(palletData[palletIndex]);
-
-                    return default;
+                    return columnMeta switch
+                    {
+                        { Pallet.Cardinality: 1 } => Wdc5Value.UnsafeRead32<T>(palletData[palletIndex]),
+                        _ => default,
+                    };
                 }
             default:
                 throw new NotSupportedException($"Unexpected compression type {columnMeta.CompressionType}.");
@@ -57,24 +58,28 @@ internal static class Wdc5FieldDecoder
     {
         public static T UnsafeRead<T>(ulong raw) where T : unmanaged
         {
-            if (Unsafe.SizeOf<T>() <= 8)
-                return Unsafe.As<ulong, T>(ref raw);
-
-            throw new NotSupportedException($"Unsupported scalar size {Unsafe.SizeOf<T>()} for {typeof(T).FullName}.");
+            return Unsafe.SizeOf<T>() switch
+            {
+                <= 8 => Unsafe.As<ulong, T>(ref raw),
+                _ => throw new NotSupportedException($"Unsupported scalar size {Unsafe.SizeOf<T>()} for {typeof(T).FullName}."),
+            };
         }
 
         public static T UnsafeRead32<T>(uint raw) where T : unmanaged
         {
-            if (Unsafe.SizeOf<T>() <= 4)
-                return Unsafe.As<uint, T>(ref raw);
-
-            if (Unsafe.SizeOf<T>() == 8)
+            switch (Unsafe.SizeOf<T>())
             {
-                ulong expanded = raw;
-                return Unsafe.As<ulong, T>(ref expanded);
-            }
+                case <= 4:
+                    return Unsafe.As<uint, T>(ref raw);
+                case 8:
+                    {
+                        ulong expanded = raw;
+                        return Unsafe.As<ulong, T>(ref expanded);
+                    }
 
-            throw new NotSupportedException($"Unsupported scalar size {Unsafe.SizeOf<T>()} for {typeof(T).FullName}.");
+                default:
+                    throw new NotSupportedException($"Unsupported scalar size {Unsafe.SizeOf<T>()} for {typeof(T).FullName}.");
+            }
         }
     }
 }

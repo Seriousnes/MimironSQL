@@ -63,11 +63,8 @@ internal static class IdentifierHelper
 
         var parts = name.Split(['_', '-', ' '], StringSplitOptions.RemoveEmptyEntries);
         var sb = new StringBuilder();
-        foreach (var p in parts)
+        foreach (var p in parts.Where(static p => p is { Length: > 0 }))
         {
-            if (p.Length == 0)
-                continue;
-
             sb.Append(char.ToUpperInvariant(p[0]));
             if (p.Length > 1)
                 sb.Append(p.Substring(1));

@@ -2,14 +2,9 @@ using Microsoft.CodeAnalysis.Diagnostics;
 
 namespace MimironSQL.DbContextGenerator;
 
-internal sealed class GeneratorOptions
+internal sealed class GeneratorOptions(string wowDbDefsRoot)
 {
-	public string WowDbDefsRoot { get; }
-
-	public GeneratorOptions(string wowDbDefsRoot)
-	{
-		WowDbDefsRoot = wowDbDefsRoot;
-	}
+    public string WowDbDefsRoot { get; } = wowDbDefsRoot;
 
     public static GeneratorOptions From(AnalyzerConfigOptions globalOptions)
     {

@@ -4,39 +4,26 @@ using MimironSQL.Db2;
 
 namespace MimironSQL.Dbd;
 
-public sealed class DbdLayoutEntry : IDbdLayoutEntry
+public sealed class DbdLayoutEntry(
+    string name,
+    Db2ValueType valueType,
+    string? referencedTableName,
+    int elementCount,
+    bool isVerified,
+    bool isNonInline,
+    bool isId,
+    bool isRelation,
+    string? inlineTypeToken) : IDbdLayoutEntry
 {
-    public string Name { get; }
-    public Db2ValueType ValueType { get; }
-    public string? ReferencedTableName { get; }
-    public int ElementCount { get; }
-    public bool IsVerified { get; }
-    public bool IsNonInline { get; }
-    public bool IsId { get; }
-    public bool IsRelation { get; }
-    public string? InlineTypeToken { get; }
-
-    public DbdLayoutEntry(
-        string name,
-        Db2ValueType valueType,
-        string? referencedTableName,
-        int elementCount,
-        bool isVerified,
-        bool isNonInline,
-        bool isId,
-        bool isRelation,
-        string? inlineTypeToken)
-    {
-        Name = name;
-        ValueType = valueType;
-        ReferencedTableName = referencedTableName;
-        ElementCount = elementCount;
-        IsVerified = isVerified;
-        IsNonInline = isNonInline;
-        IsId = isId;
-        IsRelation = isRelation;
-        InlineTypeToken = inlineTypeToken;
-    }
+    public string Name { get; } = name;
+    public Db2ValueType ValueType { get; } = valueType;
+    public string? ReferencedTableName { get; } = referencedTableName;
+    public int ElementCount { get; } = elementCount;
+    public bool IsVerified { get; } = isVerified;
+    public bool IsNonInline { get; } = isNonInline;
+    public bool IsId { get; } = isId;
+    public bool IsRelation { get; } = isRelation;
+    public string? InlineTypeToken { get; } = inlineTypeToken;
 }
 
 public static class DbdLayoutEntryParser
@@ -110,33 +97,40 @@ public static class DbdLayoutEntryParser
         var inlineTypeToken = (string?)null;
 
         var lt = text.IndexOf('<');
-        if (lt >= 0)
+        switch (lt)
         {
-            var gt = text.LastIndexOf('>');
-            if (gt <= lt)
-            {
-                entry = null!;
-                return false;
-            }
+            case >= 0:
+                {
+                    var gt = text.LastIndexOf('>');
+                    if (gt <= lt)
+                    {
+                        entry = null!;
+                        return false;
+                    }
 
-            name = text.Slice(0, lt).Trim().ToString();
-            var typeInner = text.Slice(lt + 1, gt - lt - 1).Trim();
-            inlineTypeToken = typeInner.ToString();
-            valueType = MapInlineType(typeInner);
-        }
-        else
-        {
-            name = text.Trim().ToString();
-            if (columnsByName.TryGetValue(name, out var column))
-            {
-                valueType = column.ValueType;
-                referencedTableName = column.ReferencedTableName;
-                isVerified = column.IsVerified;
-            }
-            else
-            {
-                valueType = Db2ValueType.Unknown;
-            }
+                    name = text.Slice(0, lt).Trim().ToString();
+                    var typeInner = text.Slice(lt + 1, gt - lt - 1).Trim();
+                    inlineTypeToken = typeInner.ToString();
+                    valueType = MapInlineType(typeInner);
+                    break;
+                }
+
+            default:
+                {
+                    name = text.Trim().ToString();
+                    if (columnsByName.TryGetValue(name, out var column))
+                    {
+                        valueType = column.ValueType;
+                        referencedTableName = column.ReferencedTableName;
+                        isVerified = column.IsVerified;
+                    }
+                    else
+                    {
+                        valueType = Db2ValueType.Unknown;
+                    }
+
+                    break;
+                }
         }
 
         if (name is { Length: 0 })
@@ -163,12 +157,11 @@ public static class DbdLayoutEntryParser
         if (inner.StartsWith("f", StringComparison.Ordinal))
             return Db2ValueType.Single;
 
-        if (inner is "8" or "16" or "32" or "64")
-            return Db2ValueType.Int64;
-
-        if (inner is "u8" or "u16" or "u32" or "u64")
-            return Db2ValueType.UInt64;
-
-        return Db2ValueType.Int64;
+        return inner switch
+        {
+            "8" or "16" or "32" or "64" => Db2ValueType.Int64,
+            "u8" or "u16" or "u32" or "u64" => Db2ValueType.UInt64,
+            _ => Db2ValueType.Int64,
+        };
     }
 }

@@ -65,14 +65,13 @@ internal sealed record Db2QueryPipeline(
                 {
                     finalPredicate = UnquoteLambda(m0.Arguments[1]);
 
-                    if (finalOperator == Db2FinalOperator.All)
+                    switch (finalOperator)
                     {
-                        // All(predicate) is not equivalent to Where(predicate) + All().
-                        // Keep predicate separate so scalar execution can preserve semantics.
-                    }
-                    else
-                    {
-                        opsReversed.Add(new Db2WhereOperation(finalPredicate));
+                        case Db2FinalOperator.All:
+                            break;
+                        default:
+                            opsReversed.Add(new Db2WhereOperation(finalPredicate));
+                            break;
                     }
                 }
             }
@@ -86,36 +85,39 @@ internal sealed record Db2QueryPipeline(
 
             if (m.Method.DeclaringType == typeof(Queryable))
             {
-                if (name is nameof(Queryable.First) or nameof(Queryable.FirstOrDefault) or nameof(Queryable.Any) or nameof(Queryable.All) or nameof(Queryable.Count) or nameof(Queryable.Single) or nameof(Queryable.SingleOrDefault))
-                    throw new NotSupportedException($"{name} must be the terminal operator for this provider.");
-
-                if (name == nameof(Queryable.Where))
+                switch (name)
                 {
-                    var predicate = UnquoteLambda(m.Arguments[1]);
-                    opsReversed.Add(new Db2WhereOperation(predicate));
-                    current = m.Arguments[0];
-                    continue;
+                    case nameof(Queryable.First) or nameof(Queryable.FirstOrDefault) or nameof(Queryable.Any) or nameof(Queryable.All) or nameof(Queryable.Count) or nameof(Queryable.Single) or nameof(Queryable.SingleOrDefault):
+                        throw new NotSupportedException($"{name} must be the terminal operator for this provider.");
+                    case nameof(Queryable.Where):
+                        {
+                            var predicate = UnquoteLambda(m.Arguments[1]);
+                            opsReversed.Add(new Db2WhereOperation(predicate));
+                            current = m.Arguments[0];
+                            continue;
+                        }
+
+                    case nameof(Queryable.Select):
+                        {
+                            var selector = UnquoteLambda(m.Arguments[1]);
+                            opsReversed.Add(new Db2SelectOperation(selector));
+                            current = m.Arguments[0];
+                            continue;
+                        }
+
+                    case nameof(Queryable.Take):
+                        {
+                            if (m.Arguments[1] is not ConstantExpression c || c.Value is not int count)
+                                throw new NotSupportedException("Queryable.Take requires a constant integer count for this provider.");
+
+                            opsReversed.Add(new Db2TakeOperation(count));
+                            current = m.Arguments[0];
+                            continue;
+                        }
+
+                    default:
+                        throw new NotSupportedException($"Unsupported Queryable operator: {m.Method.Name}.");
                 }
-
-                if (name == nameof(Queryable.Select))
-                {
-                    var selector = UnquoteLambda(m.Arguments[1]);
-                    opsReversed.Add(new Db2SelectOperation(selector));
-                    current = m.Arguments[0];
-                    continue;
-                }
-
-                if (name == nameof(Queryable.Take))
-                {
-                    if (m.Arguments[1] is not ConstantExpression c || c.Value is not int count)
-                        throw new NotSupportedException("Queryable.Take requires a constant integer count for this provider.");
-
-                    opsReversed.Add(new Db2TakeOperation(count));
-                    current = m.Arguments[0];
-                    continue;
-                }
-
-                throw new NotSupportedException($"Unsupported Queryable operator: {m.Method.Name}.");
             }
 
             if (m.Method.DeclaringType == typeof(Db2QueryableExtensions) && name == nameof(Db2QueryableExtensions.Include))
@@ -142,13 +144,12 @@ internal sealed record Db2QueryPipeline(
 
     private static LambdaExpression UnquoteLambda(Expression expression)
     {
-        if (expression is UnaryExpression { NodeType: ExpressionType.Quote, Operand: LambdaExpression l })
-            return l;
-
-        if (expression is LambdaExpression l2)
-            return l2;
-
-        throw new NotSupportedException("Expected a quoted lambda expression.");
+        return expression switch
+        {
+            UnaryExpression { NodeType: ExpressionType.Quote, Operand: LambdaExpression l } => l,
+            LambdaExpression l2 => l2,
+            _ => throw new NotSupportedException("Expected a quoted lambda expression."),
+        };
     }
 
     private static Type? GetSequenceElementType(Type sequenceType)

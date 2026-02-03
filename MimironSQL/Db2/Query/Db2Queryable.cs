@@ -10,7 +10,7 @@ internal sealed class Db2Queryable<T>(IQueryProvider provider, Expression expres
     public IQueryProvider Provider { get; } = provider;
 
     public IEnumerator<T> GetEnumerator()
-        => ((IEnumerable<T>)Provider.Execute<IEnumerable<T>>(Expression)).GetEnumerator();
+        => Provider.Execute<IEnumerable<T>>(Expression).GetEnumerator();
 
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 }

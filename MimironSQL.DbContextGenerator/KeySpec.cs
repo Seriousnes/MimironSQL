@@ -2,12 +2,7 @@ using System.Collections.Immutable;
 
 namespace MimironSQL.DbContextGenerator;
 
-internal sealed class KeySpec
+internal sealed class KeySpec(ImmutableArray<string> columnNames)
 {
-	public ImmutableArray<string> ColumnNames { get; }
-
-	public KeySpec(ImmutableArray<string> columnNames)
-	{
-		ColumnNames = columnNames;
-	}
+    public ImmutableArray<string> ColumnNames { get; } = columnNames;
 }

@@ -1,15 +1,8 @@
 namespace MimironSQL.DbContextGenerator;
 
-internal sealed class ColumnSpec
+internal sealed class ColumnSpec(string dbdType, string name, int? arrayLength)
 {
-	public string DbdType { get; }
-	public string Name { get; }
-	public int? ArrayLength { get; }
-
-	public ColumnSpec(string dbdType, string name, int? arrayLength)
-	{
-		DbdType = dbdType;
-		Name = name;
-		ArrayLength = arrayLength;
-	}
+    public string DbdType { get; } = dbdType;
+    public string Name { get; } = name;
+    public int? ArrayLength { get; } = arrayLength;
 }

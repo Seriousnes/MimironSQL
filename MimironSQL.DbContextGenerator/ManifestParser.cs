@@ -44,11 +44,8 @@ internal static class ManifestParser
 
     private static void ParseArrayRoot(JsonElement rootArray, Dictionary<string, int> map)
     {
-        foreach (var element in rootArray.EnumerateArray())
+        foreach (var element in rootArray.EnumerateArray().Where(static e => e.ValueKind == JsonValueKind.Object))
         {
-            if (element.ValueKind != JsonValueKind.Object)
-                continue;
-
             // Primary expected schema: { tableName, db2FileDataID }
             if (TryReadArrayElement(element, out var tableName, out var fileDataId))
                 map[tableName] = fileDataId;
@@ -57,7 +54,6 @@ internal static class ManifestParser
 
     private static bool TryReadArrayElement(JsonElement element, out string tableName, out int fileDataId)
     {
-        tableName = string.Empty;
         fileDataId = 0;
 
         if (!TryGetStringProperty(element, "tableName", out tableName))
@@ -65,17 +61,10 @@ internal static class ManifestParser
 
         if (!TryGetIntProperty(element, "db2FileDataID", out fileDataId)
             && !TryGetIntProperty(element, "db2FileDataId", out fileDataId)
-            && !TryGetIntProperty(element, "db2FileDataId", out fileDataId)
-            && !TryGetIntProperty(element, "db2FileDataID", out fileDataId))
-        {
-            // Also tolerate alternate names
-            if (!TryGetIntProperty(element, "fileDataId", out fileDataId)
-                && !TryGetIntProperty(element, "fileDataID", out fileDataId)
-                && !TryGetIntProperty(element, "fdid", out fileDataId))
-            {
-                return false;
-            }
-        }
+            && !TryGetIntProperty(element, "fileDataId", out fileDataId)
+            && !TryGetIntProperty(element, "fileDataID", out fileDataId)
+            && !TryGetIntProperty(element, "fdid", out fileDataId))
+            return false;
 
         return true;
     }
@@ -98,26 +87,26 @@ internal static class ManifestParser
                 continue;
 
             var value = prop.Value;
-            if (value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out var fdid))
+            switch (value.ValueKind)
             {
-                map[key] = fdid;
-                continue;
-            }
-
-            if (value.ValueKind == JsonValueKind.Object)
-            {
-                if (TryReadArrayElement(value, out var tableName, out var fileDataId))
-                {
-                    map[tableName] = fileDataId;
-                    continue;
-                }
-
-                if (TryGetIntProperty(value, "db2FileDataID", out fdid)
-                    || TryGetIntProperty(value, "fileDataId", out fdid)
-                    || TryGetIntProperty(value, "fdid", out fdid))
-                {
+                case JsonValueKind.Number when value.TryGetInt32(out var fdid):
                     map[key] = fdid;
-                }
+                    continue;
+                case JsonValueKind.Object:
+                    {
+                        if (TryReadArrayElement(value, out var tableName, out var fileDataId))
+                        {
+                            map[tableName] = fileDataId;
+                            continue;
+                        }
+
+                        if (TryGetIntProperty(value, "db2FileDataID", out var fdid) || TryGetIntProperty(value, "fileDataId", out fdid) || TryGetIntProperty(value, "fdid", out fdid))
+                        {
+                            map[key] = fdid;
+                        }
+
+                        break;
+                    }
             }
         }
     }

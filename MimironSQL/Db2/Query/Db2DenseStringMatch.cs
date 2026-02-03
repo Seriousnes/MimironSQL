@@ -19,9 +19,10 @@ internal static class Db2DenseStringMatch
     private static bool Match<TRow>(IDb2DenseStringTableIndexProvider<TRow> provider, TRow row, int fieldIndex, HashSet<int> matchingStarts)
         where TRow : struct
     {
-        if (fieldIndex < 0)
-            return false;
-
-        return provider.TryGetDenseStringTableIndex(row, fieldIndex, out var stringTableIndex) && matchingStarts.Contains(stringTableIndex);
+        return fieldIndex switch
+        {
+            < 0 => false,
+            _ => provider.TryGetDenseStringTableIndex(row, fieldIndex, out var stringTableIndex) && matchingStarts.Contains(stringTableIndex),
+        };
     }
 }

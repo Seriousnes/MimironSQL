@@ -87,7 +87,7 @@ public sealed class DbContextGenerator : IIncrementalGenerator
 
                 var (dbdFileText, env) = input;
                 if (env.Kind != EnvResultKind.Ok || env.Version is null)
-                    return (EntitySpec?)null;
+                    return null;
 
                 var sourceText = dbdFileText.GetText(cancellationToken);
                 if (sourceText is null)
@@ -136,9 +136,8 @@ public sealed class DbContextGenerator : IIncrementalGenerator
     private static string? TryReadEnvValue(SourceText envText, string key)
     {
         var prefix = key + "=";
-        foreach (var line in envText.Lines)
+        foreach (var raw in envText.Lines.Select(static l => l.ToString().Trim()))
         {
-            var raw = line.ToString().Trim();
             if (raw.StartsWith(prefix, StringComparison.Ordinal))
                 return raw.Substring(prefix.Length).Trim();
         }
@@ -151,10 +150,9 @@ public sealed class DbContextGenerator : IIncrementalGenerator
         DbdBuildBlock? best = null;
         WowVersion? bestCandidate = null;
 
-        foreach (var b in EnumerateBuildBlocks(dbd))
+        foreach (var b in EnumerateBuildBlocks(dbd).Where(b => TryGetBestEligibleBuildVersion(b.BuildLine, wowVersion, out _)))
         {
-            if (!TryGetBestEligibleBuildVersion(b.BuildLine, wowVersion, out var candidate))
-                continue;
+            TryGetBestEligibleBuildVersion(b.BuildLine, wowVersion, out var candidate);
 
             if (bestCandidate is null || candidate.CompareTo(bestCandidate.Value) > 0)
             {
@@ -197,12 +195,8 @@ public sealed class DbContextGenerator : IIncrementalGenerator
 
         WowVersion? currentBest = null;
 
-        foreach (var rawToken in text.Split(','))
+        foreach (var token in text.Split(',').Select(static t => t.Trim()).Where(static t => t is { Length: > 0 }))
         {
-            var token = rawToken.Trim();
-            if (token.Length == 0)
-                continue;
-
             var dash = token.IndexOf('-');
             if (dash > 0)
             {
@@ -296,10 +290,9 @@ public sealed class DbContextGenerator : IIncrementalGenerator
             sb.AppendLine();
         }
 
-        foreach (var nav in entity.Navigations)
+        foreach (var nav in entity.Navigations.Where(n => byTableName.ContainsKey(n.TargetTableName)))
         {
-            if (!byTableName.TryGetValue(nav.TargetTableName, out var target))
-                continue;
+            var target = byTableName[nav.TargetTableName];
 
             sb.AppendLine($"    [ForeignKey(nameof({nav.ForeignKeyPropertyName}))]");
             sb.AppendLine($"    public {target.ClassName}? {nav.PropertyName} {{ get; set; }}");
@@ -321,39 +314,23 @@ public sealed class DbContextGenerator : IIncrementalGenerator
         InvalidWowVersion,
     }
 
-    private readonly struct EnvResult
+    private readonly struct EnvResult(DbContextGenerator.EnvResultKind kind, DbContextGenerator.WowVersion? version, string? rawValue)
     {
-        public EnvResultKind Kind { get; }
-        public WowVersion? Version { get; }
-        public string? RawValue { get; }
-
-        public EnvResult(EnvResultKind kind, WowVersion? version, string? rawValue)
-        {
-            Kind = kind;
-            Version = version;
-            RawValue = rawValue;
-        }
+        public EnvResultKind Kind { get; } = kind;
+        public WowVersion? Version { get; } = version;
+        public string? RawValue { get; } = rawValue;
 
         public static EnvResult Missing => new(EnvResultKind.MissingEnv, null, null);
         public static EnvResult MissingWowVersion => new(EnvResultKind.MissingWowVersion, null, null);
     }
 
-    private readonly struct WowVersion : IComparable<WowVersion>
+    private readonly struct WowVersion(int major, int minor, int patch, int build, bool hasBuild) : IComparable<WowVersion>
     {
-        public int Major { get; }
-        public int Minor { get; }
-        public int Patch { get; }
-        public int Build { get; }
-        public bool HasBuild { get; }
-
-        public WowVersion(int major, int minor, int patch, int build, bool hasBuild)
-        {
-            Major = major;
-            Minor = minor;
-            Patch = patch;
-            Build = build;
-            HasBuild = hasBuild;
-        }
+        public int Major { get; } = major;
+        public int Minor { get; } = minor;
+        public int Patch { get; } = patch;
+        public int Build { get; } = build;
+        public bool HasBuild { get; } = hasBuild;
 
         public static bool TryParse(string value, out WowVersion version)
         {
@@ -411,27 +388,18 @@ public sealed class DbContextGenerator : IIncrementalGenerator
         }
     }
 
-    private sealed class EntitySpec
+    private sealed class EntitySpec(
+        string tableName,
+        string className,
+        string baseType,
+        ImmutableArray<DbContextGenerator.ScalarPropertySpec> scalarProperties,
+        ImmutableArray<DbContextGenerator.NavigationSpec> navigations)
     {
-        public string TableName { get; }
-        public string ClassName { get; }
-        public string BaseType { get; }
-        public ImmutableArray<ScalarPropertySpec> ScalarProperties { get; }
-        public ImmutableArray<NavigationSpec> Navigations { get; }
-
-        public EntitySpec(
-            string tableName,
-            string className,
-            string baseType,
-            ImmutableArray<ScalarPropertySpec> scalarProperties,
-            ImmutableArray<NavigationSpec> navigations)
-        {
-            TableName = tableName;
-            ClassName = className;
-            BaseType = baseType;
-            ScalarProperties = scalarProperties;
-            Navigations = navigations;
-        }
+        public string TableName { get; } = tableName;
+        public string ClassName { get; } = className;
+        public string BaseType { get; } = baseType;
+        public ImmutableArray<ScalarPropertySpec> ScalarProperties { get; } = scalarProperties;
+        public ImmutableArray<NavigationSpec> Navigations { get; } = navigations;
 
         public static EntitySpec Create(string tableName, DbdFile dbd, DbdBuildBlock build)
         {
@@ -445,11 +413,8 @@ public sealed class DbContextGenerator : IIncrementalGenerator
             var navigations = new List<NavigationSpec>();
             var usedNames = new HashSet<string>(StringComparer.Ordinal);
 
-            foreach (var entry in build.Entries)
+            foreach (var entry in build.Entries.Where(static e => !e.IsId))
             {
-                if (entry.IsId)
-                    continue;
-
                 var columnName = entry.Name;
                 var propertyName = NameNormalizer.NormalizePropertyName(columnName);
                 propertyName = NameNormalizer.MakeUnique(propertyName, usedNames);
@@ -462,10 +427,10 @@ public sealed class DbContextGenerator : IIncrementalGenerator
                     mappedColumnName = columnName;
 
                 scalarProperties.Add(new ScalarPropertySpec(
-					NameNormalizer.EscapeIdentifier(propertyName),
-					typeName,
-					initializer,
-					mappedColumnName));
+                    NameNormalizer.EscapeIdentifier(propertyName),
+                    typeName,
+                    initializer,
+                    mappedColumnName));
 
                 if (entry is { IsRelation: true, ElementCount: 1 }
                     && entry.ReferencedTableName is { Length: > 0 } targetTable
@@ -476,9 +441,9 @@ public sealed class DbContextGenerator : IIncrementalGenerator
                     navName = NameNormalizer.MakeUnique(navName, usedNames);
 
                     navigations.Add(new NavigationSpec(
-						targetTable,
-						NameNormalizer.EscapeIdentifier(propertyName),
-						NameNormalizer.EscapeIdentifier(navName)));
+                        targetTable,
+                        NameNormalizer.EscapeIdentifier(propertyName),
+                        NameNormalizer.EscapeIdentifier(navName)));
                 }
             }
 
@@ -486,44 +451,30 @@ public sealed class DbContextGenerator : IIncrementalGenerator
         }
     }
 
-    private sealed class ScalarPropertySpec
+    private sealed class ScalarPropertySpec(string propertyName, string typeName, string initializer, string? columnName)
     {
-        public string PropertyName { get; }
-        public string TypeName { get; }
-        public string Initializer { get; }
-        public string? ColumnName { get; }
-
-        public ScalarPropertySpec(string propertyName, string typeName, string initializer, string? columnName)
-        {
-            PropertyName = propertyName;
-            TypeName = typeName;
-            Initializer = initializer;
-            ColumnName = columnName;
-        }
+        public string PropertyName { get; } = propertyName;
+        public string TypeName { get; } = typeName;
+        public string Initializer { get; } = initializer;
+        public string? ColumnName { get; } = columnName;
     }
 
-    private sealed class NavigationSpec
+    private sealed class NavigationSpec(string targetTableName, string foreignKeyPropertyName, string propertyName)
     {
-        public string TargetTableName { get; }
-        public string ForeignKeyPropertyName { get; }
-        public string PropertyName { get; }
-
-        public NavigationSpec(string targetTableName, string foreignKeyPropertyName, string propertyName)
-        {
-            TargetTableName = targetTableName;
-            ForeignKeyPropertyName = foreignKeyPropertyName;
-            PropertyName = propertyName;
-        }
+        public string TargetTableName { get; } = targetTableName;
+        public string ForeignKeyPropertyName { get; } = foreignKeyPropertyName;
+        public string PropertyName { get; } = propertyName;
     }
 
     private static class NameNormalizer
     {
         public static string NormalizeTypeName(string tableName)
         {
-            if (tableName.IndexOf('_') < 0)
-                return EscapeIdentifier(tableName);
-
-            return EscapeIdentifier(ToPascalCase(tableName));
+            return tableName.IndexOf('_') switch
+            {
+                < 0 => EscapeIdentifier(tableName),
+                _ => EscapeIdentifier(ToPascalCase(tableName)),
+            };
         }
 
         public static string NormalizePropertyName(string columnName)
@@ -535,10 +486,11 @@ public sealed class DbContextGenerator : IIncrementalGenerator
             if (columnName.EndsWith("_lang", StringComparison.Ordinal))
                 return ToPascalCase(columnName.Substring(0, columnName.Length - 5));
 
-            if (columnName.IndexOf('_') >= 0)
-                return ToPascalCase(columnName);
-
-            return columnName;
+            return columnName.IndexOf('_') switch
+            {
+                >= 0 => ToPascalCase(columnName),
+                _ => columnName,
+            };
         }
 
         public static string MakeUnique(string name, HashSet<string> used)
@@ -569,11 +521,8 @@ public sealed class DbContextGenerator : IIncrementalGenerator
                 return value;
 
             var sb = new StringBuilder();
-            foreach (var part in parts)
+            foreach (var part in parts.Where(static p => p is { Length: > 0 }))
             {
-                if (part.Length == 0)
-                    continue;
-
                 if (part.Equals("ID", StringComparison.Ordinal))
                 {
                     sb.Append("ID");
@@ -649,10 +598,11 @@ public sealed class DbContextGenerator : IIncrementalGenerator
             if (typeName.StartsWith("ICollection<", StringComparison.Ordinal))
                 return " = [];";
 
-            if (typeName == "string")
-                return " = string.Empty;";
-
-            return string.Empty;
+            return typeName switch
+            {
+                "string" => " = string.Empty;",
+                _ => string.Empty,
+            };
         }
 
         private static bool TryMapInlineInteger(string? inlineTypeToken, out string clrType)

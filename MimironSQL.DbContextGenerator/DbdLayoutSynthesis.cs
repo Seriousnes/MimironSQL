@@ -19,42 +19,23 @@ internal static class DbdLayoutSynthesis
         }
     }
 
-    internal sealed class PhysicalColumn
+    internal sealed class PhysicalColumn(string dbdName, string propertyName, string dbdType, int? arrayLength)
     {
-        public string DbdName { get; }
-        public string PropertyName { get; }
-        public string DbdType { get; }
-        public int? ArrayLength { get; }
-
-        public PhysicalColumn(string dbdName, string propertyName, string dbdType, int? arrayLength)
-        {
-            DbdName = dbdName;
-            PropertyName = propertyName;
-            DbdType = dbdType;
-            ArrayLength = arrayLength;
-        }
+        public string DbdName { get; } = dbdName;
+        public string PropertyName { get; } = propertyName;
+        public string DbdType { get; } = dbdType;
+        public int? ArrayLength { get; } = arrayLength;
     }
 
-    internal sealed class LayoutModel
+    internal sealed class LayoutModel(ImmutableArray<DbdLayoutSynthesis.BuildConstraint> buildConstraints, ImmutableArray<DbdLayoutSynthesis.PhysicalColumn> physicalColumns)
     {
-        public ImmutableArray<BuildConstraint> BuildConstraints { get; }
-        public ImmutableArray<PhysicalColumn> PhysicalColumns { get; }
-
-        public LayoutModel(ImmutableArray<BuildConstraint> buildConstraints, ImmutableArray<PhysicalColumn> physicalColumns)
-        {
-            BuildConstraints = buildConstraints;
-            PhysicalColumns = physicalColumns;
-        }
+        public ImmutableArray<BuildConstraint> BuildConstraints { get; } = buildConstraints;
+        public ImmutableArray<PhysicalColumn> PhysicalColumns { get; } = physicalColumns;
     }
 
-    internal sealed class ColumnMaxArrayLengths
+    internal sealed class ColumnMaxArrayLengths(IReadOnlyDictionary<string, int> maxByColumnName)
     {
-        public IReadOnlyDictionary<string, int> MaxByColumnName { get; }
-
-        public ColumnMaxArrayLengths(IReadOnlyDictionary<string, int> maxByColumnName)
-        {
-            MaxByColumnName = maxByColumnName;
-        }
+        public IReadOnlyDictionary<string, int> MaxByColumnName { get; } = maxByColumnName;
     }
 
     internal static LayoutModel[] Create(TableSpec table, string[] logicalPropertyNames)
@@ -70,7 +51,7 @@ internal static class DbdLayoutSynthesis
 
             return
             [
-                new LayoutModel(ImmutableArray<BuildConstraint>.Empty, cols.ToImmutable())
+                new LayoutModel([], cols.ToImmutable())
             ];
         }
 
@@ -85,19 +66,15 @@ internal static class DbdLayoutSynthesis
         var signatureToIndex = new Dictionary<string, int>(StringComparer.Ordinal);
         var layouts = new List<(List<BuildConstraint> Builds, ImmutableArray<PhysicalColumn> Columns)>();
 
-        foreach (var version in table.Versions)
+        foreach (var version in table.Versions.Where(static v => v.Columns.Length != 0))
         {
-            if (version.Columns.Length == 0)
-                continue;
-
             var physical = ImmutableArray.CreateBuilder<PhysicalColumn>(version.Columns.Length);
             var sigBuilder = new StringBuilder();
 
-            foreach (var c in version.Columns)
+            foreach (var c in version.Columns.Where(c => logicalNameToProperty.ContainsKey(c.ColumnName)))
             {
                 var name = c.ColumnName;
-                if (!logicalNameToProperty.TryGetValue(name, out var propName))
-                    continue;
+                var propName = logicalNameToProperty[name];
 
                 var dbdType = logicalNameToType[name];
                 physical.Add(new PhysicalColumn(name, propName, dbdType, c.ArrayLength));
@@ -143,10 +120,9 @@ internal static class DbdLayoutSynthesis
         var map = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         foreach (var version in table.Versions)
         {
-            foreach (var col in version.Columns)
+            foreach (var col in version.Columns.Where(static c => c.ArrayLength is { }))
             {
-                if (col.ArrayLength is not { } len)
-                    continue;
+                var len = col.ArrayLength.GetValueOrDefault();
 
                 if (!map.TryGetValue(col.ColumnName, out var existing) || len > existing)
                     map[col.ColumnName] = len;

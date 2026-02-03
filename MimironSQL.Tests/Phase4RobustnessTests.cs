@@ -16,6 +16,7 @@ public sealed class Phase4RobustnessTests
         var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
         var context = new TestDb2Context(dbdProvider, db2Provider);
+        context.EnsureModelCreated();
 
         var map = context.Map;
         var mapFile = context.GetOrOpenTableRawTyped<RowHandle>(map.TableName).File;
@@ -46,7 +47,10 @@ public sealed class Phase4RobustnessTests
 
         // Creating a context with a navigation to a non-existent table should throw during model building
         Should.Throw<Exception>(() =>
-            _ = new MisconfiguredNavigationTestDb2Context(dbdProvider, db2Provider));
+        {
+            var context = new MisconfiguredNavigationTestDb2Context(dbdProvider, db2Provider);
+            context.EnsureModelCreated();
+        });
     }
 
     [Fact]
@@ -60,7 +64,10 @@ public sealed class Phase4RobustnessTests
 
         // Should throw during model building when trying to open MapChallengeMode
         var ex = Should.Throw<InvalidOperationException>(() =>
-            _ = new TestDb2Context(dbdProvider, brokenProvider));
+        {
+            var context = new TestDb2Context(dbdProvider, brokenProvider);
+            context.EnsureModelCreated();
+        });
 
         ex.Message.ShouldContain("SimulatedFailure");
         ex.Message.ShouldContain("MapChallengeMode");

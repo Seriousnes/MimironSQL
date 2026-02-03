@@ -1,5 +1,6 @@
 using MimironSQL.Db2.Model;
 using MimironSQL.Db2.Query;
+using MimironSQL.Formats.Wdc5;
 using MimironSQL.Providers;
 
 using Shouldly;
@@ -16,6 +17,7 @@ public sealed class Db2EntityConfigurationTests
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
 
         var context = new ConfigurationTestContext(dbdProvider, db2Provider);
+        context.EnsureModelCreated();
 
         var mapEntity = context.Model.GetEntityType(typeof(Fixtures.Map));
         mapEntity.TableName.ShouldBe("Map");
@@ -38,6 +40,7 @@ public sealed class Db2EntityConfigurationTests
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
 
         var context = new AssemblyScanTestContext(dbdProvider, db2Provider);
+        context.EnsureModelCreated();
 
         var mapEntity = context.Model.GetEntityType(typeof(Map));
         mapEntity.TableName.ShouldBe("Map");
@@ -54,7 +57,10 @@ public sealed class Db2EntityConfigurationTests
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
 
         var ex = Should.Throw<InvalidOperationException>(() =>
-            _ = new DuplicateEntityConfigurationTestContext(dbdProvider, db2Provider));
+        {
+            var context = new DuplicateEntityConfigurationTestContext(dbdProvider, db2Provider);
+            context.EnsureModelCreated();
+        });
 
         ex.Message.ShouldContain("Multiple entity type configurations found");
         ex.Message.ShouldContain(typeof(Map).FullName ?? nameof(Map));
@@ -68,6 +74,7 @@ public sealed class Db2EntityConfigurationTests
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
 
         var context = new PrecedenceTestContext(dbdProvider, db2Provider);
+        context.EnsureModelCreated();
 
         var entity = context.Model.GetEntityType(typeof(Map));
         entity.TableName.ShouldBe("Map");
@@ -82,6 +89,7 @@ public sealed class Db2EntityConfigurationTests
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
 
         var context = new LastWinsTestContext(dbdProvider, db2Provider);
+        context.EnsureModelCreated();
 
         var entity = context.Model.GetEntityType(typeof(Map));
         entity.TableName.ShouldBe("Map");
@@ -95,6 +103,7 @@ public sealed class Db2EntityConfigurationTests
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
 
         var context = new OnModelCreatingOverridesTestContext(dbdProvider, db2Provider);
+        context.EnsureModelCreated();
 
         var entity = context.Model.GetEntityType(typeof(Map));
         entity.TableName.ShouldBe("Map");
@@ -108,6 +117,7 @@ public sealed class Db2EntityConfigurationTests
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
 
         var context = new SchemaOverrideTestContext(dbdProvider, db2Provider);
+        context.EnsureModelCreated();
 
         context.Model.TryGetReferenceNavigation(
             typeof(Fixtures.Map),
@@ -126,7 +136,10 @@ public sealed class Db2EntityConfigurationTests
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
 
         var ex = Should.Throw<NotSupportedException>(() =>
-            _ = new ConflictTestContext(dbdProvider, db2Provider));
+        {
+            var context = new ConflictTestContext(dbdProvider, db2Provider);
+            context.EnsureModelCreated();
+        });
 
         ex.Message.ShouldContain("conflicts with schema FK");
         ex.Message.ShouldContain("OverridesSchema()");
@@ -149,21 +162,21 @@ internal sealed class SpellConfiguration : IDb2EntityTypeConfiguration<Spell>
 }
 
 internal sealed class ConfigurationTestContext(IDbdProvider dbdProvider, IDb2StreamProvider db2StreamProvider)
-    : Db2Context(dbdProvider, db2StreamProvider)
+    : Db2Context(dbdProvider, db2StreamProvider, Wdc5Format.Instance)
 {
     public Db2Table<Map> Maps { get; init; } = null!;
 
-    protected override void OnModelCreating(Db2ModelBuilder modelBuilder)
+    public override void OnModelCreating(Db2ModelBuilder modelBuilder)
         => modelBuilder.ApplyConfiguration(new MapConfiguration());
 }
 
 internal sealed class AssemblyScanTestContext(IDbdProvider dbdProvider, IDb2StreamProvider db2StreamProvider)
-    : Db2Context(dbdProvider, db2StreamProvider)
+    : Db2Context(dbdProvider, db2StreamProvider, Wdc5Format.Instance)
 {
     public Db2Table<Map> Maps { get; init; } = null!;
     public Db2Table<Spell> Spells { get; init; } = null!;
 
-    protected override void OnModelCreating(Db2ModelBuilder modelBuilder)
+    public override void OnModelCreating(Db2ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfiguration(new MapConfiguration());
         modelBuilder.ApplyConfiguration(new SpellConfiguration());
@@ -171,11 +184,11 @@ internal sealed class AssemblyScanTestContext(IDbdProvider dbdProvider, IDb2Stre
 }
 
 internal sealed class PrecedenceTestContext(IDbdProvider dbdProvider, IDb2StreamProvider db2StreamProvider)
-    : Db2Context(dbdProvider, db2StreamProvider)
+    : Db2Context(dbdProvider, db2StreamProvider, Wdc5Format.Instance)
 {
     public Db2Table<Map> Maps { get; init; } = null!;
 
-    protected override void OnModelCreating(Db2ModelBuilder modelBuilder)
+    public override void OnModelCreating(Db2ModelBuilder modelBuilder)
         => modelBuilder
             .Entity<Map>()
             .ToTable("Map")
@@ -183,11 +196,11 @@ internal sealed class PrecedenceTestContext(IDbdProvider dbdProvider, IDb2Stream
 }
 
 internal sealed class LastWinsTestContext(IDbdProvider dbdProvider, IDb2StreamProvider db2StreamProvider)
-    : Db2Context(dbdProvider, db2StreamProvider)
+    : Db2Context(dbdProvider, db2StreamProvider, Wdc5Format.Instance)
 {
     public Db2Table<Map> Maps { get; init; } = null!;
 
-    protected override void OnModelCreating(Db2ModelBuilder modelBuilder)
+    public override void OnModelCreating(Db2ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<Map>().ToTable("WrongTableName");
         modelBuilder.Entity<Map>().ToTable("Map");
@@ -195,11 +208,11 @@ internal sealed class LastWinsTestContext(IDbdProvider dbdProvider, IDb2StreamPr
 }
 
 internal sealed class OnModelCreatingOverridesTestContext(IDbdProvider dbdProvider, IDb2StreamProvider db2StreamProvider)
-    : Db2Context(dbdProvider, db2StreamProvider)
+    : Db2Context(dbdProvider, db2StreamProvider, Wdc5Format.Instance)
 {
     public Db2Table<Map> Maps { get; init; } = null!;
 
-    protected override void OnModelCreating(Db2ModelBuilder modelBuilder)
+    public override void OnModelCreating(Db2ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfiguration(new WrongMapConfiguration());
         modelBuilder.Entity<Map>().ToTable("Map");
@@ -213,11 +226,11 @@ internal sealed class WrongMapConfiguration : IDb2EntityTypeConfiguration<Map>
 }
 
 internal sealed class SchemaOverrideTestContext(IDbdProvider dbdProvider, IDb2StreamProvider db2StreamProvider)
-    : Db2Context(dbdProvider, db2StreamProvider)
+    : Db2Context(dbdProvider, db2StreamProvider, Wdc5Format.Instance)
 {
     public Db2Table<Map> Maps { get; init; } = null!;
 
-    protected override void OnModelCreating(Db2ModelBuilder modelBuilder)
+    public override void OnModelCreating(Db2ModelBuilder modelBuilder)
         => modelBuilder
             .Entity<Fixtures.Map>()
             .HasOne(m => m.ParentMap)
@@ -226,11 +239,11 @@ internal sealed class SchemaOverrideTestContext(IDbdProvider dbdProvider, IDb2St
 }
 
 internal sealed class ConflictTestContext(IDbdProvider dbdProvider, IDb2StreamProvider db2StreamProvider)
-    : Db2Context(dbdProvider, db2StreamProvider)
+    : Db2Context(dbdProvider, db2StreamProvider, Wdc5Format.Instance)
 {
     public Db2Table<Map> Maps { get; init; } = null!;
 
-    protected override void OnModelCreating(Db2ModelBuilder modelBuilder)
+    public override void OnModelCreating(Db2ModelBuilder modelBuilder)
         => modelBuilder
             .Entity<Fixtures.Map>()
             .HasOne(m => m.ParentMap)
@@ -238,11 +251,11 @@ internal sealed class ConflictTestContext(IDbdProvider dbdProvider, IDb2StreamPr
 }
 
 internal sealed class DuplicateEntityConfigurationTestContext(IDbdProvider dbdProvider, IDb2StreamProvider db2StreamProvider)
-    : Db2Context(dbdProvider, db2StreamProvider)
+    : Db2Context(dbdProvider, db2StreamProvider, Wdc5Format.Instance)
 {
     public Db2Table<Map> Maps { get; init; } = null!;
 
-    protected override void OnModelCreating(Db2ModelBuilder modelBuilder)
+    public override void OnModelCreating(Db2ModelBuilder modelBuilder)
         => modelBuilder.ApplyConfigurationsFromAssembly(typeof(ErrorTestConfigurations.ConfigurationThatThrows).Assembly);
 }
 

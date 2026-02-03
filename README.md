@@ -1,12 +1,12 @@
 # MimironSQL
 
-MimironSQL is a high-performance LINQ query provider for World of Warcraft's DB2 database files. It enables type-safe querying of game data using familiar LINQ syntax, with support for extracted `.db2` files from the filesystem as well as directly from WoW's CASC storage.
+MimironSQL is a high-performance LINQ query provider for World of Warcraft's DB2 database files. It enables type-safe querying of game data using familiar LINQ syntax, with support for extracted `.db2` files from the filesystem.
 
 ## Features
 
 - **Type-safe LINQ queries** - Query DB2 files using standard LINQ operations
 - **Navigation properties** - Configure and traverse relationships between tables
-- **Multiple data sources** - Read from filesystem or CASC archives
+- **Multiple data sources** - Read from the filesystem
 - **High performance** - Optimized for efficient data access and materialization
 - **Read-only** - Safe, non-destructive access to game data
 

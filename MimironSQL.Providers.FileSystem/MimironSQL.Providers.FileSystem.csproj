@@ -1,0 +1,16 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFramework>net10.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>		
+		<RootNamespace>MimironSQL.Providers</RootNamespace>
+		<IsPackable>true</IsPackable>
+	</PropertyGroup>
+
+	<ItemGroup>
+	  <ProjectReference Include="..\MimironSQL.Contracts\MimironSQL.Contracts.csproj" />
+	  <ProjectReference Include="..\MimironSQL.Dbd\MimironSQL.Dbd.csproj" />
+	</ItemGroup>
+	
+</Project>

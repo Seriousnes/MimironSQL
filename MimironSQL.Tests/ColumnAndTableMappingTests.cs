@@ -4,6 +4,7 @@ using MimironSQL.Db2;
 using MimironSQL.Db2.Model;
 using MimironSQL.Db2.Query;
 using MimironSQL.Formats;
+using MimironSQL.Formats.Wdc5;
 using MimironSQL.Providers;
 
 using Shouldly;
@@ -20,6 +21,7 @@ public sealed class ColumnAndTableMappingTests
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
 
         var context = new ColumnAttributeSpellNameContext(dbdProvider, db2Provider);
+        context.EnsureModelCreated();
 
         var entityType = context.Model.GetEntityType(typeof(SpellName_ColumnAttribute));
         entityType.TableName.ShouldBe("SpellName");
@@ -45,6 +47,7 @@ public sealed class ColumnAndTableMappingTests
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
 
         var context = new FluentColumnSpellNameContext(dbdProvider, db2Provider);
+        context.EnsureModelCreated();
 
         var entityType = context.Model.GetEntityType(typeof(SpellName_Fluent));
         entityType.TableName.ShouldBe("SpellName");
@@ -69,7 +72,11 @@ public sealed class ColumnAndTableMappingTests
         var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
 
-        var ex = Should.Throw<NotSupportedException>(() => new ColumnAttributeAndFluentConflictContext(dbdProvider, db2Provider));
+        var ex = Should.Throw<NotSupportedException>(() =>
+        {
+            var context = new ColumnAttributeAndFluentConflictContext(dbdProvider, db2Provider);
+            context.EnsureModelCreated();
+        });
         ex.Message.ShouldContain("[Column]");
         ex.Message.ShouldContain(nameof(SpellName_ColumnAttributeAndFluentConflict.Name));
     }
@@ -81,7 +88,11 @@ public sealed class ColumnAndTableMappingTests
         var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
 
-        var ex = Should.Throw<NotSupportedException>(() => new TableAttributeAndToTableConflictContext(dbdProvider, db2Provider));
+        var ex = Should.Throw<NotSupportedException>(() =>
+        {
+            var context = new TableAttributeAndToTableConflictContext(dbdProvider, db2Provider);
+            context.EnsureModelCreated();
+        });
         ex.Message.ShouldContain("[Table]");
         ex.Message.ShouldContain("ToTable");
     }
@@ -93,7 +104,11 @@ public sealed class ColumnAndTableMappingTests
         var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
 
-        var ex = Should.Throw<NotSupportedException>(() => new InvalidColumnAttributeTargetContext(dbdProvider, db2Provider));
+        var ex = Should.Throw<NotSupportedException>(() =>
+        {
+            var context = new InvalidColumnAttributeTargetContext(dbdProvider, db2Provider);
+            context.EnsureModelCreated();
+        });
         ex.Message.ShouldContain("Field");
         ex.Message.ShouldContain("Column mapping attributes");
     }
@@ -105,7 +120,11 @@ public sealed class ColumnAndTableMappingTests
         var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
 
-        var ex = Should.Throw<NotSupportedException>(() => new PrimaryKeyFluentColumnMappingContext(dbdProvider, db2Provider));
+        var ex = Should.Throw<NotSupportedException>(() =>
+        {
+            var context = new PrimaryKeyFluentColumnMappingContext(dbdProvider, db2Provider);
+            context.EnsureModelCreated();
+        });
         ex.Message.ShouldContain("primary key", Case.Insensitive);
     }
 
@@ -134,7 +153,7 @@ internal sealed class SpellName_ColumnAttribute : Db2Entity
 }
 
 internal sealed class ColumnAttributeSpellNameContext(IDbdProvider dbdProvider, IDb2StreamProvider db2StreamProvider)
-    : Db2Context(dbdProvider, db2StreamProvider)
+    : Db2Context(dbdProvider, db2StreamProvider, Wdc5Format.Instance)
 {
     public Db2Table<SpellName_ColumnAttribute> SpellNames { get; init; } = null!;
 }
@@ -145,11 +164,11 @@ internal sealed class SpellName_Fluent : Db2Entity
 }
 
 internal sealed class FluentColumnSpellNameContext(IDbdProvider dbdProvider, IDb2StreamProvider db2StreamProvider)
-    : Db2Context(dbdProvider, db2StreamProvider)
+    : Db2Context(dbdProvider, db2StreamProvider, Wdc5Format.Instance)
 {
     public Db2Table<SpellName_Fluent> SpellNames { get; init; } = null!;
 
-    protected override void OnModelCreating(Db2ModelBuilder modelBuilder)
+    public override void OnModelCreating(Db2ModelBuilder modelBuilder)
         => modelBuilder
             .Entity<SpellName_Fluent>()
             .ToTable("SpellName")
@@ -165,11 +184,11 @@ internal sealed class SpellName_ColumnAttributeAndFluentConflict : Db2Entity
 }
 
 internal sealed class ColumnAttributeAndFluentConflictContext(IDbdProvider dbdProvider, IDb2StreamProvider db2StreamProvider)
-    : Db2Context(dbdProvider, db2StreamProvider)
+    : Db2Context(dbdProvider, db2StreamProvider, Wdc5Format.Instance)
 {
     public Db2Table<SpellName_ColumnAttributeAndFluentConflict> SpellNames { get; init; } = null!;
 
-    protected override void OnModelCreating(Db2ModelBuilder modelBuilder)
+    public override void OnModelCreating(Db2ModelBuilder modelBuilder)
         => modelBuilder
             .Entity<SpellName_ColumnAttributeAndFluentConflict>()
             .Property(x => x.Name)
@@ -183,11 +202,11 @@ internal sealed class SpellName_TableAttributeAndToTableConflict : Db2Entity
 }
 
 internal sealed class TableAttributeAndToTableConflictContext(IDbdProvider dbdProvider, IDb2StreamProvider db2StreamProvider)
-    : Db2Context(dbdProvider, db2StreamProvider)
+    : Db2Context(dbdProvider, db2StreamProvider, Wdc5Format.Instance)
 {
     public Db2Table<SpellName_TableAttributeAndToTableConflict> SpellNames { get; init; } = null!;
 
-    protected override void OnModelCreating(Db2ModelBuilder modelBuilder)
+    public override void OnModelCreating(Db2ModelBuilder modelBuilder)
         => modelBuilder.Entity<SpellName_TableAttributeAndToTableConflict>().ToTable("SpellName");
 }
 
@@ -199,7 +218,7 @@ internal sealed class SpellName_InvalidFieldColumnAttributeTarget : Db2Entity
 }
 
 internal sealed class InvalidColumnAttributeTargetContext(IDbdProvider dbdProvider, IDb2StreamProvider db2StreamProvider)
-    : Db2Context(dbdProvider, db2StreamProvider)
+    : Db2Context(dbdProvider, db2StreamProvider, Wdc5Format.Instance)
 {
     public Db2Table<SpellName_InvalidFieldColumnAttributeTarget> SpellNames { get; init; } = null!;
 }
@@ -210,11 +229,11 @@ internal sealed class SpellName_PrimaryKeyFluentColumnMapping : Db2Entity
 }
 
 internal sealed class PrimaryKeyFluentColumnMappingContext(IDbdProvider dbdProvider, IDb2StreamProvider db2StreamProvider)
-    : Db2Context(dbdProvider, db2StreamProvider)
+    : Db2Context(dbdProvider, db2StreamProvider, Wdc5Format.Instance)
 {
     public Db2Table<SpellName_PrimaryKeyFluentColumnMapping> SpellNames { get; init; } = null!;
 
-    protected override void OnModelCreating(Db2ModelBuilder modelBuilder)
+    public override void OnModelCreating(Db2ModelBuilder modelBuilder)
         => modelBuilder
             .Entity<SpellName_PrimaryKeyFluentColumnMapping>()
             .ToTable("SpellName")

@@ -3,7 +3,7 @@ using System.Collections.Immutable;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Diagnostics;
 
-namespace CASC.Net.Generators.Tests.Helpers;
+namespace MimironSQL.DbContextGenerator.Tests.Helpers;
 
 internal sealed class TestAnalyzerConfigOptionsProvider(ImmutableDictionary<string, string> globalOptions) : AnalyzerConfigOptionsProvider
 {

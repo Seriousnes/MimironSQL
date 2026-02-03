@@ -1,7 +1,7 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Text;
 
-namespace CASC.Net.Generators.Tests.Helpers;
+namespace MimironSQL.DbContextGenerator.Tests.Helpers;
 
 internal sealed class InMemoryAdditionalText(string path, SourceText text) : AdditionalText
 {

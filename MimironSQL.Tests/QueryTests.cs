@@ -17,6 +17,7 @@ public class QueryTests
         var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
         var context = new TestDb2Context(dbdProvider, db2Provider);
+        context.EnsureModelCreated();
 
         var map = context.Map;
 
@@ -35,6 +36,7 @@ public class QueryTests
         var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
         var context = new TestDb2Context(dbdProvider, db2Provider);
+        context.EnsureModelCreated();
 
         var map = context.Map;
         map.Schema.TryGetField("Directory", out var directoryField).ShouldBeTrue();
@@ -63,6 +65,7 @@ public class QueryTests
         var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
         var context = new TestDb2Context(dbdProvider, db2Provider);
+        context.EnsureModelCreated();
 
         var spells = context.Spell;
 
@@ -82,6 +85,7 @@ public class QueryTests
         var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
         var context = new TestDb2Context(dbdProvider, db2Provider);
+        context.EnsureModelCreated();
 
         var table = context.CollectableSourceQuestSparse;
 
@@ -102,6 +106,7 @@ public class QueryTests
         var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
         var context = new TestDb2Context(dbdProvider, db2Provider);
+        context.EnsureModelCreated();
 
         var results = context.Spell
             .Include(s => s.SpellName)
@@ -118,6 +123,7 @@ public class QueryTests
         var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
         var context = new TestDb2Context(dbdProvider, db2Provider);
+        context.EnsureModelCreated();
 
         var categories = context.AccountStoreCategory;
 
@@ -137,6 +143,7 @@ public class QueryTests
         var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
         var context = new TestDb2Context(dbdProvider, db2Provider);
+        context.EnsureModelCreated();
 
         var map = context.Map;
 
@@ -156,7 +163,11 @@ public class QueryTests
         var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
 
-        var ex = Should.Throw<NotSupportedException>(() => _ = new NoKeyTestDb2Context(dbdProvider, db2Provider));
+        var ex = Should.Throw<NotSupportedException>(() =>
+        {
+            var context = new NoKeyTestDb2Context(dbdProvider, db2Provider);
+            context.EnsureModelCreated();
+        });
         ex.Message.ShouldContain("has no key member");
     }
 
@@ -170,6 +181,8 @@ public class QueryTests
         var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
         var context = new PruningTestDb2Context(dbdProvider, db2Provider);
+        context.EnsureModelCreated();
+        context.EnsureModelCreated();
 
         var ids = context.Map
             .Where(x => x.Id > 0)
@@ -190,6 +203,7 @@ public class QueryTests
         var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
         var context = new PruningTestDb2Context(dbdProvider, db2Provider);
+        context.EnsureModelCreated();
 
         var anon = context.Map
             .Where(x => x.Id > 0)
@@ -219,6 +233,7 @@ public class QueryTests
         var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
         var context = new PruningTestDb2Context(dbdProvider, db2Provider);
+        context.EnsureModelCreated();
 
         var ids = context.Map
             .Select(x => x.Id)
@@ -237,6 +252,7 @@ public class QueryTests
         var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
         var context = new TestDb2Context(dbdProvider, db2Provider);
+        context.EnsureModelCreated();
 
         var id = context.Spell.Select(x => x.Id).Take(1).First();
         var found = context.Spell.Find(id);
@@ -253,6 +269,7 @@ public class QueryTests
         var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
         var context = new TestDb2Context(dbdProvider, db2Provider);
+        context.EnsureModelCreated();
 
         var spell = context.Spell;
         var file = context.GetOrOpenTableRawTyped<RowHandle>(spell.TableName).File;
@@ -275,6 +292,7 @@ public class QueryTests
         var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
         var context = new TestDb2Context(dbdProvider, db2Provider);
+        context.EnsureModelCreated();
 
         var id = context.GarrType.Select(x => x.Id).Take(1).First();
         var found = context.GarrType.Find(id);
@@ -290,6 +308,7 @@ public class QueryTests
         var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
         var context = new TestDb2Context(dbdProvider, db2Provider);
+        context.EnsureModelCreated();
 
         var map = context.Map;
         var parentMapIdField = map.Schema.Fields.First(f => f.Name.Equals("ParentMapID", StringComparison.OrdinalIgnoreCase));
@@ -319,6 +338,7 @@ public class QueryTests
         var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
         var context = new TestDb2Context(dbdProvider, db2Provider);
+        context.EnsureModelCreated();
 
         var spell = context.Spell;
         var spellName = context.SpellName;
@@ -349,7 +369,10 @@ public class QueryTests
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
 
         var ex = Should.Throw<NotSupportedException>(() =>
-            _ = new SchemaFkConflictTestDb2Context(dbdProvider, db2Provider));
+        {
+            var context = new SchemaFkConflictTestDb2Context(dbdProvider, db2Provider);
+            context.EnsureModelCreated();
+        });
 
         ex.Message.ShouldContain("conflicts with schema FK");
     }
@@ -361,6 +384,7 @@ public class QueryTests
         var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
         var context = new SchemaFkOverrideTestDb2Context(dbdProvider, db2Provider);
+        context.EnsureModelCreated();
 
         var map = context.Map;
         var parentMapIdField = map.Schema.Fields.First(f => f.Name.Equals("ParentMapID", StringComparison.OrdinalIgnoreCase));
@@ -393,6 +417,7 @@ public class QueryTests
         var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
         var context = new TestDb2Context(dbdProvider, db2Provider);
+        context.EnsureModelCreated();
 
         var expected = new Fixtures.Spell
         {
@@ -418,6 +443,7 @@ public class QueryTests
         var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
         var context = new TestDb2Context(dbdProvider, db2Provider);
+        context.EnsureModelCreated();
 
         // Map ID = 2441 is used for two MapChallengeMode entries (Tazavesh, So'leah's Gambit (ID=392), and Tazavesh, Streets of Wonder (ID=391))        
 
@@ -436,6 +462,7 @@ public class QueryTests
         var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
         var context = new TestDb2Context(dbdProvider, db2Provider);
+        context.EnsureModelCreated();
 
         var results = context.MapChallengeMode
             .Where(x => x.Map.MapName_lang.Contains("Tazavesh"))
@@ -452,6 +479,7 @@ public class QueryTests
         var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
         var context = new TestDb2Context(dbdProvider, db2Provider);
+        context.EnsureModelCreated();
 
         var needle = "Tazavesh";
 
@@ -470,6 +498,7 @@ public class QueryTests
         var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
         var context = new TestDb2Context(dbdProvider, db2Provider);
+        context.EnsureModelCreated();
 
         var results = context.MapChallengeMode
             .Where(x => x.Map.MapName_lang.Contains("Tazavesh") && x.Map.MapName_lang.Contains("Veiled"))
@@ -486,6 +515,7 @@ public class QueryTests
         var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
         var context = new TestDb2Context(dbdProvider, db2Provider);
+        context.EnsureModelCreated();
 
         var names = context.MapChallengeMode
             .Where(x => x.MapID == 2441)
@@ -502,6 +532,7 @@ public class QueryTests
         var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
         var context = new TestDb2Context(dbdProvider, db2Provider);
+        context.EnsureModelCreated();
 
         Wdc5FileLookupSnapshot snapshot;
         List<string?> names;
@@ -529,6 +560,7 @@ public class QueryTests
         var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
         var context = new TestDb2Context(dbdProvider, db2Provider);
+        context.EnsureModelCreated();
 
         var map = context.Map;
         var parentMapIdField = map.Schema.Fields.First(f => f.Name.Equals("ParentMapID", StringComparison.OrdinalIgnoreCase));
@@ -570,6 +602,7 @@ public class QueryTests
         var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
         var context = new TestDb2Context(dbdProvider, db2Provider);
+        context.EnsureModelCreated();
 
         var spell = context.Spell;
         var spellName = context.SpellName;
@@ -608,6 +641,7 @@ public class QueryTests
         var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
         var context = new TestDb2Context(dbdProvider, db2Provider);
+        context.EnsureModelCreated();
 
         var targetMapId = 2441;
 
@@ -634,6 +668,7 @@ public class QueryTests
         var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
         var context = new TestDb2Context(dbdProvider, db2Provider);
+        context.EnsureModelCreated();
 
         var mcm = context.MapChallengeMode.Find(56);
         mcm.ShouldNotBeNull();
@@ -648,6 +683,7 @@ public class QueryTests
         var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
         var context = new TestDb2Context(dbdProvider, db2Provider);
+        context.EnsureModelCreated();
 
         var mcm = context.MapChallengeMode
             .Where(x => x.Id == 56)
@@ -690,6 +726,7 @@ public class QueryTests
         var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
         var context = new TestDb2Context(dbdProvider, db2Provider);
+        context.EnsureModelCreated();
 
         var mapChallengeModeFile = context.GetOrOpenTableRawTyped<RowHandle>(nameof(MapChallengeMode)).File;
         var mapChallengeModeSchema = context.GetOrOpenTableRawTyped<RowHandle>(nameof(MapChallengeMode)).Schema;
@@ -729,6 +766,7 @@ public class QueryTests
         var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
         var context = new TestDb2Context(dbdProvider, db2Provider);
+        context.EnsureModelCreated();
 
         var mapChallengeModeFile = context.GetOrOpenTableRawTyped<RowHandle>(nameof(MapChallengeMode)).File;
         var mapChallengeModeSchema = context.GetOrOpenTableRawTyped<RowHandle>(nameof(MapChallengeMode)).Schema;
@@ -748,12 +786,39 @@ public class QueryTests
     }
 
     [Fact]
+    public void Where_supports_collection_count_greater_than_zero_semi_join()
+    {
+        var testDataDir = TestDataPaths.GetTestDataDirectory();
+        var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
+        var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
+        var context = new TestDb2Context(dbdProvider, db2Provider);
+        context.EnsureModelCreated();
+
+        var mapChallengeModeFile = context.GetOrOpenTableRawTyped<RowHandle>(nameof(MapChallengeMode)).File;
+        var mapChallengeModeSchema = context.GetOrOpenTableRawTyped<RowHandle>(nameof(MapChallengeMode)).Schema;
+        mapChallengeModeSchema.TryGetField("MapID", out var mapIdField).ShouldBeTrue();
+        var expected = mapChallengeModeFile.EnumerateRows()
+            .Select(r => (int)mapChallengeModeFile.ReadField<ushort>(r, mapIdField.ColumnStartIndex))
+            .Where(id => id != 0)
+            .ToHashSet();
+
+        var results = context.Map
+            .Where(m => m.MapChallengeModes.Count > 0)
+            .Take(50)
+            .ToList();
+
+        results.Count.ShouldBeGreaterThan(0);
+        results.All(m => expected.Contains(m.Id)).ShouldBeTrue();
+    }
+
+    [Fact]
     public void Where_supports_collection_any_with_scalar_predicate()
     {
         var testDataDir = TestDataPaths.GetTestDataDirectory();
         var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
         var context = new TestDb2Context(dbdProvider, db2Provider);
+        context.EnsureModelCreated();
 
         var mapChallengeModeFile = context.GetOrOpenTableRawTyped<RowHandle>(nameof(MapChallengeMode)).File;
         var mapChallengeModeSchema = context.GetOrOpenTableRawTyped<RowHandle>(nameof(MapChallengeMode)).Schema;
@@ -777,6 +842,7 @@ public class QueryTests
         var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
         var context = new TestDb2Context(dbdProvider, db2Provider);
+        context.EnsureModelCreated();
 
         var excludeMapId = 2441;
         var results = context.MapChallengeMode
@@ -795,6 +861,7 @@ public class QueryTests
         var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
         var context = new TestDb2Context(dbdProvider, db2Provider);
+        context.EnsureModelCreated();
 
         var threshold = 2000;
         var results = context.MapChallengeMode
@@ -813,6 +880,7 @@ public class QueryTests
         var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
         var context = new TestDb2Context(dbdProvider, db2Provider);
+        context.EnsureModelCreated();
 
         var threshold = 3000;
         var results = context.MapChallengeMode
@@ -831,6 +899,7 @@ public class QueryTests
         var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
         var context = new TestDb2Context(dbdProvider, db2Provider);
+        context.EnsureModelCreated();
 
         var results = context.MapChallengeMode
             .Where(x => x.Map != null)
@@ -848,6 +917,7 @@ public class QueryTests
         var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
         var context = new TestDb2Context(dbdProvider, db2Provider);
+        context.EnsureModelCreated();
 
         var targetMapId = 2441;
 
@@ -867,6 +937,7 @@ public class QueryTests
         var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
         var context = new TestDb2Context(dbdProvider, db2Provider);
+        context.EnsureModelCreated();
 
         var map = context.Map;
         var mapFile = context.GetOrOpenTableRawTyped<RowHandle>(map.TableName).File;
@@ -891,6 +962,7 @@ public class QueryTests
         var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
         var context = new TestDb2Context(dbdProvider, db2Provider);
+        context.EnsureModelCreated();
 
         var map = context.Map;
         var mapFile = context.GetOrOpenTableRawTyped<RowHandle>(map.TableName).File;
@@ -912,6 +984,7 @@ public class QueryTests
         var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
         var context = new TestDb2Context(dbdProvider, db2Provider);
+        context.EnsureModelCreated();
 
         var map = context.Map;
         var mapFile = context.GetOrOpenTableRawTyped<RowHandle>(map.TableName).File;
@@ -933,6 +1006,7 @@ public class QueryTests
         var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
         var context = new TestDb2Context(dbdProvider, db2Provider);
+        context.EnsureModelCreated();
 
         var minId = 2000;
         var maxId = 3000;
@@ -952,6 +1026,7 @@ public class QueryTests
         var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
         var context = new TestDb2Context(dbdProvider, db2Provider);
+        context.EnsureModelCreated();
 
         var results = context.MapChallengeMode
             .Where(x => x.Map!.MapName_lang.Contains("Tazavesh") && x.Map!.Id == 2441)

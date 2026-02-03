@@ -525,7 +525,24 @@ internal sealed class Db2QueryProvider<TEntity, TRow>(
             if (Db2RowPredicateCompiler.TryCompile(file, _rootEntityType, predicate, out var rowPredicate))
                 rowPredicates.Add(rowPredicate);
             else
-                entityPredicates.Add(predicate.Compile());
+            {
+                var compiled = predicate.Compile();
+                entityPredicates.Add(entity =>
+                {
+                    try
+                    {
+                        return compiled(entity);
+                    }
+                    catch (NullReferenceException)
+                    {
+                        return false;
+                    }
+                    catch (ArgumentNullException)
+                    {
+                        return false;
+                    }
+                });
+            }
         }
 
         var yielded = 0;
@@ -695,7 +712,25 @@ internal sealed class Db2QueryProvider<TEntity, TRow>(
             });
 
         private static IEnumerable WhereImpl<T>(IEnumerable source, Delegate predicate)
-            => Enumerable.Where((IEnumerable<T>)source, (Func<T, bool>)predicate);
+        {
+            var typed = (Func<T, bool>)predicate;
+
+            return Enumerable.Where((IEnumerable<T>)source, x =>
+            {
+                try
+                {
+                    return typed(x);
+                }
+                catch (NullReferenceException)
+                {
+                    return false;
+                }
+                catch (ArgumentNullException)
+                {
+                    return false;
+                }
+            });
+        }
 
         private static IEnumerable SelectImpl<TSource, TResult>(IEnumerable source, Delegate selector)
             => Enumerable.Select((IEnumerable<TSource>)source, (Func<TSource, TResult>)selector);

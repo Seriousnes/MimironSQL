@@ -36,7 +36,7 @@ if (-not [string]::IsNullOrWhiteSpace($token)) {
     $headers['Authorization'] = "Bearer $token"
 }
 
-Write-Host "CASC.Net.Generators: Fetching WoWDBDefs release metadata: $releaseApiUrl"
+Write-Host "MimironSQL.DbContextGenerator: Fetching WoWDBDefs release metadata: $releaseApiUrl"
 $release = Invoke-RestMethod -Uri $releaseApiUrl -Headers $headers -Method Get
 
 if ($null -eq $release.assets) {
@@ -59,13 +59,13 @@ $dbdZipUrl = Get-AssetUrl -assets $release.assets -name 'dbd.zip'
 if ([string]::IsNullOrWhiteSpace($manifestUrl)) { throw 'Could not find manifest.json in WoWDBDefs latest release assets.' }
 if ([string]::IsNullOrWhiteSpace($dbdZipUrl)) { throw 'Could not find dbd.zip in WoWDBDefs latest release assets.' }
 
-Write-Host "CASC.Net.Generators: Downloading manifest.json -> $manifestPath"
+Write-Host "MimironSQL.DbContextGenerator: Downloading manifest.json -> $manifestPath"
 Invoke-WebRequest -Uri $manifestUrl -Headers $headers -OutFile $manifestPath
 
-Write-Host "CASC.Net.Generators: Downloading dbd.zip -> $zipPath"
+Write-Host "MimironSQL.DbContextGenerator: Downloading dbd.zip -> $zipPath"
 Invoke-WebRequest -Uri $dbdZipUrl -Headers $headers -OutFile $zipPath
 
-Write-Host "CASC.Net.Generators: Extracting dbd.zip -> $OutRoot"
+Write-Host "MimironSQL.DbContextGenerator: Extracting dbd.zip -> $OutRoot"
 Expand-Archive -Path $zipPath -DestinationPath $OutRoot -Force
 
 try { Remove-Item -Force -ErrorAction SilentlyContinue $zipPath } catch { }

@@ -8,7 +8,7 @@
 
     <MakeDir Directories="$(MimironSqlWowDbDefsRoot)" Condition="'$(MimironSqlWowDbDefsRoot)'!='' AND !Exists('$(MimironSqlWowDbDefsRoot)')" />
 
-    <!-- Windows-only: PowerShell script downloads manifest.json + dbd.zip from wowdev/WoWDBDefs releases/latest and extracts into CascNetWowDbDefsRoot. -->
+    <!-- Windows-only: PowerShell script downloads manifest.json + dbd.zip from wowdev/WoWDBDefs releases/latest and extracts into MimironSqlWowDbDefsRoot. -->
     <Exec
       Condition="!Exists('$(_MimironSqlWowDbDefsMarker)') OR !Exists('$(_MimironSqlWowDbDefsManifest)')"
       Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(_MimironSqlWowDbDefsDownloadScript)&quot; -OutRoot &quot;$(MimironSqlWowDbDefsRoot)&quot;" />

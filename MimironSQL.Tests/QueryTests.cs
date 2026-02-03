@@ -786,6 +786,32 @@ public class QueryTests
     }
 
     [Fact]
+    public void Where_supports_collection_count_greater_than_zero_semi_join()
+    {
+        var testDataDir = TestDataPaths.GetTestDataDirectory();
+        var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
+        var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
+        var context = new TestDb2Context(dbdProvider, db2Provider);
+        context.EnsureModelCreated();
+
+        var mapChallengeModeFile = context.GetOrOpenTableRawTyped<RowHandle>(nameof(MapChallengeMode)).File;
+        var mapChallengeModeSchema = context.GetOrOpenTableRawTyped<RowHandle>(nameof(MapChallengeMode)).Schema;
+        mapChallengeModeSchema.TryGetField("MapID", out var mapIdField).ShouldBeTrue();
+        var expected = mapChallengeModeFile.EnumerateRows()
+            .Select(r => (int)mapChallengeModeFile.ReadField<ushort>(r, mapIdField.ColumnStartIndex))
+            .Where(id => id != 0)
+            .ToHashSet();
+
+        var results = context.Map
+            .Where(m => m.MapChallengeModes.Count > 0)
+            .Take(50)
+            .ToList();
+
+        results.Count.ShouldBeGreaterThan(0);
+        results.All(m => expected.Contains(m.Id)).ShouldBeTrue();
+    }
+
+    [Fact]
     public void Where_supports_collection_any_with_scalar_predicate()
     {
         var testDataDir = TestDataPaths.GetTestDataDirectory();

@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Options;
 
+using MimironSQL.Db2.Query;
 using MimironSQL.Providers;
 using MimironSQL.Tests.Fixtures;
 
@@ -40,7 +41,10 @@ public sealed class CascDb2ContextIntegrationLocalTests
         var context = new TestDb2Context(dbdProvider, db2Provider);        
         context.EnsureModelCreated();
 
-        var results = context.Map.Take(10).ToList();
+        var results = context.Map
+            .Include(x => x.MapChallengeModes)
+            .Where(x => x.MapChallengeModes.Count > 0)
+            .Take(10).ToList();
         results.Count.ShouldBeGreaterThan(0);
         results.Any(x => x.Id > 0).ShouldBeTrue();
         results.Any(x => !string.IsNullOrWhiteSpace(x.Directory)).ShouldBeTrue();

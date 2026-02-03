@@ -20,6 +20,8 @@ internal static class Db2NavigationQueryCompiler
     {
         rowPredicate = _ => true;
 
+        predicate = RewriteCollectionCountComparisonsToAny(model, predicate);
+
         var rootEntityType = model.GetEntityType(typeof(TEntity));
 
         var body = predicate.Body is UnaryExpression { NodeType: ExpressionType.Convert or ExpressionType.ConvertChecked } u
@@ -342,6 +344,121 @@ internal static class Db2NavigationQueryCompiler
         };
 
         return true;
+    }
+
+    private static Expression<Func<TEntity, bool>> RewriteCollectionCountComparisonsToAny<TEntity>(
+        Db2Model model,
+        Expression<Func<TEntity, bool>> predicate)
+    {
+        if (predicate.Parameters is not { Count: 1 })
+            return predicate;
+
+        var rewriter = new CollectionCountToAnyRewriter(model, predicate.Parameters[0]);
+        var rewrittenBody = rewriter.Visit(predicate.Body);
+        if (rewrittenBody is null || rewrittenBody == predicate.Body)
+            return predicate;
+
+        return Expression.Lambda<Func<TEntity, bool>>(rewrittenBody, predicate.Parameters[0]);
+    }
+
+    private sealed class CollectionCountToAnyRewriter(Db2Model model, ParameterExpression rootParam) : ExpressionVisitor
+    {
+        protected override Expression VisitBinary(BinaryExpression node)
+        {
+            var left = node.Left.UnwrapConvert();
+            var right = node.Right.UnwrapConvert();
+
+            if (TryRewrite(left, right, node.NodeType, out var rewritten) ||
+                TryRewrite(right, left, Flip(node.NodeType), out rewritten))
+            {
+                return rewritten;
+            }
+
+            return base.VisitBinary(node);
+
+            bool TryRewrite(Expression countSide, Expression constantSide, ExpressionType op, out Expression result)
+            {
+                result = null!;
+
+                if (!TryGetCollectionNavigationCountAccess(countSide, out var navMember, out var elementType, out var navAccess))
+                    return false;
+
+                if (constantSide is not ConstantExpression { Value: int constant })
+                    return false;
+
+                // count > 0  => Any()
+                // count != 0 => Any()
+                // count >= 1 => Any()
+                var shouldRewriteToAny = op switch
+                {
+                    ExpressionType.GreaterThan => constant == 0,
+                    ExpressionType.NotEqual => constant == 0,
+                    ExpressionType.GreaterThanOrEqual => constant == 1,
+                    _ => false,
+                };
+
+                if (!shouldRewriteToAny)
+                    return false;
+
+                if (!model.TryGetCollectionNavigation(rootParam.Type, navMember, out _))
+                    return false;
+
+                var enumerableType = typeof(IEnumerable<>).MakeGenericType(elementType);
+                var source = navAccess.Type == enumerableType ? navAccess : Expression.Convert(navAccess, enumerableType);
+
+                var anyMethod = typeof(Enumerable)
+                    .GetMethods(BindingFlags.Public | BindingFlags.Static)
+                    .Single(m => m.Name == nameof(Enumerable.Any)
+                        && m.IsGenericMethodDefinition
+                        && m.GetGenericArguments().Length == 1
+                        && m.GetParameters().Length == 1)
+                    .MakeGenericMethod(elementType);
+
+                result = Expression.Call(anyMethod, source);
+                return true;
+            }
+
+            bool TryGetCollectionNavigationCountAccess(
+                Expression expression,
+                out MemberInfo navMember,
+                out Type elementType,
+                out Expression navAccess)
+            {
+                navMember = null!;
+                elementType = null!;
+                navAccess = null!;
+
+                if (expression is not MemberExpression { Member: PropertyInfo { Name: nameof(ICollection<int>.Count) } } count)
+                    return false;
+
+                if (count.Expression.UnwrapConvert() is not MemberExpression { Member: PropertyInfo } nav)
+                    return false;
+
+                if (nav.Expression != rootParam)
+                    return false;
+
+                navMember = nav.Member;
+                navAccess = nav;
+
+                var navType = nav.Type;
+                elementType = navType
+                    .GetInterfaces()
+                    .FirstOrDefault(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IEnumerable<>))
+                    ?.GetGenericArguments()[0] ?? null!;
+
+                return elementType is not null;
+            }
+
+            static ExpressionType Flip(ExpressionType op)
+                => op switch
+                {
+                    ExpressionType.LessThan => ExpressionType.GreaterThan,
+                    ExpressionType.LessThanOrEqual => ExpressionType.GreaterThanOrEqual,
+                    ExpressionType.GreaterThan => ExpressionType.LessThan,
+                    ExpressionType.GreaterThanOrEqual => ExpressionType.LessThanOrEqual,
+                    _ => op,
+                };
+        }
     }
 
     private static HashSet<int> FindMatchingRootIdsForCollectionAny<TRow>(

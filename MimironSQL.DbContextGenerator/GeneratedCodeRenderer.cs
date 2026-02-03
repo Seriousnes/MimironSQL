@@ -315,15 +315,9 @@ internal static class GeneratedCodeRenderer
             var hasIntKey = TryGetSingleIntKeyPropertyName(table, out var keyPropertyName);
             var createSetPrefix = $"CreateSet<{rowFullName}>(";
 
-            string createSetSuffix;
-            if (hasIntKey)
-            {
-                createSetSuffix = $", static r => r.{keyPropertyName})";
-            }
-            else
-            {
-                createSetSuffix = ")";
-            }
+            var createSetSuffix = hasIntKey 
+                ? $", static r => r.{keyPropertyName})" 
+                : ")";
 
             if (table.ForeignKeys.Length == 0)
             {

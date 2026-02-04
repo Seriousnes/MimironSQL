@@ -20,7 +20,7 @@ Important repo rules
 
 Current testing/coverage structure (must follow)
 - Unit tests are per-library under Tests/:
-  - Examples: Tests/MimironSQL.Dbd.Tests, Tests/MimironSQL.Formats.Wdc5.Tests, Tests/MimironSQL.Providers.*.Tests, Tests/MimironSQL.Unit.Tests (core library).
+  - Examples: Tests/MimironSQL.Dbd.Tests, Tests/MimironSQL.Formats.Wdc5.Tests, Tests/MimironSQL.Providers.*.Tests, Tests/MimironSQL.Tests (core library).
 - Integration tests are in Tests/MimironSQL.Integration.Tests.
   - Integration tests are where we execute the query pipeline and multi-project behavior (context generation, provider+format interaction).
   - CASC integration scenarios are local-only and must not be required for CI.

@@ -10,9 +10,70 @@ permissions:
   contents: read
 
 jobs:
-  test:
-    name: Test
+  discover-tests:
+    name: Discover Tests
     runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.discover.outputs.matrix }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Discover test projects
+        id: discover
+        shell: bash
+        run: |
+          python - <<'PY' > matrix.json
+          import json
+          import pathlib
+          import xml.etree.ElementTree as ET
+
+          def strip_ns(tag: str) -> str:
+              return tag.rsplit('}', 1)[-1]
+
+          tests_root = pathlib.Path('tests')
+          if not tests_root.exists():
+              raise SystemExit("Expected 'tests/' directory to exist")
+
+          projects = []
+          for csproj in sorted(tests_root.rglob('*.csproj')):
+              posix = csproj.as_posix()
+              if '/obj/' in posix or '/bin/' in posix:
+                  continue
+              if 'Integration.Tests' in posix:
+                  continue
+
+              root = ET.parse(csproj).getroot()
+              is_test_project = any(
+                  strip_ns(el.tag) == 'IsTestProject'
+                  and (el.text or '').strip().lower() == 'true'
+                  for el in root.iter()
+              )
+              if not is_test_project:
+                  continue
+
+              projects.append({
+                  'name': csproj.stem,
+                  'path': posix,
+              })
+
+          if not projects:
+              raise SystemExit("No test projects found under 'tests/'")
+
+          matrix = { 'include': projects }
+          print(json.dumps(matrix))
+          PY
+
+          echo "matrix=$(cat matrix.json)" >> "$GITHUB_OUTPUT"
+
+  test:
+    name: Test (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    needs: discover-tests
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.discover-tests.outputs.matrix) }}
 
     steps:
       - name: Checkout
@@ -26,15 +87,36 @@ jobs:
       - name: Restore
         run: dotnet restore MimironSQL.slnx
 
-      - name: Test (Unit)
+      - name: Test
         run: |
-          dotnet test Tests/MimironSQL.Unit.Tests/MimironSQL.Unit.Tests.csproj --configuration Release --no-restore --collect:"XPlat Code Coverage" --settings coverlet.runsettings
-          dotnet test Tests/MimironSQL.Contracts.Tests/MimironSQL.Contracts.Tests.csproj --configuration Release --no-restore --collect:"XPlat Code Coverage" --settings coverlet.runsettings
-          dotnet test Tests/MimironSQL.Dbd.Tests/MimironSQL.Dbd.Tests.csproj --configuration Release --no-restore --collect:"XPlat Code Coverage" --settings coverlet.runsettings
-          dotnet test Tests/MimironSQL.Formats.Wdc5.Tests/MimironSQL.Formats.Wdc5.Tests.csproj --configuration Release --no-restore --collect:"XPlat Code Coverage" --settings coverlet.runsettings
-          dotnet test Tests/MimironSQL.Providers.FileSystem.Tests/MimironSQL.Providers.FileSystem.Tests.csproj --configuration Release --no-restore --collect:"XPlat Code Coverage" --settings coverlet.runsettings
-          dotnet test Tests/MimironSQL.Providers.CASC.Tests/MimironSQL.Providers.CASC.Tests.csproj --configuration Release --no-restore --collect:"XPlat Code Coverage" --settings coverlet.runsettings
-          dotnet test MimironSQL.DbContextGenerator.Tests/MimironSQL.DbContextGenerator.Tests.csproj --configuration Release --no-restore --collect:"XPlat Code Coverage" --settings coverlet.runsettings
+          dotnet test "${{ matrix.path }}" --configuration Release --no-restore --collect:"XPlat Code Coverage" --settings coverlet.runsettings --results-directory "TestResults/${{ matrix.name }}"
+
+      - name: Upload raw coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: raw-coverage-${{ matrix.name }}
+          path: |
+            TestResults/${{ matrix.name }}/**/coverage.cobertura.xml
+          if-no-files-found: error
+          retention-days: 1
+
+  coverage:
+    name: Coverage
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Download raw coverage artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: raw-coverage-*
+          path: raw-coverage
+          merge-multiple: true
 
       - name: Install reportgenerator
         run: |
@@ -44,7 +126,7 @@ jobs:
       - name: Merge coverage
         run: |
           reportgenerator \
-            "-reports:**/coverage.cobertura.xml" \
+            "-reports:raw-coverage/**/coverage.cobertura.xml" \
             "-targetdir:coverage" \
             "-reporttypes:Cobertura;TextSummary"
 
@@ -63,10 +145,9 @@ jobs:
               raise SystemExit(f"Line coverage gate failed: {percent:.2f}% < 90%")
           PY
 
-      - name: Upload coverage artifacts
+      - name: Upload coverage artifact
         uses: actions/upload-artifact@v4
         with:
           name: coverage
           path: |
             coverage/**
-            **/TestResults/**

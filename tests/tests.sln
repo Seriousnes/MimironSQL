@@ -1,0 +1,54 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.5.2.0
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MimironSQL.Contracts.Tests", "MimironSQL.Contracts.Tests\MimironSQL.Contracts.Tests.csproj", "{924D2933-553D-86DD-5611-04451DD0EACD}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MimironSQL.Dbd.Tests", "MimironSQL.Dbd.Tests\MimironSQL.Dbd.Tests.csproj", "{1D6CA11E-B441-D07C-CF2E-00B01D0D34CC}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MimironSQL.Formats.Wdc5.Tests", "MimironSQL.Formats.Wdc5.Tests\MimironSQL.Formats.Wdc5.Tests.csproj", "{0A64778D-3246-60B6-BDEC-A46D5C2894F3}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MimironSQL.Integration.Tests", "MimironSQL.Integration.Tests\MimironSQL.Integration.Tests.csproj", "{4B83872D-94A5-07C7-B6D3-D3A6CBE5FEED}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MimironSQL.Providers.CASC.Tests", "MimironSQL.Providers.CASC.Tests\MimironSQL.Providers.CASC.Tests.csproj", "{36793E27-6056-870C-BD97-CBC9A0B3EDE9}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MimironSQL.Providers.FileSystem.Tests", "MimironSQL.Providers.FileSystem.Tests\MimironSQL.Providers.FileSystem.Tests.csproj", "{CB669EA0-B380-B950-9F3F-AB161744B462}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{924D2933-553D-86DD-5611-04451DD0EACD}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{924D2933-553D-86DD-5611-04451DD0EACD}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{924D2933-553D-86DD-5611-04451DD0EACD}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{924D2933-553D-86DD-5611-04451DD0EACD}.Release|Any CPU.Build.0 = Release|Any CPU
+		{1D6CA11E-B441-D07C-CF2E-00B01D0D34CC}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1D6CA11E-B441-D07C-CF2E-00B01D0D34CC}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1D6CA11E-B441-D07C-CF2E-00B01D0D34CC}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1D6CA11E-B441-D07C-CF2E-00B01D0D34CC}.Release|Any CPU.Build.0 = Release|Any CPU
+		{0A64778D-3246-60B6-BDEC-A46D5C2894F3}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{0A64778D-3246-60B6-BDEC-A46D5C2894F3}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{0A64778D-3246-60B6-BDEC-A46D5C2894F3}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{0A64778D-3246-60B6-BDEC-A46D5C2894F3}.Release|Any CPU.Build.0 = Release|Any CPU
+		{4B83872D-94A5-07C7-B6D3-D3A6CBE5FEED}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4B83872D-94A5-07C7-B6D3-D3A6CBE5FEED}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4B83872D-94A5-07C7-B6D3-D3A6CBE5FEED}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4B83872D-94A5-07C7-B6D3-D3A6CBE5FEED}.Release|Any CPU.Build.0 = Release|Any CPU
+		{36793E27-6056-870C-BD97-CBC9A0B3EDE9}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{36793E27-6056-870C-BD97-CBC9A0B3EDE9}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{36793E27-6056-870C-BD97-CBC9A0B3EDE9}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{36793E27-6056-870C-BD97-CBC9A0B3EDE9}.Release|Any CPU.Build.0 = Release|Any CPU
+		{CB669EA0-B380-B950-9F3F-AB161744B462}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{CB669EA0-B380-B950-9F3F-AB161744B462}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{CB669EA0-B380-B950-9F3F-AB161744B462}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{CB669EA0-B380-B950-9F3F-AB161744B462}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {DA5EA56D-3F36-41B7-B41C-0D9E05874407}
+	EndGlobalSection
+EndGlobal

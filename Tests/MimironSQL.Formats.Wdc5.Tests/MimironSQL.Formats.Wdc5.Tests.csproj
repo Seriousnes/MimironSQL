@@ -24,7 +24,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\MimironSQL.Formats.Wdc5\MimironSQL.Formats.Wdc5.csproj" />
+    <ProjectReference Include="..\..\src\MimironSQL.Formats.Wdc5\MimironSQL.Formats.Wdc5.csproj" />
   </ItemGroup>
 
 </Project>

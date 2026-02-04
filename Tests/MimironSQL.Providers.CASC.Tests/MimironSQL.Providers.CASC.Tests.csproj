@@ -24,7 +24,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\MimironSQL.Providers.CASC\MimironSQL.Providers.CASC.csproj" />
+    <ProjectReference Include="..\..\src\MimironSQL.Providers.CASC\MimironSQL.Providers.CASC.csproj" />
   </ItemGroup>
 
 </Project>

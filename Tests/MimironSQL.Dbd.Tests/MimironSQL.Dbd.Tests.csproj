@@ -24,7 +24,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\MimironSQL.Dbd\MimironSQL.Dbd.csproj" />
+    <ProjectReference Include="..\..\src\MimironSQL.Dbd\MimironSQL.Dbd.csproj" />
   </ItemGroup>
 
 </Project>

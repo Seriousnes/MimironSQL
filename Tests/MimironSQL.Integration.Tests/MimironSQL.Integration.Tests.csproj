@@ -24,12 +24,12 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\MimironSQL\MimironSQL.csproj" />
-    <ProjectReference Include="..\..\MimironSQL.Formats.Wdc5\MimironSQL.Formats.Wdc5.csproj" />
-    <ProjectReference Include="..\..\MimironSQL.Providers.CASC\MimironSQL.Providers.CASC.csproj" />
-    <ProjectReference Include="..\..\MimironSQL.Providers.FileSystem\MimironSQL.Providers.FileSystem.csproj" />
-    <ProjectReference Include="..\..\MimironSQL.Dbd\MimironSQL.Dbd.csproj" />
-    <ProjectReference Include="..\..\MimironSQL.Contracts\MimironSQL.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\MimironSQL\MimironSQL.csproj" />
+    <ProjectReference Include="..\..\src\MimironSQL.Formats.Wdc5\MimironSQL.Formats.Wdc5.csproj" />
+    <ProjectReference Include="..\..\src\MimironSQL.Providers.CASC\MimironSQL.Providers.CASC.csproj" />
+    <ProjectReference Include="..\..\src\MimironSQL.Providers.FileSystem\MimironSQL.Providers.FileSystem.csproj" />
+    <ProjectReference Include="..\..\src\MimironSQL.Dbd\MimironSQL.Dbd.csproj" />
+    <ProjectReference Include="..\..\src\MimironSQL.Contracts\MimironSQL.Contracts.csproj" />
   </ItemGroup>
 
 </Project>

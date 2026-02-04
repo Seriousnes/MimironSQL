@@ -13,7 +13,7 @@
   <Project Path="tests/MimironSQL.Dbd.Tests/MimironSQL.Dbd.Tests.csproj" />
   <Project Path="tests/MimironSQL.Formats.Wdc5.Tests/MimironSQL.Formats.Wdc5.Tests.csproj" />
   <Project Path="tests/MimironSQL.Providers.FileSystem.Tests/MimironSQL.Providers.FileSystem.Tests.csproj" />
+  <Project Path="tests/MimironSQL.IntegrationTests/MimironSQL.IntegrationTests.csproj" />
   <Project Path="tests/MimironSQL.Providers.CASC.Tests/MimironSQL.Providers.CASC.Tests.csproj" />
-  <Project Path="tests/MimironSQL.Integration.Tests/MimironSQL.Integration.Tests.csproj" />
   <Project Path="tests/MimironSQL.DbContextGenerator.Tests/MimironSQL.DbContextGenerator.Tests.csproj" />
 </Solution>

@@ -1,8 +1,0 @@
-<Solution>
-  <Project Path="MimironSQL.Contracts.Tests/MimironSQL.Contracts.Tests.csproj" />
-  <Project Path="MimironSQL.Dbd.Tests/MimironSQL.Dbd.Tests.csproj" />
-  <Project Path="MimironSQL.Formats.Wdc5.Tests/MimironSQL.Formats.Wdc5.Tests.csproj" />
-  <Project Path="MimironSQL.Integration.Tests/MimironSQL.Integration.Tests.csproj" />
-  <Project Path="MimironSQL.Providers.CASC.Tests/MimironSQL.Providers.CASC.Tests.csproj" />
-  <Project Path="MimironSQL.Providers.FileSystem.Tests/MimironSQL.Providers.FileSystem.Tests.csproj" />
-</Solution>

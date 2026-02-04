@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RunSettings>
+  <DataCollectionRunSettings>
+    <DataCollectors>
+      <DataCollector friendlyName="XPlat Code Coverage">
+        <Configuration>
+          <Format>cobertura</Format>
+          <IncludeTestAssembly>false</IncludeTestAssembly>
+          <Exclude>[Salsa20*]*</Exclude>
+          <ExcludeByFile>**/obj/**;**/bin/**;**/*.g.cs;**/*.g.i.cs;**/*.generated.cs;**/*Generated*.cs;**/*AssemblyAttributes.cs;**/*GlobalUsings.g.cs;**/*.Designer.cs</ExcludeByFile>
+        </Configuration>
+      </DataCollector>
+    </DataCollectors>
+  </DataCollectionRunSettings>
+</RunSettings>

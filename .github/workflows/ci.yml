@@ -26,5 +26,47 @@ jobs:
       - name: Restore
         run: dotnet restore MimironSQL.slnx
 
-      - name: Test
-        run: dotnet test MimironSQL.slnx --configuration Release --no-restore
+      - name: Test (Unit)
+        run: |
+          dotnet test Tests/MimironSQL.Unit.Tests/MimironSQL.Unit.Tests.csproj --configuration Release --no-restore --collect:"XPlat Code Coverage" --settings coverlet.runsettings
+          dotnet test Tests/MimironSQL.Contracts.Tests/MimironSQL.Contracts.Tests.csproj --configuration Release --no-restore --collect:"XPlat Code Coverage" --settings coverlet.runsettings
+          dotnet test Tests/MimironSQL.Dbd.Tests/MimironSQL.Dbd.Tests.csproj --configuration Release --no-restore --collect:"XPlat Code Coverage" --settings coverlet.runsettings
+          dotnet test Tests/MimironSQL.Formats.Wdc5.Tests/MimironSQL.Formats.Wdc5.Tests.csproj --configuration Release --no-restore --collect:"XPlat Code Coverage" --settings coverlet.runsettings
+          dotnet test Tests/MimironSQL.Providers.FileSystem.Tests/MimironSQL.Providers.FileSystem.Tests.csproj --configuration Release --no-restore --collect:"XPlat Code Coverage" --settings coverlet.runsettings
+          dotnet test Tests/MimironSQL.Providers.CASC.Tests/MimironSQL.Providers.CASC.Tests.csproj --configuration Release --no-restore --collect:"XPlat Code Coverage" --settings coverlet.runsettings
+          dotnet test MimironSQL.DbContextGenerator.Tests/MimironSQL.DbContextGenerator.Tests.csproj --configuration Release --no-restore --collect:"XPlat Code Coverage" --settings coverlet.runsettings
+
+      - name: Install reportgenerator
+        run: |
+          dotnet tool install --global dotnet-reportgenerator-globaltool
+          echo "$HOME/.dotnet/tools" >> $GITHUB_PATH
+
+      - name: Merge coverage
+        run: |
+          reportgenerator \
+            "-reports:**/coverage.cobertura.xml" \
+            "-targetdir:coverage" \
+            "-reporttypes:Cobertura;TextSummary"
+
+      - name: Enforce 90% line coverage
+        run: |
+          python - << 'PY'
+          import xml.etree.ElementTree as ET
+          import pathlib
+
+          cobertura = pathlib.Path('coverage') / 'Cobertura.xml'
+          root = ET.parse(cobertura).getroot()
+          line_rate = float(root.attrib.get('line-rate', '0'))
+          percent = line_rate * 100.0
+          print(f"Total line coverage: {percent:.2f}%")
+          if percent < 90.0:
+              raise SystemExit(f"Line coverage gate failed: {percent:.2f}% < 90%")
+          PY
+
+      - name: Upload coverage artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: |
+            coverage/**
+            **/TestResults/**

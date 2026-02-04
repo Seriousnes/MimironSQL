@@ -151,17 +151,11 @@ public static class DbdLayoutEntryParser
 
     private static Db2ValueType MapInlineType(ReadOnlySpan<char> inner)
     {
-        if (inner.StartsWith("u", StringComparison.Ordinal))
-            return Db2ValueType.UInt64;
-
         if (inner.StartsWith("f", StringComparison.Ordinal))
             return Db2ValueType.Single;
 
-        return inner switch
-        {
-            "8" or "16" or "32" or "64" => Db2ValueType.Int64,
-            "u8" or "u16" or "u32" or "u64" => Db2ValueType.UInt64,
-            _ => Db2ValueType.Int64,
-        };
+        return inner.StartsWith("u", StringComparison.Ordinal)
+            ? Db2ValueType.UInt64
+            : Db2ValueType.Int64;
     }
 }

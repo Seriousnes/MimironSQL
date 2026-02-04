@@ -1,8 +1,5 @@
 ﻿using System.Text;
 
-using MimironSQL.Formats;
-using MimironSQL.Formats.Wdc5;
-
 using Shouldly;
 
 namespace MimironSQL.Formats.Wdc5.Tests;

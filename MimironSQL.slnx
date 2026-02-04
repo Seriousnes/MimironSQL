@@ -9,7 +9,6 @@
   <Project Path="MimironSQL.DbContextGenerator.Tests/MimironSQL.DbContextGenerator.Tests.csproj" />
   <Project Path="MimironSQL/MimironSQL.csproj" />
   <Project Path="Salsa20/Salsa20.csproj" />
-  <Project Path="Tests/MimironSQL.Unit.Tests/MimironSQL.Unit.Tests.csproj" />
   <Project Path="Tests/MimironSQL.Contracts.Tests/MimironSQL.Contracts.Tests.csproj" />
   <Project Path="Tests/MimironSQL.Dbd.Tests/MimironSQL.Dbd.Tests.csproj" />
   <Project Path="Tests/MimironSQL.Formats.Wdc5.Tests/MimironSQL.Formats.Wdc5.Tests.csproj" />

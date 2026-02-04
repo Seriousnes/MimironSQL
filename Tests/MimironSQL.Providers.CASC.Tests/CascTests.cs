@@ -1,6 +1,4 @@
-﻿using MimironSQL.Providers;
-
-using Shouldly;
+﻿using Shouldly;
 
 namespace MimironSQL.Providers.CASC.Tests;
 

@@ -13,6 +13,7 @@ Important repo rules
 - Tests must not be skippable and must not return early to avoid assertions.
 - Prefer deterministic assertions. Avoid heuristic tests unless unavoidable; if unavoidable, they must “fail loudly” (multiple independent hits, constrained candidates, etc.).
 - Keep production refactors minimal; only change production code if tests are blocked.
+- If reaching coverage requires touching production code (e.g., dead/unreachable branches counted by coverage), stop and ask for an explicit decision before changing production code.
 - Do not add or reintroduce Microsoft Testing Platform coverage packages (do NOT use coverlet.MTP). Coverage is collector-based.
 - Do not edit .csproj files directly to add packages; use the dotnet CLI if packages are required.
 - Follow existing style: modern C# (C# 14), minimal comments, no [MethodImpl(...)] attributes.
@@ -51,6 +52,22 @@ What you must do (workflow)
 6) Keep changes contained:
    - Only modify files required to add the tests (and minimal production changes if blocked).
    - If a production change is required, prefer the smallest change that improves testability without changing public API.
+
+## Procedure: touching production code for coverage
+
+Sometimes coverlet counts lines that are logically unreachable (e.g., redundant branches). If you discover that 100% coverage cannot be achieved without modifying production code, you MUST:
+
+1) Stop and ask the user which option to take (do not choose silently):
+  - **Option A: Leave production code as-is** and accept <100% for that project.
+  - **Option B: Behavior-preserving refactor** to remove unreachable/redundant branches or make intent explicit.
+  - **Option C: Exclude from coverage** via `coverlet.runsettings` (only if the user prefers exclusions).
+
+2) If Option B is chosen:
+  - Make the smallest possible change.
+  - Preserve behavior for all inputs.
+  - Prefer refactors that simplify logic rather than adding new complexity.
+  - Add/keep unit tests that cover the intended behavior.
+  - Run tests (Release) and re-run coverage collection to verify the new state.
 
 Commands you may use (examples)
 - Run one test project:

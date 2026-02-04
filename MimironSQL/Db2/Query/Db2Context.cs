@@ -5,7 +5,6 @@ using MimironSQL.Providers;
 
 using System.Collections.Concurrent;
 using System.Reflection;
-using System.Threading;
 
 namespace MimironSQL.Db2.Query;
 

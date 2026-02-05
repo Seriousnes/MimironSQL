@@ -143,10 +143,10 @@ public sealed class Db2NavigationQueryTranslatorTests
         var model = CreateModel();
 
         Db2NavigationQueryTranslator
-            .TryTranslateScalarPredicate<Child>(model, x => x.Parent!.Flag == true, out var boolPlan)
+            .TryTranslateScalarPredicate<Child>(model, x => x.Parent!.Flag != false, out var boolPlan)
             .ShouldBeTrue();
         boolPlan.TargetScalarMember.Name.ShouldBe(nameof(Parent.Flag));
-        boolPlan.ComparisonKind.ShouldBe(Db2ScalarComparisonKind.Equal);
+        boolPlan.ComparisonKind.ShouldBe(Db2ScalarComparisonKind.NotEqual);
 
         Db2NavigationQueryTranslator
             .TryTranslateScalarPredicate<Child>(model, x => x.Parent!.Small > (byte)2, out var bytePlan)
@@ -167,10 +167,10 @@ public sealed class Db2NavigationQueryTranslatorTests
         floatPlan.ComparisonKind.ShouldBe(Db2ScalarComparisonKind.GreaterThanOrEqual);
 
         Db2NavigationQueryTranslator
-            .TryTranslateScalarPredicate<Child>(model, x => x.Parent!.Score != 0.25d, out var doublePlan)
+            .TryTranslateScalarPredicate<Child>(model, x => x.Parent!.Score > 0.25d, out var doublePlan)
             .ShouldBeTrue();
         doublePlan.TargetScalarMember.Name.ShouldBe(nameof(Parent.Score));
-        doublePlan.ComparisonKind.ShouldBe(Db2ScalarComparisonKind.NotEqual);
+        doublePlan.ComparisonKind.ShouldBe(Db2ScalarComparisonKind.GreaterThan);
 
         Db2NavigationQueryTranslator
             .TryTranslateScalarPredicate<Child>(model, x => 3 < x.Parent!.Level, out var flipped)

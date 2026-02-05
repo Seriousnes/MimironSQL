@@ -139,7 +139,7 @@ public sealed class Db2NavigationBuilderGuardTests
         var collNav = builder.Entity<CollNavSource>()
             .HasMany(x => x.Children);
 
-        Should.Throw<NotSupportedException>(() => collNav.WithForeignKeyArray(x => x.ChildIds.Select(i => i)))
+        Should.Throw<NotSupportedException>(() => collNav.WithForeignKeyArray(x => x.ChildIds.Where(i => i >= 0)))
             .Message.ShouldContain("FK array selector");
 
         var nested = Should.Throw<NotSupportedException>(() => collNav.WithForeignKeyArray(x => x.Inner.ChildIds));
@@ -220,12 +220,7 @@ public sealed class Db2NavigationBuilderGuardTests
 
     private sealed class HasManyFieldSource
     {
-        public IEnumerable<HasManyTarget?> Children;
-
-        public HasManyFieldSource()
-        {
-            Children = Array.Empty<HasManyTarget?>();
-        }
+        public readonly IEnumerable<HasManyTarget?> Children = Array.Empty<HasManyTarget?>();
     }
 
     private sealed class HasManyInner

@@ -67,7 +67,7 @@ public sealed class Wdc5Tests : IClassFixture<Wdc5TestFixture>
     {
         Wdc5FileLookupTracker.Snapshot().TotalTryGetRowByIdCalls.ShouldBe(0);
 
-        using (var scope = Wdc5FileLookupTracker.Start())
+        using (Wdc5FileLookupTracker.Start())
         {
             Wdc5FileLookupTracker.Snapshot().TotalTryGetRowByIdCalls.ShouldBe(0);
 

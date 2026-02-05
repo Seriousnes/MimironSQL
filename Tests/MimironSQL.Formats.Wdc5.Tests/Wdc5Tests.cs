@@ -1,15 +1,29 @@
-﻿using System.Runtime.CompilerServices;
+﻿using System.Buffers.Binary;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Reflection;
 using System.Text;
 
 using MimironSQL.Db2;
+using MimironSQL.Providers;
+
+using NSubstitute;
+
+using Security.Cryptography;
 
 using Shouldly;
 
 namespace MimironSQL.Formats.Wdc5.Tests;
 
-public sealed class Wdc5Tests
+public sealed class Wdc5Tests : IClassFixture<Wdc5TestFixture>
 {
+    private readonly Wdc5TestFixture _fixture;
+
+    public Wdc5Tests(Wdc5TestFixture fixture)
+    {
+        _fixture = fixture;
+    }
+
     [Fact]
     public void Wdc5File_Ctor_MinimalHeader_ParsesWithZeroFieldsAndSections()
     {
@@ -17,8 +31,8 @@ public sealed class Wdc5Tests
         var file = new Wdc5File(stream);
         Assert.Equal(0x12345678u, file.Header.LayoutHash);
         Assert.Equal(0, file.Header.FieldsCount);
-        Assert.Equal(0, file.Sections.Count);
-        Assert.Equal(0, file.ParsedSections.Count);
+        Assert.Empty(file.Sections);
+        Assert.Empty(file.ParsedSections);
         Assert.Equal(0, file.RecordsCount);
     }
 
@@ -389,6 +403,200 @@ public sealed class Wdc5Tests
         var file = new Wdc5File(stream);
         file.TryGetRowById(200, out var row).ShouldBeTrue();
         file.TryGetDenseStringTableIndex(row, fieldIndex: 0, out _).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void Wdc5File_ReadField_EncryptedSection_DecryptsImmediateScalar()
+    {
+        const int rowId = 120;
+        const ulong tactKeyLookup = 0x1122334455667788;
+
+        var keyBytes = (ReadOnlyMemory<byte>)new byte[]
+        {
+            0x00, 0x11, 0x22, 0x33,
+            0x44, 0x55, 0x66, 0x77,
+            0x88, 0x99, 0xAA, 0xBB,
+            0xCC, 0xDD, 0xEE, 0xFF,
+        };
+
+        var keyProvider = Substitute.For<ITactKeyProvider>();
+        keyProvider
+            .TryGetKey(tactKeyLookup, out Arg.Any<ReadOnlyMemory<byte>>())
+            .Returns(callInfo =>
+            {
+                callInfo[1] = keyBytes;
+                return true;
+            });
+
+        using var stream = _fixture.CreateSingleSectionEncryptedImmediateScalarFile(rowId, tactKeyLookup, keyBytes, value: 0x12345678);
+        var file = new Wdc5File(stream, new Wdc5FileOptions(TactKeyProvider: keyProvider));
+
+        file.TryGetRowById(rowId, out var row).ShouldBeTrue();
+        file.ReadField<int>(row, 0).ShouldBe(0x12345678);
+
+        object[] values = new object[file.Header.FieldsCount + 2];
+        file.ReadAllFields(row, values);
+        values[0].ShouldBe(rowId);
+        values[1].ShouldBe(0);
+        values[2].ShouldBe(0x12345678);
+    }
+
+    [Fact]
+    public void Wdc5File_ReadFieldBoxed_EncryptedSection_Decrypts()
+    {
+        const int rowId = 121;
+        const ulong tactKeyLookup = 0x9988776655443322;
+
+        var keyBytes = (ReadOnlyMemory<byte>)new byte[]
+        {
+            0x10, 0x21, 0x32, 0x43,
+            0x54, 0x65, 0x76, 0x87,
+            0x98, 0xA9, 0xBA, 0xCB,
+            0xDC, 0xED, 0xFE, 0x0F,
+        };
+
+        var keyProvider = Substitute.For<ITactKeyProvider>();
+        keyProvider
+            .TryGetKey(tactKeyLookup, out Arg.Any<ReadOnlyMemory<byte>>())
+            .Returns(callInfo =>
+            {
+                callInfo[1] = keyBytes;
+                return true;
+            });
+
+        using var stream = _fixture.CreateSingleSectionEncryptedImmediateScalarFile(rowId, tactKeyLookup, keyBytes, value: 1234);
+        var file = new Wdc5File(stream, new Wdc5FileOptions(TactKeyProvider: keyProvider));
+        file.TryGetRowById(rowId, out var row).ShouldBeTrue();
+
+        var method = typeof(Wdc5File).GetMethod("ReadFieldBoxed", BindingFlags.Instance | BindingFlags.NonPublic);
+        method.ShouldNotBeNull();
+
+        var boxed = method!.Invoke(file, [row, typeof(int), 0]);
+        boxed.ShouldBeOfType<int>();
+        boxed.ShouldBe(1234);
+    }
+
+    [Fact]
+    public void Wdc5File_ReadField_VirtualId_CastsToAllIntegerTypes_AndDecimal()
+    {
+        using var stream = CreateSingleSectionDenseScalarFile(flags: 0, idFieldIndex: 0, recordValue: 120);
+        var file = new Wdc5File(stream);
+        file.TryGetRowById(120, out var row).ShouldBeTrue();
+
+        file.ReadField<uint>(row, Db2VirtualFieldIndex.Id).ShouldBe(120u);
+        file.ReadField<long>(row, Db2VirtualFieldIndex.Id).ShouldBe(120L);
+        file.ReadField<ulong>(row, Db2VirtualFieldIndex.Id).ShouldBe(120UL);
+        file.ReadField<short>(row, Db2VirtualFieldIndex.Id).ShouldBe((short)120);
+        file.ReadField<ushort>(row, Db2VirtualFieldIndex.Id).ShouldBe((ushort)120);
+        file.ReadField<byte>(row, Db2VirtualFieldIndex.Id).ShouldBe((byte)120);
+        file.ReadField<sbyte>(row, Db2VirtualFieldIndex.Id).ShouldBe((sbyte)120);
+        file.ReadField<decimal>(row, Db2VirtualFieldIndex.Id).ShouldBe(120m);
+    }
+
+    [Fact]
+    public void Wdc5File_ReadField_UnsupportedVirtualFieldIndex_Throws()
+    {
+        using var stream = CreateSingleSectionDenseScalarFile(flags: 0, idFieldIndex: 0, recordValue: 555);
+        var file = new Wdc5File(stream);
+        file.TryGetRowById(555, out var row).ShouldBeTrue();
+
+        Should.Throw<NotSupportedException>(() => file.ReadField<int>(row, Db2VirtualFieldIndex.UnsupportedNonInline));
+    }
+
+    [Fact]
+    public void Wdc5File_ReadField_EnumType_ReadsUnderlyingValue()
+    {
+        using var stream = _fixture.CreateSingleSectionDenseImmediateScalarFile(rowId: 5, value: 2);
+        var file = new Wdc5File(stream);
+        file.TryGetRowById(5, out var row).ShouldBeTrue();
+
+        file.ReadField<Wdc5TestEnum>(row, 0).ShouldBe(Wdc5TestEnum.Two);
+    }
+
+    [Fact]
+    public void Wdc5File_ReadField_DoubleArray_ConvertsFromFloatArray()
+    {
+        using var stream = _fixture.CreateSingleSectionDenseNoneArrayFile(rowId: 7, floats: [1.5f, 2.5f, 3.5f]);
+        var file = new Wdc5File(stream);
+        file.TryGetRowById(7, out var row).ShouldBeTrue();
+
+        file.ReadField<double[]>(row, 0).ShouldBe([1.5d, 2.5d, 3.5d]);
+    }
+
+    [Fact]
+    public void Wdc5File_ReadField_ArrayTypes_CoversGetArrayBoxedBranches()
+    {
+        using var streamByte = _fixture.CreateSingleSectionDenseNoneArrayFile(rowId: 10, bytes: [1, 2, 3]);
+        new Wdc5File(streamByte).ReadField<byte[]>(new RowHandle(0, 0, 10), 0).ShouldBe([1, 2, 3]);
+
+        using var streamSByte = _fixture.CreateSingleSectionDenseNoneArrayFile(rowId: 11, sbytes: [1, -2, 3]);
+        new Wdc5File(streamSByte).ReadField<sbyte[]>(new RowHandle(0, 0, 11), 0).ShouldBe([1, -2, 3]);
+
+        using var streamUShort = _fixture.CreateSingleSectionDenseNoneArrayFile(rowId: 12, ushorts: [1, 2, 40000]);
+        new Wdc5File(streamUShort).ReadField<ushort[]>(new RowHandle(0, 0, 12), 0).ShouldBe([1, 2, 40000]);
+
+        using var streamLong = _fixture.CreateSingleSectionDenseNoneArrayFile(rowId: 13, longs: [1L, -2L, 3L]);
+        new Wdc5File(streamLong).ReadField<long[]>(new RowHandle(0, 0, 13), 0).ShouldBe([1L, -2L, 3L]);
+
+        using var streamULong = _fixture.CreateSingleSectionDenseNoneArrayFile(rowId: 14, ulongs: [1UL, 2UL, 3UL]);
+        new Wdc5File(streamULong).ReadField<ulong[]>(new RowHandle(0, 0, 14), 0).ShouldBe([1UL, 2UL, 3UL]);
+    }
+
+    [Fact]
+    public void Wdc5File_ReadField_SparseMultiField_SkipsEarlierFields()
+    {
+        using var stream = _fixture.CreateSingleSectionSparseMultiFieldInlineStringFile(rowId: 99, field0Value: 0x0A0B0C0D, field1StringBytes: [(byte)'h', (byte)'i', 0]);
+        var file = new Wdc5File(stream);
+        file.TryGetRowById(99, out var row).ShouldBeTrue();
+
+        file.ReadField<string>(row, 1).ShouldBe("hi");
+    }
+
+    [Fact]
+    public void Wdc5File_Ctor_FileTooSmall_Throws()
+    {
+        using var stream = new MemoryStream([1, 2, 3]);
+        Should.Throw<InvalidDataException>(() => new Wdc5File(stream));
+    }
+
+    [Fact]
+    public void Wdc5File_Ctor_AllSectionsEncrypted_NoKeyProvider_Throws()
+    {
+        using var stream = _fixture.CreateSingleSectionEncryptedImmediateScalarFile(rowId: 1, tactKeyLookup: 123, keyBytes: ReadOnlyMemory<byte>.Empty, value: 5);
+        Should.Throw<NotSupportedException>(() => new Wdc5File(stream));
+    }
+
+    [Fact]
+    public void Wdc5File_TryGetRowHandle_SupportsNintNuintAndThrowsOnUnsupportedType()
+    {
+        using var stream = CreateSingleSectionDenseScalarFile(flags: 0, idFieldIndex: 0, recordValue: 55);
+        var file = new Wdc5File(stream);
+
+        file.TryGetRowHandle((nint)55, out _).ShouldBeTrue();
+        file.TryGetRowHandle((nuint)55, out _).ShouldBeTrue();
+        file.TryGetRowHandle((byte)55, out _).ShouldBeTrue();
+        file.TryGetRowHandle((sbyte)55, out _).ShouldBeTrue();
+
+        Should.Throw<NotSupportedException>(() => file.TryGetRowHandle(1.23m, out _));
+    }
+
+    [Fact]
+    public void Wdc5File_TryGetDenseStringTableIndex_InvalidRowHandle_Throws()
+    {
+        using var stream = CreateSingleSectionDenseStringFile(
+            flags: 0,
+            minIndex: 100,
+            idFieldIndex: 0,
+            recordValue: 5,
+            stringTableBytes: [0, (byte)'h', (byte)'i', 0],
+            indexData: [0],
+            copyTable: []);
+
+        var file = new Wdc5File(stream);
+
+        Should.Throw<ArgumentException>(() => file.TryGetDenseStringTableIndex(new RowHandle(999, 0, 100), fieldIndex: 0, out _));
+        Should.Throw<ArgumentException>(() => file.TryGetDenseStringTableIndex(new RowHandle(0, 999, 100), fieldIndex: 0, out _));
+        Should.Throw<ArgumentOutOfRangeException>(() => file.TryGetDenseStringTableIndex(new RowHandle(0, 0, 100), fieldIndex: file.Header.FieldsCount, out _));
     }
 
     private static MemoryStream CreateMinimalWdc5Stream(uint layoutHash, int fieldsCount, int recordsCount, int sectionsCount, uint magic = 0x35434457)
@@ -1136,5 +1344,411 @@ public sealed class Wdc5Tests
                 inner.Dispose();
             base.Dispose(disposing);
         }
+    }
+}
+
+public enum Wdc5TestEnum : int
+{
+    Zero = 0,
+    Two = 2,
+}
+
+public class Wdc5TestFixture
+{
+    public MemoryStream CreateSingleSectionDenseImmediateScalarFile(int rowId, int value)
+    {
+        var ms = new MemoryStream();
+        using var writer = new BinaryWriter(ms, Encoding.UTF8, leaveOpen: true);
+
+        const int fieldsCount = 1;
+        const int recordsCount = 1;
+        const int recordSize = 8;
+        const int sectionsCount = 1;
+
+        var sectionFileOffset = 512;
+
+        WriteWdc5Header(
+            writer,
+            recordsCount: recordsCount,
+            fieldsCount: fieldsCount,
+            recordSize: recordSize,
+            stringTableSize: 0,
+            minIndex: rowId,
+            maxIndex: rowId,
+            flags: 0,
+            idFieldIndex: 0,
+            sectionsCount: sectionsCount);
+
+        WriteWdc5SectionHeader(writer, new Wdc5SectionHeader(
+            TactKeyLookup: 0,
+            FileOffset: sectionFileOffset,
+            NumRecords: recordsCount,
+            StringTableSize: 0,
+            OffsetRecordsEndOffset: 0,
+            IndexDataSize: 4,
+            ParentLookupDataSize: 0,
+            OffsetMapIDCount: 0,
+            CopyTableCount: 0));
+
+        writer.Write((short)1);
+        writer.Write((short)0);
+
+        var columnMeta = new ColumnMetaData
+        {
+            RecordOffset = 0,
+            Size = 32,
+            AdditionalDataSize = 0,
+            CompressionType = CompressionType.Immediate,
+            Immediate = new ColumnCompressionDataImmediate(BitOffset: 0, BitWidth: 32, Flags: 0),
+        };
+        WriteStruct(writer, columnMeta);
+
+        PadTo(writer, sectionFileOffset);
+
+        writer.Write(value);
+        writer.Write(0);
+
+        // index data: write 0 so Wdc5File expands it from minIndex.
+        writer.Write(0);
+
+        ms.Position = 0;
+        return ms;
+    }
+
+    public MemoryStream CreateSingleSectionEncryptedImmediateScalarFile(int rowId, ulong tactKeyLookup, ReadOnlyMemory<byte> keyBytes, int value)
+    {
+        var record = new byte[8];
+        BinaryPrimitives.WriteInt32LittleEndian(record.AsSpan(0, 4), value);
+
+        if (!keyBytes.IsEmpty)
+        {
+            Span<byte> nonce = stackalloc byte[8];
+            BinaryPrimitives.WriteUInt64LittleEndian(nonce, unchecked((ulong)rowId));
+            using var salsa = new Salsa20(keyBytes.Span, nonce);
+            salsa.Transform(record, record);
+
+            var anyNonZero = false;
+            for (var i = 0; i < record.Length; i++)
+            {
+                if (record[i] != 0)
+                {
+                    anyNonZero = true;
+                    break;
+                }
+            }
+
+            if (!anyNonZero)
+                record[0] = 1;
+        }
+        else
+        {
+            // Keep it non-zero so the constructor doesn't treat it as a placeholder.
+            record[0] = 1;
+        }
+
+        var ms = new MemoryStream();
+        using var writer = new BinaryWriter(ms, Encoding.UTF8, leaveOpen: true);
+
+        const int fieldsCount = 1;
+        const int recordsCount = 1;
+        const int recordSize = 8;
+        const int sectionsCount = 1;
+
+        var sectionFileOffset = 512;
+
+        WriteWdc5Header(
+            writer,
+            recordsCount: recordsCount,
+            fieldsCount: fieldsCount,
+            recordSize: recordSize,
+            stringTableSize: 0,
+            minIndex: rowId,
+            maxIndex: rowId,
+            flags: 0,
+            idFieldIndex: 0,
+            sectionsCount: sectionsCount);
+
+        WriteWdc5SectionHeader(writer, new Wdc5SectionHeader(
+            TactKeyLookup: tactKeyLookup,
+            FileOffset: sectionFileOffset,
+            NumRecords: recordsCount,
+            StringTableSize: 0,
+            OffsetRecordsEndOffset: 0,
+            IndexDataSize: 4,
+            ParentLookupDataSize: 0,
+            OffsetMapIDCount: 0,
+            CopyTableCount: 0));
+
+        writer.Write((short)1);
+        writer.Write((short)0);
+
+        var columnMeta = new ColumnMetaData
+        {
+            RecordOffset = 0,
+            Size = 32,
+            AdditionalDataSize = 0,
+            CompressionType = CompressionType.Immediate,
+            Immediate = new ColumnCompressionDataImmediate(BitOffset: 0, BitWidth: 32, Flags: 0),
+        };
+        WriteStruct(writer, columnMeta);
+
+        PadTo(writer, sectionFileOffset);
+
+        writer.Write(record);
+        writer.Write(0);
+
+        ms.Position = 0;
+        return ms;
+    }
+
+    public MemoryStream CreateSingleSectionDenseNoneArrayFile(
+        int rowId,
+        byte[]? bytes = null,
+        sbyte[]? sbytes = null,
+        ushort[]? ushorts = null,
+        long[]? longs = null,
+        ulong[]? ulongs = null,
+        float[]? floats = null)
+    {
+        object?[] provided = [bytes, sbytes, ushorts, longs, ulongs, floats];
+        var providedCount = provided.Count(x => x is not null);
+        if (providedCount != 1)
+            throw new ArgumentException("Exactly one array payload must be provided.");
+
+        ushort elementBits;
+        byte[] recordBytes;
+        ushort sizeBits;
+
+        if (bytes is not null)
+        {
+            elementBits = 8;
+            recordBytes = bytes;
+            sizeBits = checked((ushort)(bytes.Length * 8));
+        }
+        else if (sbytes is not null)
+        {
+            elementBits = 8;
+            recordBytes = sbytes.Select(x => unchecked((byte)x)).ToArray();
+            sizeBits = checked((ushort)(sbytes.Length * 8));
+        }
+        else if (ushorts is not null)
+        {
+            elementBits = 16;
+            recordBytes = new byte[ushorts.Length * 2];
+            for (var i = 0; i < ushorts.Length; i++)
+                BinaryPrimitives.WriteUInt16LittleEndian(recordBytes.AsSpan(i * 2, 2), ushorts[i]);
+            sizeBits = checked((ushort)(ushorts.Length * 16));
+        }
+        else if (longs is not null)
+        {
+            elementBits = 64;
+            recordBytes = new byte[longs.Length * 8];
+            for (var i = 0; i < longs.Length; i++)
+                BinaryPrimitives.WriteInt64LittleEndian(recordBytes.AsSpan(i * 8, 8), longs[i]);
+            sizeBits = checked((ushort)(longs.Length * 64));
+        }
+        else if (ulongs is not null)
+        {
+            elementBits = 64;
+            recordBytes = new byte[ulongs.Length * 8];
+            for (var i = 0; i < ulongs.Length; i++)
+                BinaryPrimitives.WriteUInt64LittleEndian(recordBytes.AsSpan(i * 8, 8), ulongs[i]);
+            sizeBits = checked((ushort)(ulongs.Length * 64));
+        }
+        else if (floats is not null)
+        {
+            elementBits = 32;
+            recordBytes = new byte[floats.Length * 4];
+            for (var i = 0; i < floats.Length; i++)
+                BinaryPrimitives.WriteSingleLittleEndian(recordBytes.AsSpan(i * 4, 4), floats[i]);
+            sizeBits = checked((ushort)(floats.Length * 32));
+        }
+        else
+        {
+            throw new InvalidOperationException("Unreachable: no payload.");
+        }
+
+        var ms = new MemoryStream();
+        using var writer = new BinaryWriter(ms, Encoding.UTF8, leaveOpen: true);
+
+        const int fieldsCount = 1;
+        const int recordsCount = 1;
+        const int sectionsCount = 1;
+        var sectionFileOffset = 512;
+        var recordSize = recordBytes.Length;
+
+        WriteWdc5Header(
+            writer,
+            recordsCount: recordsCount,
+            fieldsCount: fieldsCount,
+            recordSize: recordSize,
+            stringTableSize: 0,
+            minIndex: rowId,
+            maxIndex: rowId,
+            flags: 0,
+            idFieldIndex: 0,
+            sectionsCount: sectionsCount);
+
+        WriteWdc5SectionHeader(writer, new Wdc5SectionHeader(
+            TactKeyLookup: 0,
+            FileOffset: sectionFileOffset,
+            NumRecords: recordsCount,
+            StringTableSize: 0,
+            OffsetRecordsEndOffset: 0,
+            IndexDataSize: 4,
+            ParentLookupDataSize: 0,
+            OffsetMapIDCount: 0,
+            CopyTableCount: 0));
+
+        var bits = elementBits == 64 ? (short)32 : (short)(32 - elementBits);
+        writer.Write(bits);
+        writer.Write((short)0);
+
+        var columnMeta = new ColumnMetaData
+        {
+            RecordOffset = 0,
+            Size = sizeBits,
+            AdditionalDataSize = 0,
+            CompressionType = CompressionType.None,
+            Immediate = new ColumnCompressionDataImmediate(BitOffset: 0, BitWidth: elementBits, Flags: 0),
+        };
+        WriteStruct(writer, columnMeta);
+
+        PadTo(writer, sectionFileOffset);
+        writer.Write(recordBytes);
+        writer.Write(0);
+
+        ms.Position = 0;
+        return ms;
+    }
+
+    public MemoryStream CreateSingleSectionSparseMultiFieldInlineStringFile(int rowId, int field0Value, byte[] field1StringBytes)
+    {
+        var rowBytes = new byte[4 + field1StringBytes.Length];
+        BinaryPrimitives.WriteInt32LittleEndian(rowBytes.AsSpan(0, 4), field0Value);
+        field1StringBytes.CopyTo(rowBytes.AsSpan(4));
+
+        var ms = new MemoryStream();
+        using var writer = new BinaryWriter(ms, Encoding.UTF8, leaveOpen: true);
+
+        const int fieldsCount = 2;
+        const int recordsCount = 1;
+        const int sectionsCount = 1;
+
+        var sectionFileOffset = 512;
+        var recordDataSizeBytes = rowBytes.Length;
+        var offsetRecordsEndOffset = sectionFileOffset + recordDataSizeBytes;
+
+        WriteWdc5Header(
+            writer,
+            recordsCount: recordsCount,
+            fieldsCount: fieldsCount,
+            recordSize: 0,
+            stringTableSize: 0,
+            minIndex: rowId,
+            maxIndex: rowId,
+            flags: Db2Flags.Sparse,
+            idFieldIndex: 0,
+            sectionsCount: sectionsCount);
+
+        WriteWdc5SectionHeader(writer, new Wdc5SectionHeader(
+            TactKeyLookup: 0,
+            FileOffset: sectionFileOffset,
+            NumRecords: recordsCount,
+            StringTableSize: 0,
+            OffsetRecordsEndOffset: offsetRecordsEndOffset,
+            IndexDataSize: 0,
+            ParentLookupDataSize: 0,
+            OffsetMapIDCount: 1,
+            CopyTableCount: 0));
+
+        // Field 0: immediate 32-bit scalar.
+        writer.Write((short)1);
+        writer.Write((short)0);
+
+        // Field 1: none (inline string data)
+        writer.Write((short)0);
+        writer.Write((short)0);
+
+        var field0 = new ColumnMetaData
+        {
+            RecordOffset = 0,
+            Size = 32,
+            AdditionalDataSize = 0,
+            CompressionType = CompressionType.Immediate,
+            Immediate = new ColumnCompressionDataImmediate(BitOffset: 0, BitWidth: 32, Flags: 0),
+        };
+
+        var field1 = new ColumnMetaData
+        {
+            RecordOffset = 32,
+            Size = 32,
+            AdditionalDataSize = 0,
+            CompressionType = CompressionType.None,
+            Immediate = new ColumnCompressionDataImmediate(BitOffset: 0, BitWidth: 32, Flags: 0),
+        };
+
+        WriteStruct(writer, field0);
+        WriteStruct(writer, field1);
+
+        PadTo(writer, sectionFileOffset);
+        writer.Write(rowBytes);
+
+        WriteStruct(writer, new SparseEntry(Offset: 0, Size: checked((ushort)recordDataSizeBytes)));
+        writer.Write(rowId);
+
+        ms.Position = 0;
+        return ms;
+    }
+
+    private static void WriteWdc5Header(
+        BinaryWriter writer,
+        int recordsCount,
+        int fieldsCount,
+        int recordSize,
+        int stringTableSize,
+        int minIndex,
+        int maxIndex,
+        Db2Flags flags,
+        ushort idFieldIndex,
+        int sectionsCount)
+    {
+        writer.Write(0x35434457u); // "WDC5"
+        writer.Write(1u); // schemaVersion
+        writer.Write(new byte[128]); // schemaString
+        writer.Write(recordsCount);
+        writer.Write(fieldsCount);
+        writer.Write(recordSize);
+        writer.Write(stringTableSize);
+        writer.Write(0u); // tableHash
+        writer.Write(0x12345678u); // layoutHash
+        writer.Write(minIndex);
+        writer.Write(maxIndex);
+        writer.Write(0); // locale
+        writer.Write((ushort)flags);
+        writer.Write(idFieldIndex);
+        writer.Write(0); // totalFieldsCount
+        writer.Write(0); // packedDataOffset
+        writer.Write(0); // lookupColumnCount
+        writer.Write(0); // columnMetaDataSize
+        writer.Write(0); // commonDataSize
+        writer.Write(0); // palletDataSize
+        writer.Write(sectionsCount);
+    }
+
+    private static void WriteWdc5SectionHeader(BinaryWriter writer, Wdc5SectionHeader header)
+        => WriteStruct(writer, header);
+
+    private static void WriteStruct<T>(BinaryWriter writer, T value) where T : unmanaged
+    {
+        Span<byte> bytes = stackalloc byte[Unsafe.SizeOf<T>()];
+        MemoryMarshal.Write(bytes, in value);
+        writer.Write(bytes);
+    }
+
+    private static void PadTo(BinaryWriter writer, int position)
+    {
+        while (writer.BaseStream.Position < position)
+            writer.Write((byte)0);
     }
 }

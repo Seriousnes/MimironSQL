@@ -1,7 +1,10 @@
+using System.Diagnostics.CodeAnalysis;
+
 using MimironSQL.Db2;
 
 namespace MimironSQL.Formats.Wdc5;
 
+[ExcludeFromCodeCoverage]
 public readonly record struct Wdc5Header(
     uint SchemaVersion,
     string SchemaString,

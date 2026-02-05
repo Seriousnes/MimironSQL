@@ -1,7 +1,9 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
 
 namespace MimironSQL.Formats.Wdc5;
 
+[ExcludeFromCodeCoverage]
 [StructLayout(LayoutKind.Explicit, Pack = 1, Size = 24)]
 public struct ColumnMetaData
 {
@@ -27,8 +29,11 @@ public struct ColumnMetaData
     public ColumnCompressionDataCommon Common;
 }
 
+[ExcludeFromCodeCoverage]
 public readonly record struct ColumnCompressionDataImmediate(int BitOffset, int BitWidth, int Flags);
 
+[ExcludeFromCodeCoverage]
 public readonly record struct ColumnCompressionDataPallet(int BitOffset, int BitWidth, int Cardinality);
 
+[ExcludeFromCodeCoverage]
 public readonly record struct ColumnCompressionDataCommon(uint DefaultValue, int B, int C);

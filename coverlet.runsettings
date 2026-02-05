@@ -6,8 +6,8 @@
         <Configuration>
           <Format>cobertura</Format>
           <IncludeTestAssembly>false</IncludeTestAssembly>
-          <Exclude>[Salsa20*]*</Exclude>
-          <ExcludeByFile>**/obj/**;**/bin/**;**/*.g.cs;**/*.g.i.cs;**/*.generated.cs;**/*Generated*.cs;**/*AssemblyAttributes.cs;**/*GlobalUsings.g.cs;**/*.Designer.cs</ExcludeByFile>
+          <Exclude>[Salsa20]*,[MimironSQL.Providers.CASC]*,[*Tests*]*</Exclude>
+          <ExcludeByFile>**/obj/**,**\obj\**,**/bin/**,**\bin\**,**/*.g.cs,**\*.g.cs,**/*.g.i.cs,**\*.g.i.cs,**/*.generated.cs,**\*.generated.cs,**/*Generated*.cs,**\*Generated*.cs,**/*AssemblyAttributes.cs,**\*AssemblyAttributes.cs,**/*GlobalUsings.g.cs,**\*GlobalUsings.g.cs,**/*.Designer.cs,**\*.Designer.cs</ExcludeByFile>
         </Configuration>
       </DataCollector>
     </DataCollectors>

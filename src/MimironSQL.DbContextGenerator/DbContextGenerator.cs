@@ -281,6 +281,11 @@ public sealed class DbContextGenerator : IIncrementalGenerator
         sb.AppendLine($"public partial class {entity.ClassName} : {entity.BaseType}");
         sb.AppendLine("{");
 
+        var navsByForeignKey = entity.Navigations
+            .Where(n => byTableName.ContainsKey(n.TargetTableName))
+            .GroupBy(n => n.ForeignKeyPropertyName, StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => g.ToArray(), StringComparer.Ordinal);
+
         foreach (var p in entity.ScalarProperties)
         {
             if (p.ColumnName is not null)
@@ -289,15 +294,22 @@ public sealed class DbContextGenerator : IIncrementalGenerator
             sb.AppendLine($"    public {p.TypeName} {p.PropertyName} {{ get; set; }}{p.Initializer}");
 
             sb.AppendLine();
-        }
 
-        foreach (var nav in entity.Navigations.Where(n => byTableName.ContainsKey(n.TargetTableName)))
-        {
-            var target = byTableName[nav.TargetTableName];
+            if (!navsByForeignKey.TryGetValue(p.PropertyName, out var navs))
+                continue;
 
-            sb.AppendLine($"    [ForeignKey(nameof({nav.ForeignKeyPropertyName}))]");
-            sb.AppendLine($"    public {target.ClassName}? {nav.PropertyName} {{ get; set; }}");
-            sb.AppendLine();
+            foreach (var nav in navs)
+            {
+                var target = byTableName[nav.TargetTableName];
+
+                sb.AppendLine($"    [ForeignKey(nameof({nav.ForeignKeyPropertyName}))]");
+                if (nav.IsCollection)
+                    sb.AppendLine($"    public ICollection<{target.ClassName}> {nav.PropertyName} {{ get; set; }} = [];");
+                else
+                    sb.AppendLine($"    public {target.ClassName}? {nav.PropertyName} {{ get; set; }}");
+
+                sb.AppendLine();
+            }
         }
 
         sb.AppendLine("}");
@@ -413,6 +425,7 @@ public sealed class DbContextGenerator : IIncrementalGenerator
             var scalarProperties = new List<ScalarPropertySpec>();
             var navigations = new List<NavigationSpec>();
             var usedNames = new HashSet<string>(StringComparer.Ordinal);
+            var scalarPropertyNameByColumnName = new Dictionary<string, (string EscapedPropertyName, string UnescapedPropertyName)>(StringComparer.Ordinal);
 
             foreach (var entry in build.Entries.Where(static e => !e.IsId))
             {
@@ -427,25 +440,43 @@ public sealed class DbContextGenerator : IIncrementalGenerator
                 if (!string.Equals(propertyName, columnName, StringComparison.Ordinal))
                     mappedColumnName = columnName;
 
+                var escapedPropertyName = NameNormalizer.EscapeIdentifier(propertyName);
+
                 scalarProperties.Add(new ScalarPropertySpec(
-                    NameNormalizer.EscapeIdentifier(propertyName),
+                    escapedPropertyName,
                     typeName,
                     initializer,
                     mappedColumnName));
 
-                if (entry is { IsRelation: true, ElementCount: 1 }
-                    && entry.ReferencedTableName is { Length: > 0 } targetTable
-                    && columnName.EndsWith("ID", StringComparison.Ordinal))
-                {
-                    var rawNavName = columnName.Substring(0, columnName.Length - 2);
-                    var navName = NameNormalizer.NormalizePropertyName(rawNavName);
-                    navName = NameNormalizer.MakeUnique(navName, usedNames);
+                scalarPropertyNameByColumnName[columnName] = (escapedPropertyName, propertyName);
+            }
 
-                    navigations.Add(new NavigationSpec(
-                        targetTable,
-                        NameNormalizer.EscapeIdentifier(propertyName),
-                        NameNormalizer.EscapeIdentifier(navName)));
+            foreach (var entry in build.Entries.Where(static e => !e.IsId))
+            {
+                if (entry.ReferencedTableName is not { Length: > 0 } targetTable)
+                    continue;
+
+                var columnName = entry.Name;
+                if (!scalarPropertyNameByColumnName.TryGetValue(columnName, out var scalarProperty))
+                    continue;
+
+                var rawNavName = columnName.EndsWith("ID", StringComparison.Ordinal)
+                    ? columnName.Substring(0, columnName.Length - 2)
+                    : columnName;
+
+                var navName = NameNormalizer.NormalizePropertyName(rawNavName);
+                if (string.Equals(navName, scalarProperty.UnescapedPropertyName, StringComparison.Ordinal))
+                {
+                    navName += entry.ElementCount > 1 ? "Collection" : "Entity";
                 }
+
+                navName = NameNormalizer.MakeUnique(navName, usedNames);
+
+                navigations.Add(new NavigationSpec(
+                    targetTableName: targetTable,
+                    foreignKeyPropertyName: scalarProperty.EscapedPropertyName,
+                    propertyName: NameNormalizer.EscapeIdentifier(navName),
+                    isCollection: entry.ElementCount > 1));
             }
 
             return new EntitySpec(tableName, className, baseType, [.. scalarProperties], [.. navigations]);
@@ -460,11 +491,12 @@ public sealed class DbContextGenerator : IIncrementalGenerator
         public string? ColumnName { get; } = columnName;
     }
 
-    private sealed class NavigationSpec(string targetTableName, string foreignKeyPropertyName, string propertyName)
+    private sealed class NavigationSpec(string targetTableName, string foreignKeyPropertyName, string propertyName, bool isCollection)
     {
         public string TargetTableName { get; } = targetTableName;
         public string ForeignKeyPropertyName { get; } = foreignKeyPropertyName;
         public string PropertyName { get; } = propertyName;
+        public bool IsCollection { get; } = isCollection;
     }
 
     private static class NameNormalizer

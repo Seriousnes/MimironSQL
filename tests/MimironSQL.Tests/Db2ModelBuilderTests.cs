@@ -3,6 +3,8 @@ using System.Reflection;
 using System.Reflection.Emit;
 
 using MimironSQL.Db2.Model;
+using MimironSQL.Db2.Schema;
+using MimironSQL.Db2;
 
 using Shouldly;
 
@@ -99,6 +101,49 @@ public sealed class Db2ModelBuilderTests
         entity.Metadata.TableNameWasConfigured.ShouldBeTrue();
     }
 
+    [Fact]
+    public void Db2ModelBuilder_ApplyAttributeNavigationConventions_ForeignKey_on_collection_can_target_source_key_array()
+    {
+        var builder = new Db2ModelBuilder();
+        builder.Entity<ArraySource>();
+        builder.Entity<ArrayTarget>();
+
+        builder.ApplyAttributeNavigationConventions();
+
+        var model = builder.Build(SchemaResolver);
+
+        var navMember = typeof(ArraySource).GetProperty(nameof(ArraySource.Targets))!;
+        model.TryGetCollectionNavigation(typeof(ArraySource), navMember, out var nav).ShouldBeTrue();
+        nav.Kind.ShouldBe(Db2CollectionNavigationKind.ForeignKeyArrayToPrimaryKey);
+        nav.SourceKeyCollectionMember.ShouldNotBeNull();
+        nav.SourceKeyCollectionMember!.Name.ShouldBe(nameof(ArraySource.TargetIds));
+    }
+
+    private static Db2TableSchema SchemaResolver(string tableName)
+    {
+        return tableName switch
+        {
+            nameof(ArraySource) => new Db2TableSchema(
+                tableName: nameof(ArraySource),
+                layoutHash: 0,
+                physicalColumnCount: 2,
+                fields:
+                [
+                    new Db2FieldSchema("ID", Db2ValueType.Int64, ColumnStartIndex: 0, ElementCount: 1, IsVerified: true, IsVirtual: false, IsId: true, IsRelation: false, ReferencedTableName: null),
+                    new Db2FieldSchema(nameof(ArraySource.TargetIds), Db2ValueType.Int64, ColumnStartIndex: 1, ElementCount: 3, IsVerified: true, IsVirtual: false, IsId: false, IsRelation: false, ReferencedTableName: nameof(ArrayTarget)),
+                ]),
+            nameof(ArrayTarget) => new Db2TableSchema(
+                tableName: nameof(ArrayTarget),
+                layoutHash: 0,
+                physicalColumnCount: 1,
+                fields:
+                [
+                    new Db2FieldSchema("ID", Db2ValueType.Int64, ColumnStartIndex: 0, ElementCount: 1, IsVerified: true, IsVirtual: false, IsId: true, IsRelation: false, ReferencedTableName: null),
+                ]),
+            _ => throw new InvalidOperationException($"Unknown table: {tableName}"),
+        };
+    }
+
     private static Assembly CreateConfigAssembly(params ConfigSpec[] configSpecs)
     {
         var assemblyName = new AssemblyName($"MimironSQL.Tests.DynamicConfigs.{Guid.NewGuid():N}");
@@ -175,6 +220,21 @@ public sealed class Db2ModelBuilderTests
 
     [Table("MyTable")]
     private sealed class EntityWithTableAttribute
+    {
+        public int Id { get; set; }
+    }
+
+    private sealed class ArraySource
+    {
+        public int Id { get; set; }
+
+        public ICollection<ushort> TargetIds { get; set; } = [];
+
+        [ForeignKey(nameof(TargetIds))]
+        public ICollection<ArrayTarget> Targets { get; set; } = [];
+    }
+
+    private sealed class ArrayTarget
     {
         public int Id { get; set; }
     }

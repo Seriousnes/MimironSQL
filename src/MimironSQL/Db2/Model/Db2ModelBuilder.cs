@@ -303,15 +303,28 @@ public sealed class Db2ModelBuilder
                             $"Navigation '{clrType.FullName}.{p.Name}' cannot be configured multiple times (fluent configuration and/or [ForeignKey]).");
                     }
 
-                    var dependentFkMember = FindMember(elementType, foreignKeyName)
-                        ?? throw new NotSupportedException($"[ForeignKey] on '{clrType.FullName}.{p.Name}' references dependent FK '{elementType.FullName}.{foreignKeyName}', but no matching public property was found.");
-
                     var collectionNav = new Db2CollectionNavigationMetadata(p, elementType)
                     {
-                        Kind = Db2CollectionNavigationKind.DependentForeignKeyToPrimaryKey,
-                        DependentForeignKeyMember = dependentFkMember,
                         OverridesSchema = overridesSchema,
                     };
+
+                    // If the FK name matches a member on the dependent element type, treat this as a conventional "dependent FK -> principal PK" collection.
+                    // Otherwise, if it matches a key collection member on the source, treat it as an FK-array navigation.
+                    if (FindMember(elementType, foreignKeyName) is { } dependentFkMember)
+                    {
+                        collectionNav.Kind = Db2CollectionNavigationKind.DependentForeignKeyToPrimaryKey;
+                        collectionNav.DependentForeignKeyMember = dependentFkMember;
+                    }
+                    else if (FindMember(clrType, foreignKeyName) is { } sourceKeyCollectionMember)
+                    {
+                        collectionNav.Kind = Db2CollectionNavigationKind.ForeignKeyArrayToPrimaryKey;
+                        collectionNav.SourceKeyCollectionMember = sourceKeyCollectionMember;
+                    }
+                    else
+                    {
+                        throw new NotSupportedException(
+                            $"[ForeignKey] on '{clrType.FullName}.{p.Name}' must reference either a dependent FK '{elementType.FullName}.{foreignKeyName}' or a source key collection '{clrType.FullName}.{foreignKeyName}', but no matching public property was found.");
+                    }
 
                     metadata.CollectionNavigations.Add(collectionNav);
                     pending.Enqueue(elementType);
@@ -438,10 +451,10 @@ public sealed class Db2ModelBuilder
                                 throw new NotSupportedException($"Collection navigation '{nav.NavigationMember.Name}' on '{clrType.FullName}' must specify a source key collection member (WithForeignKeyArray). ");
 
                             var sourceKeyCollectionType = nav.SourceKeyCollectionMember.GetMemberType();
-                            if (!IsIntEnumerableType(sourceKeyCollectionType))
+                            if (!IsIntKeyEnumerableType(sourceKeyCollectionType))
                             {
                                 throw new NotSupportedException(
-                                    $"Collection navigation '{clrType.FullName}.{nav.NavigationMember.Name}' expects an int key collection (e.g., int[] or ICollection<int>) but found '{sourceKeyCollectionType.FullName}'.");
+                                    $"Collection navigation '{clrType.FullName}.{nav.NavigationMember.Name}' expects an integer key collection (e.g., int[] or ICollection<int>) but found '{sourceKeyCollectionType.FullName}'.");
                             }
 
                             var sourceKeyFieldSchema = ResolveFieldSchema(schema, m, nav.SourceKeyCollectionMember, $"source key member '{nav.SourceKeyCollectionMember.Name}' in collection navigation '{clrType.FullName}.{nav.NavigationMember.Name}'");
@@ -501,26 +514,28 @@ public sealed class Db2ModelBuilder
         return new Db2Model(built, navigations, collectionNavigations);
     }
 
-    private static bool IsIntEnumerableType(Type type)
+    private static bool IsIntKeyEnumerableType(Type type)
     {
-        if (type == typeof(int[]))
-            return true;
+        if (!TryGetIEnumerableElementType(type, out var elementType) || elementType is null)
+            return false;
 
-        if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(IEnumerable<>))
-            return type.GetGenericArguments()[0] == typeof(int);
+        return IsIntKeyType(elementType);
+    }
 
-        foreach (var i in type.GetInterfaces())
-        {
-            if (!i.IsGenericType)
-                continue;
+    private static bool IsIntKeyType(Type type)
+    {
+        var underlying = type.UnwrapNullable();
+        if (underlying.IsEnum)
+            underlying = Enum.GetUnderlyingType(underlying);
 
-            if (i.GetGenericTypeDefinition() != typeof(IEnumerable<>))
-                continue;
-
-            return i.GetGenericArguments()[0] == typeof(int);
-        }
-
-        return false;
+        return underlying == typeof(byte)
+            || underlying == typeof(sbyte)
+            || underlying == typeof(short)
+            || underlying == typeof(ushort)
+            || underlying == typeof(int)
+            || underlying == typeof(uint)
+            || underlying == typeof(long)
+            || underlying == typeof(ulong);
     }
 
     private static Db2FieldSchema ResolveFieldSchema(Db2TableSchema schema, Db2EntityTypeMetadata metadata, MemberInfo member, string context)

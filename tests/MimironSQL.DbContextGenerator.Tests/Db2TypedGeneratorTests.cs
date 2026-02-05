@@ -1,3 +1,12 @@
+using System.Collections.Immutable;
+using System.Text;
+
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.Text;
+
+using MimironSQL.DbContextGenerator.Tests.Helpers;
+
 using Shouldly;
 
 namespace MimironSQL.DbContextGenerator.Tests;
@@ -9,5 +18,146 @@ public sealed class DbContextGeneratorSmokeTests
     {
         var generator = new MimironSQL.DbContextGenerator.DbContextGenerator();
         generator.ShouldNotBeNull();
+    }
+
+    [Fact]
+    public void Generator_emits_reference_and_fk_array_navigations_from_columns()
+    {
+        var env = "WOW_VERSION=1.0.0.1\n";
+
+        var mapDbd = """
+COLUMNS
+int ID
+
+BUILD 1.0.0.1
+$id$ID<32>
+""";
+
+        var questDbd = """
+COLUMNS
+int ID
+
+BUILD 1.0.0.1
+$id$ID<32>
+""";
+
+        // Note: MapID is a reference but not marked $relation$ in the build.
+        var sourceDbd = """
+COLUMNS
+int ID
+int<Map::ID> MapID
+int<QuestV2::ID> FirstRewardQuestID
+
+BUILD 1.0.0.1
+$id$ID<32>
+MapID<u16>
+FirstRewardQuestID<32>[6]
+""";
+
+        var results = RunGenerator(
+            additionalFiles:
+            [
+                (".env", env),
+                ("Map.dbd", mapDbd),
+                ("QuestV2.dbd", questDbd),
+                ("MapChallengeMode.dbd", sourceDbd),
+            ]);
+
+        var mapChallengeMode = results.Single(s => s.HintName.EndsWith("MapChallengeMode.g.cs", StringComparison.Ordinal));
+        mapChallengeMode.SourceText.ShouldContain("public ushort MapID { get; set; }");
+        mapChallengeMode.SourceText.ShouldContain("[ForeignKey(nameof(MapID))]");
+        mapChallengeMode.SourceText.ShouldContain("public Map? Map { get; set; }");
+
+        mapChallengeMode.SourceText.ShouldContain("public ICollection<int> FirstRewardQuestID { get; set; } = [];");
+        mapChallengeMode.SourceText.ShouldContain("[ForeignKey(nameof(FirstRewardQuestID))]");
+        mapChallengeMode.SourceText.ShouldContain("public ICollection<QuestV2> FirstRewardQuest { get; set; } = [];");
+    }
+
+    [Fact]
+    public void Generator_appends_Entity_suffix_on_reference_collision()
+    {
+        var env = "WOW_VERSION=1.0.0.1\n";
+
+        var mapDbd = """
+COLUMNS
+int ID
+
+BUILD 1.0.0.1
+$id$ID<32>
+""";
+
+        // Column name "Map" (no ID suffix) should produce Map + MapEntity.
+        var sourceDbd = """
+COLUMNS
+int ID
+int<Map::ID> Map
+
+BUILD 1.0.0.1
+$id$ID<32>
+Map<32>
+""";
+
+        var results = RunGenerator(
+            additionalFiles:
+            [
+                (".env", env),
+                ("Map.dbd", mapDbd),
+                ("Foo.dbd", sourceDbd),
+            ]);
+
+        var foo = results.Single(s => s.HintName.EndsWith("Foo.g.cs", StringComparison.Ordinal));
+        foo.SourceText.ShouldContain("public int Map { get; set; }");
+        foo.SourceText.ShouldContain("public Map? MapEntity { get; set; }");
+    }
+
+    private static ImmutableArray<(string HintName, string SourceText)> RunGenerator((string Path, string Content)[] additionalFiles)
+    {
+        var parseOptions = new CSharpParseOptions(LanguageVersion.Preview);
+
+        var compilation = CSharpCompilation.Create(
+            assemblyName: "GeneratorTests",
+            syntaxTrees: [CSharpSyntaxTree.ParseText("namespace MimironSQL; public sealed class Dummy {}", parseOptions)],
+            references: GetReferences(),
+            options: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+
+        ImmutableArray<AdditionalText> additionalTexts =
+        [
+            .. additionalFiles.Select(f => (AdditionalText)new InMemoryAdditionalText(
+                path: f.Path,
+                text: SourceText.From(f.Content, Encoding.UTF8)))
+        ];
+
+        var generator = new MimironSQL.DbContextGenerator.DbContextGenerator();
+        GeneratorDriver driver = CSharpGeneratorDriver.Create(
+            generators: [generator.AsSourceGenerator()],
+            additionalTexts: additionalTexts,
+            parseOptions: parseOptions,
+            optionsProvider: new TestAnalyzerConfigOptionsProvider(ImmutableDictionary<string, string>.Empty));
+
+        driver = driver.RunGenerators(compilation);
+
+        var runResult = driver.GetRunResult();
+        runResult.Diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error).ShouldBeEmpty();
+
+        var sources = runResult.Results
+            .Single()
+            .GeneratedSources
+            .Select(s => (s.HintName, s.SourceText.ToString()))
+            .ToImmutableArray();
+
+        sources.Length.ShouldBeGreaterThan(0);
+        return sources;
+    }
+
+    private static ImmutableArray<MetadataReference> GetReferences()
+    {
+        var references = new List<MetadataReference>
+        {
+            MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
+            MetadataReference.CreateFromFile(typeof(Enumerable).Assembly.Location),
+            MetadataReference.CreateFromFile(typeof(System.ComponentModel.DataAnnotations.Schema.ForeignKeyAttribute).Assembly.Location),
+        };
+
+        return [.. references];
     }
 }

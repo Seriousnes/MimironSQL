@@ -71,6 +71,9 @@ Generated\ Files/
 [Bb]uild[Ll]og.*
 *.trx
 
+# VSTest / coverlet default results directory name (plural)
+**/TestResults/
+
 # NUnit
 *.VisualState.xml
 TestResult.xml
@@ -431,3 +434,9 @@ FodyWeavers.xsd
 *.msix
 *.msm
 *.msp
+/coverage
+/coverage-ci
+/coverage-ci-details
+
+# Legacy / accidental reportgenerator output folders (prefer writing under /coverage/)
+/coverage-merged-*/

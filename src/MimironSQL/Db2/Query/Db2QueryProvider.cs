@@ -41,7 +41,8 @@ internal sealed class Db2QueryProvider<TEntity, TRow>(
             .GetMethod(nameof(CreateQueryableFactory), BindingFlags.Static | BindingFlags.NonPublic)!;
 
         var generic = factoryMethod.MakeGenericMethod(elementType);
-        var factory = generic.CreateDelegate<Func<IQueryProvider, Expression, IQueryable>>();
+        var getFactory = generic.CreateDelegate<Func<Func<IQueryProvider, Expression, IQueryable>>>();
+        var factory = getFactory();
         return factory(this, expression);
     }
 
@@ -328,6 +329,12 @@ internal sealed class Db2QueryProvider<TEntity, TRow>(
 
         foreach (var predicate in preEntityWhere)
         {
+            if (Db2NavigationQueryCompiler.TryCompileSemiJoinPredicate(_model, file, _tableResolver, predicate, out var navPredicate))
+            {
+                rowPredicates.Add(navPredicate);
+                continue;
+            }
+
             if (!Db2RowPredicateCompiler.TryCompile(file, _rootEntityType, predicate, out var rowPredicate, out var predicateRequirements))
                 return false;
 
@@ -1112,7 +1119,54 @@ internal sealed class Db2QueryProvider<TEntity, TRow>(
         if (typeof(IEnumerable<int>).IsAssignableFrom(memberType))
             return Expression.Lambda<Func<TEntity, IEnumerable<int>?>>(Expression.Convert(access, typeof(IEnumerable<int>)), entity).Compile();
 
-        throw new NotSupportedException($"Expected an int enumerable member but found '{memberType.FullName}'.");
+        if (!TryGetIEnumerableElementType(memberType, out var elementType) || elementType is null)
+            throw new NotSupportedException($"Expected an integer key enumerable member but found '{memberType.FullName}'.");
+
+        var enumerableType = typeof(IEnumerable<>).MakeGenericType(elementType);
+        var castEnumerable = Expression.Convert(access, enumerableType);
+
+        var item = Expression.Parameter(elementType, "x");
+        var itemToInt = ConvertToInt32NoBox(item, elementType);
+        var selector = Expression.Lambda(itemToInt, item);
+
+        var selectCall = Expression.Call(
+            typeof(Enumerable),
+            nameof(Enumerable.Select),
+            [elementType, typeof(int)],
+            castEnumerable,
+            selector);
+
+        return Expression.Lambda<Func<TEntity, IEnumerable<int>?>>(selectCall, entity).Compile();
+    }
+
+    private static bool TryGetIEnumerableElementType(Type type, out Type? elementType)
+    {
+        if (type == typeof(string))
+        {
+            elementType = null;
+            return false;
+        }
+
+        if (type.IsArray)
+        {
+            elementType = type.GetElementType();
+            return elementType is not null;
+        }
+
+        if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(IEnumerable<>))
+        {
+            elementType = type.GetGenericArguments()[0];
+            return true;
+        }
+
+        foreach (var i in type.GetInterfaces().Where(static i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IEnumerable<>)))
+        {
+            elementType = i.GetGenericArguments()[0];
+            return true;
+        }
+
+        elementType = null;
+        return false;
     }
 
 

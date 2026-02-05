@@ -4,6 +4,6 @@ namespace MimironSQL;
 
 public partial class Map
 {
-    public Map? ParentMap { get; set; }    
-    public ICollection<MapChallengeMode> MapChallengeModes { get; set; } = null!;
+    [ForeignKey(nameof(MapChallengeMode.MapID))]
+    public ICollection<MapChallengeMode> MapChallengeModes { get; set; } = [];
 }

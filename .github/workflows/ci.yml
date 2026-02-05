@@ -27,10 +27,6 @@ jobs:
           python - <<'PY' > matrix.json
           import json
           import pathlib
-          import xml.etree.ElementTree as ET
-
-          def strip_ns(tag: str) -> str:
-              return tag.rsplit('}', 1)[-1]
 
           tests_root = pathlib.Path('tests')
           if not tests_root.exists():
@@ -40,17 +36,6 @@ jobs:
           for csproj in sorted(tests_root.rglob('*.csproj')):
               posix = csproj.as_posix()
               if '/obj/' in posix or '/bin/' in posix:
-                  continue
-              if 'Integration.Tests' in posix:
-                  continue
-
-              root = ET.parse(csproj).getroot()
-              is_test_project = any(
-                  strip_ns(el.tag) == 'IsTestProject'
-                  and (el.text or '').strip().lower() == 'true'
-                  for el in root.iter()
-              )
-              if not is_test_project:
                   continue
 
               projects.append({

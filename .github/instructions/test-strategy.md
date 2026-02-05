@@ -17,7 +17,7 @@
 ## Coverage (collector-based)
 
 - Coverage is collected via the VSTest collector (Coverlet collector), not MSBuild instrumentation:
-	- `dotnet test <test-project> --collect:"XPlat Code Coverage" --settings coverlet.runsettings`
+    - `dotnet test <test-project> --collect:"XPlat Code Coverage" --settings tests/coverlet.runsettings`
 - CI merges all produced `**/coverage.cobertura.xml` into a single Cobertura report and enforces a **90% line coverage** gate.
 - Exclusions are configured in `coverlet.runsettings`:
 	- Excludes Salsa20 by assembly filter (`[Salsa20*]*`).
@@ -46,7 +46,7 @@ $merged = Join-Path $run 'merged'
 
 New-Item -ItemType Directory -Force -Path $results, $merged | Out-Null
 
-dotnet test .\MimironSQL.slnx --configuration Release --collect:"XPlat Code Coverage" --settings .\coverlet.runsettings --results-directory $results
+dotnet test .\MimironSQL.slnx --configuration Release --collect:"XPlat Code Coverage" --settings .\tests\coverlet.runsettings --results-directory $results
 
 reportgenerator -reports:"$results\**\coverage.cobertura.xml" -targetdir:$merged -reporttypes:"Cobertura;TextSummary"
 Get-Content "$merged\Summary.txt" -Raw

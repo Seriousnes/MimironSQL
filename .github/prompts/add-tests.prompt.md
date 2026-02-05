@@ -25,7 +25,7 @@ Current testing/coverage structure (must follow)
   - Integration tests are where we execute the query pipeline and multi-project behavior (context generation, provider+format interaction).
   - CASC integration scenarios are local-only and must not be required for CI.
 - Coverage collection is via VSTest + coverlet.collector:
-  - dotnet test <test-project> --collect:"XPlat Code Coverage" --settings coverlet.runsettings
+  - dotnet test <test-project> --collect:"XPlat Code Coverage" --settings tests/coverlet.runsettings
 - CI merges all **/coverage.cobertura.xml into a single Cobertura report and enforces a 90% line-rate gate.
 - Coverage exclusions are configured in coverlet.runsettings:
   - Salsa20 excluded by assembly filter ([Salsa20*]*).
@@ -48,7 +48,7 @@ What you must do (workflow)
    - If you must add a new test-only package, use: dotnet add <test csproj> package <package>
 5) Run tests locally (Release configuration):
    - dotnet test <test csproj> --configuration Release
-   - For coverage sanity: dotnet test <test csproj> --configuration Release --collect:"XPlat Code Coverage" --settings coverlet.runsettings
+  - For coverage sanity: dotnet test <test csproj> --configuration Release --collect:"XPlat Code Coverage" --settings tests/coverlet.runsettings
 6) Keep changes contained:
    - Only modify files required to add the tests (and minimal production changes if blocked).
    - If a production change is required, prefer the smallest change that improves testability without changing public API.
@@ -73,7 +73,7 @@ Commands you may use (examples)
 - Run one test project:
   - dotnet test Tests/<Project>.Tests/<Project>.Tests.csproj --configuration Release
 - Run one test project with coverage collection:
-  - dotnet test Tests/<Project>.Tests/<Project>.Tests.csproj --configuration Release --collect:"XPlat Code Coverage" --settings coverlet.runsettings
+  - dotnet test Tests/<Project>.Tests/<Project>.Tests.csproj --configuration Release --collect:"XPlat Code Coverage" --settings tests/coverlet.runsettings
 
 Completion checklist
 - Added/updated tests in the correct test project under Tests/.

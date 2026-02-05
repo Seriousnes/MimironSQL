@@ -50,6 +50,10 @@ This project is a SQL engine for reading and querying World of Warcraft DB2 file
 ## Test Strategy
 See [test-strategy.md](./instructions/test-strategy.md) for detailed testing instructions.
 
+## Coverage tooling
+
+For the `reportcoverage.cs` helper (ranking misses and class drill-down), see [tools/coverage/README.md](../tools/coverage/README.md).
+
 ## File Specifications
 
 ### DB2 file structure

@@ -119,6 +119,194 @@ public sealed class Db2ModelBuilderTests
         nav.SourceKeyCollectionMember!.Name.ShouldBe(nameof(ArraySource.TargetIds));
     }
 
+    [Fact]
+    public void Db2ModelBuilder_ApplyAttributeNavigationConventions_ForeignKey_on_scalar_fk_property_creates_reference_navigation()
+    {
+        var builder = new Db2ModelBuilder();
+        builder.Entity<ScalarFkSource>();
+        builder.Entity<ScalarFkTarget>();
+
+        builder.ApplyAttributeNavigationConventions();
+
+        builder.Entity<ScalarFkSource>().HasKey(x => x.Id);
+        builder.Entity<ScalarFkTarget>().HasKey(x => x.Id);
+
+        var model = builder.Build(ScalarFkSchemaResolver);
+
+        var navMember = typeof(ScalarFkSource).GetProperty(nameof(ScalarFkSource.Parent))!;
+        model.TryGetReferenceNavigation(typeof(ScalarFkSource), navMember, out var nav).ShouldBeTrue();
+        nav.Kind.ShouldBe(Db2ReferenceNavigationKind.ForeignKeyToPrimaryKey);
+        nav.SourceKeyMember.Name.ShouldBe(nameof(ScalarFkSource.ParentId));
+        nav.TargetKeyMember.Name.ShouldBe(nameof(ScalarFkTarget.Id));
+    }
+
+    [Fact]
+    public void Db2ModelBuilder_ApplyAttributeNavigationConventions_ForeignKey_with_composite_name_throws()
+    {
+        var builder = new Db2ModelBuilder();
+        builder.Entity<CompositeForeignKeyNameEntity>();
+
+        var ex = Should.Throw<NotSupportedException>(() => builder.ApplyAttributeNavigationConventions());
+        ex.Message.ShouldContain("does not support composite keys");
+    }
+
+    [Fact]
+    public void Db2ModelBuilder_ApplyAttributeNavigationConventions_ForeignKey_on_collection_can_target_dependent_fk()
+    {
+        var builder = new Db2ModelBuilder();
+        builder.Entity<AttrParent>();
+        builder.Entity<AttrChild>();
+
+        builder.ApplyAttributeNavigationConventions();
+
+        builder.Entity<AttrParent>().HasKey(x => x.Id);
+        builder.Entity<AttrChild>().HasKey(x => x.Id);
+
+        var model = builder.Build(AttrParentChildSchemaResolver);
+
+        var navMember = typeof(AttrParent).GetProperty(nameof(AttrParent.Children))!;
+        model.TryGetCollectionNavigation(typeof(AttrParent), navMember, out var nav).ShouldBeTrue();
+        nav.Kind.ShouldBe(Db2CollectionNavigationKind.DependentForeignKeyToPrimaryKey);
+        nav.DependentForeignKeyMember.ShouldNotBeNull();
+        nav.DependentForeignKeyMember!.Name.ShouldBe(nameof(AttrChild.ParentId));
+        nav.PrincipalKeyMember.ShouldNotBeNull();
+        nav.PrincipalKeyMember!.Name.ShouldBe(nameof(AttrParent.Id));
+    }
+
+    [Fact]
+    public void Db2ModelBuilder_ApplyAttributeNavigationConventions_ForeignKey_on_collection_missing_member_throws()
+    {
+        var builder = new Db2ModelBuilder();
+        builder.Entity<AttrParentMissingFk>();
+        builder.Entity<AttrChild>();
+
+        var ex = Should.Throw<NotSupportedException>(() => builder.ApplyAttributeNavigationConventions());
+        ex.Message.ShouldContain("must reference either a dependent FK");
+        ex.Message.ShouldContain("but no matching public property was found");
+    }
+
+    [Fact]
+    public void Db2ModelBuilder_ApplySchemaNavigationConventions_creates_reference_navigation_and_updates_target_table_name()
+    {
+        var builder = new Db2ModelBuilder();
+        builder.Entity<SchemaConventionsChild>();
+
+        builder.ApplySchemaNavigationConventions(SchemaConventionsSchemaResolver);
+
+        builder.Entity<SchemaConventionsChild>().HasKey(x => x.Id);
+        builder.Entity<SchemaConventionsParentEntity>().HasKey(x => x.Id);
+
+        builder.Entity<SchemaConventionsParentEntity>().Metadata.TableName.ShouldBe("Parent");
+
+        var model = builder.Build(SchemaConventionsSchemaResolver);
+
+        var navMember = typeof(SchemaConventionsChild).GetProperty(nameof(SchemaConventionsChild.Parent))!;
+        model.TryGetReferenceNavigation(typeof(SchemaConventionsChild), navMember, out var nav).ShouldBeTrue();
+        nav.SourceKeyMember.Name.ShouldBe(nameof(SchemaConventionsChild.ParentId));
+        nav.TargetClrType.ShouldBe(typeof(SchemaConventionsParentEntity));
+    }
+
+    [Fact]
+    public void Db2ModelBuilder_ApplySchemaNavigationConventions_conflicting_non_fk_navigation_throws()
+    {
+        var builder = new Db2ModelBuilder();
+
+        builder.Entity<SchemaConflictChild>()
+            .HasOne(x => x.Parent)
+            .WithSharedPrimaryKey(sourceKey: x => x.Id, targetKey: x => x.Id);
+
+        builder.Entity<SchemaConflictParent>().HasKey(x => x.Id);
+        builder.Entity<SchemaConflictChild>().HasKey(x => x.Id);
+
+        var ex = Should.Throw<NotSupportedException>(() => builder.ApplySchemaNavigationConventions(SchemaConflictSchemaResolver));
+        ex.Message.ShouldContain("conflicts with schema FK");
+    }
+
+    [Fact]
+    public void Db2ModelBuilder_ApplySchemaNavigationConventions_fk_member_mismatch_throws()
+    {
+        var builder = new Db2ModelBuilder();
+
+        builder.Entity<SchemaFkMismatchChild>()
+            .HasOne(x => x.Parent)
+            .WithForeignKey(x => x.OtherParentId);
+
+        builder.Entity<SchemaFkMismatchParent>().HasKey(x => x.Id);
+        builder.Entity<SchemaFkMismatchChild>().HasKey(x => x.Id);
+
+        var ex = Should.Throw<NotSupportedException>(() => builder.ApplySchemaNavigationConventions(SchemaFkMismatchSchemaResolver));
+        ex.Message.ShouldContain("has FK member");
+        ex.Message.ShouldContain("schema FK is");
+    }
+
+    [Fact]
+    public void Db2ModelBuilder_ApplySchemaNavigationConventions_when_OverridesSchema_does_not_throw_for_mismatch()
+    {
+        var builder = new Db2ModelBuilder();
+
+        builder.Entity<SchemaFkMismatchChild>()
+            .HasOne(x => x.Parent)
+            .WithForeignKey(x => x.OtherParentId)
+            .OverridesSchema();
+
+        builder.Entity<SchemaFkMismatchParent>().HasKey(x => x.Id);
+        builder.Entity<SchemaFkMismatchChild>().HasKey(x => x.Id);
+
+        builder.ApplySchemaNavigationConventions(SchemaFkMismatchSchemaResolver);
+
+        var model = builder.Build(SchemaFkMismatchSchemaResolver);
+        var navMember = typeof(SchemaFkMismatchChild).GetProperty(nameof(SchemaFkMismatchChild.Parent))!;
+        model.TryGetReferenceNavigation(typeof(SchemaFkMismatchChild), navMember, out var nav).ShouldBeTrue();
+        nav.SourceKeyMember.Name.ShouldBe(nameof(SchemaFkMismatchChild.OtherParentId));
+    }
+
+    [Fact]
+    public void Db2ModelBuilder_Build_when_entity_has_no_primary_key_throws()
+    {
+        var builder = new Db2ModelBuilder();
+        builder.Entity<NoKeyEntity>();
+        var ex = Should.Throw<NotSupportedException>(() => builder.Build(NoKeyEntitySchemaResolver));
+        ex.Message.ShouldContain("has no key member");
+    }
+
+    [Fact]
+    public void Db2ModelBuilder_Build_when_primary_key_member_is_not_public_property_throws()
+    {
+        var builder = new Db2ModelBuilder();
+        var entity = builder.Entity<FieldKeyEntity>();
+        entity.Metadata.PrimaryKeyMember = typeof(FieldKeyEntity).GetField(nameof(FieldKeyEntity.Id), BindingFlags.Instance | BindingFlags.Public)!;
+
+        var ex = Should.Throw<NotSupportedException>(() => builder.Build(FieldKeyEntitySchemaResolver));
+        ex.Message.ShouldContain("must be a public property");
+    }
+
+    [Fact]
+    public void Db2ModelBuilder_Build_when_primary_key_has_column_attribute_throws()
+    {
+        var builder = new Db2ModelBuilder();
+        builder.Entity<ColumnMappedPrimaryKey>().HasKey(x => x.Id);
+
+        var ex = Should.Throw<NotSupportedException>(() => builder.Build(ColumnMappedPrimaryKeySchemaResolver));
+        ex.Message.ShouldContain("Primary key member");
+        ex.Message.ShouldContain("cannot configure column mapping");
+    }
+
+    [Fact]
+    public void Db2ModelBuilder_Build_when_foreign_key_array_is_not_integer_key_collection_throws()
+    {
+        var builder = new Db2ModelBuilder();
+        builder.Entity<BadKeyArraySource>();
+        builder.Entity<BadKeyArrayTarget>();
+
+        builder.ApplyAttributeNavigationConventions();
+
+        builder.Entity<BadKeyArraySource>().HasKey(x => x.Id);
+        builder.Entity<BadKeyArrayTarget>().HasKey(x => x.Id);
+
+        var ex = Should.Throw<NotSupportedException>(() => builder.Build(BadKeyArraySchemaResolver));
+        ex.Message.ShouldContain("expects an integer key collection");
+    }
+
     private static Db2TableSchema SchemaResolver(string tableName)
     {
         return tableName switch
@@ -134,6 +322,213 @@ public sealed class Db2ModelBuilderTests
                 ]),
             nameof(ArrayTarget) => new Db2TableSchema(
                 tableName: nameof(ArrayTarget),
+                layoutHash: 0,
+                physicalColumnCount: 1,
+                fields:
+                [
+                    new Db2FieldSchema("ID", Db2ValueType.Int64, ColumnStartIndex: 0, ElementCount: 1, IsVerified: true, IsVirtual: false, IsId: true, IsRelation: false, ReferencedTableName: null),
+                ]),
+            _ => throw new InvalidOperationException($"Unknown table: {tableName}"),
+        };
+    }
+
+    private static Db2TableSchema ScalarFkSchemaResolver(string tableName)
+    {
+        return tableName switch
+        {
+            nameof(ScalarFkSource) => new Db2TableSchema(
+                tableName: nameof(ScalarFkSource),
+                layoutHash: 0,
+                physicalColumnCount: 2,
+                fields:
+                [
+                    new Db2FieldSchema("ID", Db2ValueType.Int64, ColumnStartIndex: 0, ElementCount: 1, IsVerified: true, IsVirtual: false, IsId: true, IsRelation: false, ReferencedTableName: null),
+                    new Db2FieldSchema(nameof(ScalarFkSource.ParentId), Db2ValueType.Int64, ColumnStartIndex: 1, ElementCount: 1, IsVerified: true, IsVirtual: false, IsId: false, IsRelation: false, ReferencedTableName: nameof(ScalarFkTarget)),
+                ]),
+            nameof(ScalarFkTarget) => new Db2TableSchema(
+                tableName: nameof(ScalarFkTarget),
+                layoutHash: 0,
+                physicalColumnCount: 1,
+                fields:
+                [
+                    new Db2FieldSchema("ID", Db2ValueType.Int64, ColumnStartIndex: 0, ElementCount: 1, IsVerified: true, IsVirtual: false, IsId: true, IsRelation: false, ReferencedTableName: null),
+                ]),
+            _ => throw new InvalidOperationException($"Unknown table: {tableName}"),
+        };
+    }
+
+    private static Db2TableSchema AttrParentChildSchemaResolver(string tableName)
+    {
+        return tableName switch
+        {
+            nameof(AttrParent) => new Db2TableSchema(
+                tableName: nameof(AttrParent),
+                layoutHash: 0,
+                physicalColumnCount: 1,
+                fields:
+                [
+                    new Db2FieldSchema("ID", Db2ValueType.Int64, ColumnStartIndex: 0, ElementCount: 1, IsVerified: true, IsVirtual: false, IsId: true, IsRelation: false, ReferencedTableName: null),
+                ]),
+            nameof(AttrParentMissingFk) => new Db2TableSchema(
+                tableName: nameof(AttrParentMissingFk),
+                layoutHash: 0,
+                physicalColumnCount: 1,
+                fields:
+                [
+                    new Db2FieldSchema("ID", Db2ValueType.Int64, ColumnStartIndex: 0, ElementCount: 1, IsVerified: true, IsVirtual: false, IsId: true, IsRelation: false, ReferencedTableName: null),
+                ]),
+            nameof(AttrChild) => new Db2TableSchema(
+                tableName: nameof(AttrChild),
+                layoutHash: 0,
+                physicalColumnCount: 2,
+                fields:
+                [
+                    new Db2FieldSchema("ID", Db2ValueType.Int64, ColumnStartIndex: 0, ElementCount: 1, IsVerified: true, IsVirtual: false, IsId: true, IsRelation: false, ReferencedTableName: null),
+                    new Db2FieldSchema(nameof(AttrChild.ParentId), Db2ValueType.Int64, ColumnStartIndex: 1, ElementCount: 1, IsVerified: true, IsVirtual: false, IsId: false, IsRelation: false, ReferencedTableName: nameof(AttrParent)),
+                ]),
+            _ => throw new InvalidOperationException($"Unknown table: {tableName}"),
+        };
+    }
+
+    private static Db2TableSchema SchemaConventionsSchemaResolver(string tableName)
+    {
+        return tableName switch
+        {
+            nameof(SchemaConventionsChild) => new Db2TableSchema(
+                tableName: nameof(SchemaConventionsChild),
+                layoutHash: 0,
+                physicalColumnCount: 2,
+                fields:
+                [
+                    new Db2FieldSchema("ID", Db2ValueType.Int64, ColumnStartIndex: 0, ElementCount: 1, IsVerified: true, IsVirtual: false, IsId: true, IsRelation: false, ReferencedTableName: null),
+                    new Db2FieldSchema(nameof(SchemaConventionsChild.ParentId), Db2ValueType.Int64, ColumnStartIndex: 1, ElementCount: 1, IsVerified: true, IsVirtual: false, IsId: false, IsRelation: false, ReferencedTableName: "Parent"),
+                ]),
+            "Parent" => new Db2TableSchema(
+                tableName: "Parent",
+                layoutHash: 0,
+                physicalColumnCount: 1,
+                fields:
+                [
+                    new Db2FieldSchema("ID", Db2ValueType.Int64, ColumnStartIndex: 0, ElementCount: 1, IsVerified: true, IsVirtual: false, IsId: true, IsRelation: false, ReferencedTableName: null),
+                ]),
+            _ => throw new InvalidOperationException($"Unknown table: {tableName}"),
+        };
+    }
+
+    private static Db2TableSchema SchemaConflictSchemaResolver(string tableName)
+    {
+        return tableName switch
+        {
+            nameof(SchemaConflictChild) => new Db2TableSchema(
+                tableName: nameof(SchemaConflictChild),
+                layoutHash: 0,
+                physicalColumnCount: 2,
+                fields:
+                [
+                    new Db2FieldSchema("ID", Db2ValueType.Int64, ColumnStartIndex: 0, ElementCount: 1, IsVerified: true, IsVirtual: false, IsId: true, IsRelation: false, ReferencedTableName: null),
+                    new Db2FieldSchema(nameof(SchemaConflictChild.ParentId), Db2ValueType.Int64, ColumnStartIndex: 1, ElementCount: 1, IsVerified: true, IsVirtual: false, IsId: false, IsRelation: false, ReferencedTableName: nameof(SchemaConflictParent)),
+                ]),
+            nameof(SchemaConflictParent) => new Db2TableSchema(
+                tableName: nameof(SchemaConflictParent),
+                layoutHash: 0,
+                physicalColumnCount: 1,
+                fields:
+                [
+                    new Db2FieldSchema("ID", Db2ValueType.Int64, ColumnStartIndex: 0, ElementCount: 1, IsVerified: true, IsVirtual: false, IsId: true, IsRelation: false, ReferencedTableName: null),
+                ]),
+            _ => throw new InvalidOperationException($"Unknown table: {tableName}"),
+        };
+    }
+
+    private static Db2TableSchema SchemaFkMismatchSchemaResolver(string tableName)
+    {
+        return tableName switch
+        {
+            nameof(SchemaFkMismatchChild) => new Db2TableSchema(
+                tableName: nameof(SchemaFkMismatchChild),
+                layoutHash: 0,
+                physicalColumnCount: 3,
+                fields:
+                [
+                    new Db2FieldSchema("ID", Db2ValueType.Int64, ColumnStartIndex: 0, ElementCount: 1, IsVerified: true, IsVirtual: false, IsId: true, IsRelation: false, ReferencedTableName: null),
+                    new Db2FieldSchema(nameof(SchemaFkMismatchChild.ParentId), Db2ValueType.Int64, ColumnStartIndex: 1, ElementCount: 1, IsVerified: true, IsVirtual: false, IsId: false, IsRelation: false, ReferencedTableName: nameof(SchemaFkMismatchParent)),
+                    new Db2FieldSchema(nameof(SchemaFkMismatchChild.OtherParentId), Db2ValueType.Int64, ColumnStartIndex: 2, ElementCount: 1, IsVerified: true, IsVirtual: false, IsId: false, IsRelation: false, ReferencedTableName: nameof(SchemaFkMismatchParent)),
+                ]),
+            nameof(SchemaFkMismatchParent) => new Db2TableSchema(
+                tableName: nameof(SchemaFkMismatchParent),
+                layoutHash: 0,
+                physicalColumnCount: 1,
+                fields:
+                [
+                    new Db2FieldSchema("ID", Db2ValueType.Int64, ColumnStartIndex: 0, ElementCount: 1, IsVerified: true, IsVirtual: false, IsId: true, IsRelation: false, ReferencedTableName: null),
+                ]),
+            _ => throw new InvalidOperationException($"Unknown table: {tableName}"),
+        };
+    }
+
+    private static Db2TableSchema NoKeyEntitySchemaResolver(string tableName)
+    {
+        return tableName switch
+        {
+            nameof(NoKeyEntity) => new Db2TableSchema(
+                tableName: nameof(NoKeyEntity),
+                layoutHash: 0,
+                physicalColumnCount: 1,
+                fields:
+                [
+                    new Db2FieldSchema("Key", Db2ValueType.Int64, ColumnStartIndex: 0, ElementCount: 1, IsVerified: true, IsVirtual: false, IsId: false, IsRelation: false, ReferencedTableName: null),
+                ]),
+            _ => throw new InvalidOperationException($"Unknown table: {tableName}"),
+        };
+    }
+
+    private static Db2TableSchema FieldKeyEntitySchemaResolver(string tableName)
+    {
+        return tableName switch
+        {
+            nameof(FieldKeyEntity) => new Db2TableSchema(
+                tableName: nameof(FieldKeyEntity),
+                layoutHash: 0,
+                physicalColumnCount: 1,
+                fields:
+                [
+                    new Db2FieldSchema("ID", Db2ValueType.Int64, ColumnStartIndex: 0, ElementCount: 1, IsVerified: true, IsVirtual: false, IsId: true, IsRelation: false, ReferencedTableName: null),
+                ]),
+            _ => throw new InvalidOperationException($"Unknown table: {tableName}"),
+        };
+    }
+
+    private static Db2TableSchema ColumnMappedPrimaryKeySchemaResolver(string tableName)
+    {
+        return tableName switch
+        {
+            nameof(ColumnMappedPrimaryKey) => new Db2TableSchema(
+                tableName: nameof(ColumnMappedPrimaryKey),
+                layoutHash: 0,
+                physicalColumnCount: 1,
+                fields:
+                [
+                    new Db2FieldSchema("ID", Db2ValueType.Int64, ColumnStartIndex: 0, ElementCount: 1, IsVerified: true, IsVirtual: false, IsId: true, IsRelation: false, ReferencedTableName: null),
+                ]),
+            _ => throw new InvalidOperationException($"Unknown table: {tableName}"),
+        };
+    }
+
+    private static Db2TableSchema BadKeyArraySchemaResolver(string tableName)
+    {
+        return tableName switch
+        {
+            nameof(BadKeyArraySource) => new Db2TableSchema(
+                tableName: nameof(BadKeyArraySource),
+                layoutHash: 0,
+                physicalColumnCount: 2,
+                fields:
+                [
+                    new Db2FieldSchema("ID", Db2ValueType.Int64, ColumnStartIndex: 0, ElementCount: 1, IsVerified: true, IsVirtual: false, IsId: true, IsRelation: false, ReferencedTableName: null),
+                    new Db2FieldSchema(nameof(BadKeyArraySource.TargetIds), Db2ValueType.String, ColumnStartIndex: 1, ElementCount: 3, IsVerified: true, IsVirtual: false, IsId: false, IsRelation: false, ReferencedTableName: nameof(BadKeyArrayTarget)),
+                ]),
+            nameof(BadKeyArrayTarget) => new Db2TableSchema(
+                tableName: nameof(BadKeyArrayTarget),
                 layoutHash: 0,
                 physicalColumnCount: 1,
                 fields:
@@ -235,6 +630,127 @@ public sealed class Db2ModelBuilderTests
     }
 
     private sealed class ArrayTarget
+    {
+        public int Id { get; set; }
+    }
+
+    private sealed class ScalarFkSource
+    {
+        public int Id { get; set; }
+
+        [ForeignKey(nameof(Parent))]
+        public int ParentId { get; set; }
+
+        public ScalarFkTarget? Parent { get; set; }
+    }
+
+    private sealed class ScalarFkTarget
+    {
+        public int Id { get; set; }
+    }
+
+    private sealed class CompositeForeignKeyNameEntity
+    {
+        public int Id { get; set; }
+
+        [ForeignKey("A, B")]
+        public ScalarFkTarget? Parent { get; set; }
+    }
+
+    private sealed class AttrParent
+    {
+        public int Id { get; set; }
+
+        [ForeignKey(nameof(AttrChild.ParentId))]
+        public ICollection<AttrChild> Children { get; set; } = [];
+    }
+
+    private sealed class AttrParentMissingFk
+    {
+        public int Id { get; set; }
+
+        [ForeignKey("Missing")]
+        public ICollection<AttrChild> Children { get; set; } = [];
+    }
+
+    private sealed class AttrChild
+    {
+        public int Id { get; set; }
+
+        public int ParentId { get; set; }
+    }
+
+    private sealed class SchemaConventionsChild
+    {
+        public int Id { get; set; }
+
+        public int ParentId { get; set; }
+
+        public SchemaConventionsParentEntity? Parent { get; set; }
+    }
+
+    private sealed class SchemaConventionsParentEntity
+    {
+        public int Id { get; set; }
+    }
+
+    private sealed class SchemaConflictParent
+    {
+        public int Id { get; set; }
+    }
+
+    private sealed class SchemaConflictChild
+    {
+        public int Id { get; set; }
+
+        public int ParentId { get; set; }
+
+        public SchemaConflictParent? Parent { get; set; }
+    }
+
+    private sealed class SchemaFkMismatchParent
+    {
+        public int Id { get; set; }
+    }
+
+    private sealed class SchemaFkMismatchChild
+    {
+        public int Id { get; set; }
+
+        public int ParentId { get; set; }
+
+        public int OtherParentId { get; set; }
+
+        public SchemaFkMismatchParent? Parent { get; set; }
+    }
+
+    private sealed class NoKeyEntity
+    {
+        public int Key { get; set; }
+    }
+
+    private sealed class FieldKeyEntity
+    {
+        public int Id;
+    }
+
+    private sealed class ColumnMappedPrimaryKey
+    {
+        [Column("Other")]
+        public int Id { get; set; }
+    }
+
+    private sealed class BadKeyArraySource
+    {
+        public int Id { get; set; }
+
+        public string[] TargetIds { get; set; } = [];
+
+        [ForeignKey(nameof(TargetIds))]
+        public ICollection<BadKeyArrayTarget> Targets { get; set; } = [];
+    }
+
+    private sealed class BadKeyArrayTarget
     {
         public int Id { get; set; }
     }

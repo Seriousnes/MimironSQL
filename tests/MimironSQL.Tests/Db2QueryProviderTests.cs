@@ -1,4 +1,5 @@
 using System.Linq.Expressions;
+using System.Reflection;
 
 using MimironSQL.Db2;
 using MimironSQL.Db2.Model;
@@ -25,6 +26,39 @@ public sealed class Db2QueryProviderTests
 
         table.All(x => x.Level >= 0).ShouldBeTrue();
         table.All(x => x.Level > 0).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void ExecuteScalar_supports_First_FirstOrDefault_Single_and_SingleOrDefault()
+    {
+        var (table, _) = CreateParentTable();
+
+        table.Where(x => x.Id == 2).First().Id.ShouldBe(2);
+        table.Where(x => x.Id == 999).FirstOrDefault().ShouldBeNull();
+
+        table.Where(x => x.Id == 1).Single().Id.ShouldBe(1);
+        table.Where(x => x.Id == 999).SingleOrDefault().ShouldBeNull();
+
+        Should.Throw<InvalidOperationException>(() => table.Where(x => x.Id == 999).First());
+        Should.Throw<InvalidOperationException>(() => table.Where(x => x.Level >= 0).Single());
+    }
+
+    [Fact]
+    public void ExecuteScalar_throws_when_no_terminal_operator_or_result_type_mismatch()
+    {
+        var (table, provider) = CreateParentTable();
+
+        var noTerminal = Should.Throw<NotSupportedException>(() => provider.Execute<int>(table.Expression));
+        noTerminal.Message.ShouldContain("terminal operator");
+
+        var countCall = Expression.Call(
+            typeof(Queryable),
+            nameof(Queryable.Count),
+            [typeof(Parent)],
+            table.Expression);
+
+        var mismatch = Should.Throw<NotSupportedException>(() => provider.Execute<bool>(countCall));
+        mismatch.Message.ShouldContain("expected result type");
     }
 
     [Fact]
@@ -62,12 +96,35 @@ public sealed class Db2QueryProviderTests
     }
 
     [Fact]
+    public void Execute_non_generic_executes_for_enumerable_queries()
+    {
+        var (table, provider) = CreateParentTable();
+
+        var query = table.Where(p => p.Level > 0);
+
+        var obj = ((IQueryProvider)provider).Execute(query.Expression);
+        obj.ShouldNotBeNull();
+
+        var items = (IEnumerable<Parent>)obj!;
+        items.Select(x => x.Id).OrderBy(x => x).ToArray().ShouldBe([1, 2]);
+    }
+
+    [Fact]
     public void Execute_non_generic_throws_for_scalar_expressions_and_string_is_not_treated_as_enumerable()
     {
         var (_, provider) = CreateParentTable();
 
         Should.Throw<NotSupportedException>(() => ((IQueryProvider)provider).Execute(Expression.Constant(123)));
         Should.Throw<NotSupportedException>(() => ((IQueryProvider)provider).Execute(Expression.Constant("hello")));
+    }
+
+    [Fact]
+    public void Where_suppresses_NullReferenceException_in_entity_predicates()
+    {
+        var (table, _) = CreateParentTable();
+
+        table.Where(p => AlwaysThrowsNullRef(p)).ToArray().ShouldBeEmpty();
+        table.Where(p => p.Level > 0).Where(p => AlwaysThrowsNullRef(p)).ToArray().ShouldBeEmpty();
     }
 
     [Fact]
@@ -160,6 +217,257 @@ public sealed class Db2QueryProviderTests
         results.ShouldBe(["p2"]);
     }
 
+    [Fact]
+    public void Navigation_access_with_multiple_Selects_includes_navigation_then_projects()
+    {
+        var (children, _, _) = CreateParentChildTables();
+
+        var results = children
+            .Where(c => c.ParentId != 0)
+            .Select(c => c.Parent!.Name)
+            .Select(name => name.Length)
+            .ToArray();
+
+        results.ShouldBe([2, 2]);
+    }
+
+    [Fact]
+    public void Include_after_Select_that_changes_element_type_throws()
+    {
+        var (children, _, _) = CreateParentChildTables();
+
+        var ex = Should.Throw<NotSupportedException>(() =>
+            children
+                .Select(c => c.Parent!)
+                .Include(p => p.Children)
+                .ToArray());
+
+        ex.Message.ShouldContain("Include");
+        ex.Message.ShouldContain("Select");
+    }
+
+    [Fact]
+    public void CreateIntEnumerableGetter_converts_nullable_enum_arrays_without_boxing()
+    {
+        var member = typeof(EntityWithNullableEnumKeys).GetProperty(nameof(EntityWithNullableEnumKeys.Keys))!;
+
+        var providerType = typeof(Db2QueryProvider<EntityWithNullableEnumKeys, RowHandle>);
+        var method = providerType.GetMethod("CreateIntEnumerableGetter", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!;
+
+        var getter = (Func<EntityWithNullableEnumKeys, IEnumerable<int>?>)method.Invoke(null, [member])!;
+
+        var entity = new EntityWithNullableEnumKeys
+        {
+            Keys = [TestKey.Ten, null, TestKey.Eleven],
+        };
+
+        getter(entity)!.ToArray().ShouldBe([10, 0, 11]);
+    }
+
+    [Fact]
+    public void CreateIntEnumerableGetter_throws_for_string_enumerables_even_though_string_is_IEnumerable()
+    {
+        var member = typeof(EntityWithStringKeys).GetProperty(nameof(EntityWithStringKeys.Keys))!;
+
+        var providerType = typeof(Db2QueryProvider<EntityWithStringKeys, RowHandle>);
+        var method = providerType.GetMethod("CreateIntEnumerableGetter", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!;
+
+        var ex = Should.Throw<TargetInvocationException>(() => method.Invoke(null, [member]));
+        ex.InnerException.ShouldBeOfType<NotSupportedException>();
+    }
+
+    [Fact]
+    public void Include_throws_for_value_type_navigation()
+    {
+        var (table, _) = CreateParentTable();
+
+        var ex = Should.Throw<NotSupportedException>(() =>
+            table
+                .Include(p => p.Level)
+                .ToArray());
+
+        ex.Message.ShouldContain("reference-type");
+    }
+
+    [Fact]
+    public void Include_throws_for_non_member_expression()
+    {
+        var (children, _, _) = CreateParentChildTables();
+
+        var ex = Should.Throw<NotSupportedException>(() =>
+            children
+                .Include(c => c.ParentId == 0 ? c.Parent : null)
+                .ToArray());
+
+        ex.Message.ShouldContain("simple member access");
+    }
+
+    [Fact]
+    public void Include_throws_for_nested_member_access()
+    {
+        var (children, _, _) = CreateParentChildTables();
+
+        var ex = Should.Throw<NotSupportedException>(() =>
+            children
+                .Include(c => c.Parent!.Name)
+                .ToArray());
+
+        ex.Message.ShouldContain("direct member access");
+    }
+
+    [Fact]
+    public void Include_throws_when_navigation_member_is_not_writable()
+    {
+        var (table, _) = CreateChildWithReadOnlyParentTable();
+
+        var ex = Should.Throw<NotSupportedException>(() =>
+            table
+                .Include(c => c.Parent)
+                .ToArray());
+
+        ex.Message.ShouldContain("must be writable");
+    }
+
+    [Fact]
+    public void Include_throws_when_navigation_is_not_configured()
+    {
+        var (table, _) = CreateChildWithUnconfiguredParentTable();
+
+        var ex = Should.Throw<NotSupportedException>(() =>
+            table
+                .Include(c => c.Parent)
+                .ToArray());
+
+        ex.Message.ShouldContain("not configured");
+    }
+
+    [Fact]
+    public void Reverse_is_not_supported()
+    {
+        var (table, _) = CreateParentTable();
+
+        var ex = Should.Throw<NotSupportedException>(() =>
+            table
+                .Reverse()
+                .ToArray());
+
+        ex.Message.ShouldContain("Unsupported Queryable operator");
+        ex.Message.ShouldContain("Reverse");
+    }
+
+    [Fact]
+    public void Include_reference_navigation_materializes_related_entities_and_handles_missing_keys()
+    {
+        var (children, _, _) = CreateParentChildTables();
+
+        var result = children
+            .Include(c => c.Parent)
+            .ToArray();
+
+        result.Length.ShouldBe(3);
+
+        result[0].ParentId.ShouldBe(1);
+        result[0].Parent.ShouldNotBeNull();
+        result[0].Parent!.Id.ShouldBe(1);
+
+        result[1].ParentId.ShouldBe(2);
+        result[1].Parent.ShouldNotBeNull();
+        result[1].Parent!.Id.ShouldBe(2);
+
+        result[2].ParentId.ShouldBe(0);
+        result[2].Parent.ShouldBeNull();
+    }
+
+    [Fact]
+    public void Include_collection_navigation_dependent_foreign_key_materializes_arrays()
+    {
+        var (parents, _, _) = CreateParentChildArrayNavigationTables();
+
+        var result = parents
+            .Include(p => p.Children)
+            .ToArray();
+
+        result.Length.ShouldBe(2);
+
+        var p1 = result.Single(p => p.Id == 1);
+        p1.Children.Length.ShouldBe(2);
+        p1.Children.Select(c => c.Id).OrderBy(x => x).ShouldBe([10, 11]);
+
+        var p2 = result.Single(p => p.Id == 2);
+        p2.Children.Length.ShouldBe(1);
+        p2.Children[0].Id.ShouldBe(12);
+    }
+
+    [Fact]
+    public void Include_collection_navigation_foreign_key_array_materializes_aligned_arrays()
+    {
+        var (parents, _, _) = CreateParentWithChildIdsArrayNavigationTables();
+
+        var result = parents
+            .Include(p => p.Children)
+            .ToArray();
+
+        result.Length.ShouldBe(1);
+        var parent = result[0];
+
+        parent.ChildIds.ShouldBe([10, 999, 0, 11]);
+        parent.Children.Length.ShouldBe(4);
+        parent.Children[0].Id.ShouldBe(10);
+        parent.Children[1].ShouldBeNull();
+        parent.Children[2].ShouldBeNull();
+        parent.Children[3].Id.ShouldBe(11);
+    }
+
+    [Fact]
+    public void Select_scalar_take_can_use_pruned_projection()
+    {
+        var (table, _) = CreateParentTable();
+
+        var result = table
+            .Where(p => p.Level > 0)
+            .Select(p => p.Id)
+            .Take(2)
+            .ToArray();
+
+        result.ShouldBe([1, 2]);
+    }
+
+    [Fact]
+    public void Select_navigation_can_use_navigation_projection_prune_and_semi_join_predicate()
+    {
+        var (children, _, _) = CreateParentChildTables();
+
+        var result = children
+            .Where(c => c.Parent != null && c.Parent.Level > 3)
+            .Select(c => c.Parent!.Name)
+            .ToArray();
+
+        result.ShouldBe(["p2"]);
+    }
+
+    [Fact]
+    public void Where_predicate_that_throws_argument_null_is_treated_as_false()
+    {
+        var (table, _) = CreateParentTable();
+
+        var result = table
+            .Where(p => AlwaysThrowsArgNull(p))
+            .ToArray();
+
+        result.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void Scalar_operators_execute_via_provider()
+    {
+        var (table, _) = CreateParentTable();
+
+        table.Any().ShouldBeTrue();
+        table.Where(p => p.Level > 999).Any().ShouldBeFalse();
+        table.Count().ShouldBe(3);
+        table.All(p => p.Id > 0).ShouldBeTrue();
+    }
+
     private static (Db2Table<Parent> Table, Db2QueryProvider<Parent, RowHandle> Provider) CreateParentTable()
     {
         var builder = new Db2ModelBuilder();
@@ -189,6 +497,68 @@ public sealed class Db2QueryProviderTests
         var entityType = model.GetEntityType(typeof(Parent));
         var schema = SchemaResolver(nameof(Parent));
         var table = new Db2Table<Parent, RowHandle>(nameof(Parent), schema, entityType, provider, parentsFile);
+        return (table, provider);
+    }
+
+    private static (Db2Table<ChildWithReadOnlyParent> Table, Db2QueryProvider<ChildWithReadOnlyParent, RowHandle> Provider) CreateChildWithReadOnlyParentTable()
+    {
+        var builder = new Db2ModelBuilder();
+        builder.Entity<ChildWithReadOnlyParent>().HasKey(x => x.Id);
+
+        var model = builder.Build(SchemaResolver);
+
+        var file = InMemoryDb2File.Create(
+            tableName: nameof(ChildWithReadOnlyParent),
+            flags: Db2Flags.None,
+            denseStringTableBytes: ReadOnlyMemory<byte>.Empty,
+            rows:
+            [
+                new InMemoryDb2File.Row(10, [10, 1]),
+            ]);
+
+        (IDb2File<RowHandle> File, Db2TableSchema Schema) TableResolver(string tableName)
+            => tableName switch
+            {
+                nameof(ChildWithReadOnlyParent) => (file, SchemaResolver(nameof(ChildWithReadOnlyParent))),
+                _ => throw new InvalidOperationException($"Unknown table: {tableName}"),
+            };
+
+        var provider = new Db2QueryProvider<ChildWithReadOnlyParent, RowHandle>(file, model, TableResolver);
+
+        var entityType = model.GetEntityType(typeof(ChildWithReadOnlyParent));
+        var schema = SchemaResolver(nameof(ChildWithReadOnlyParent));
+        var table = new Db2Table<ChildWithReadOnlyParent, RowHandle>(nameof(ChildWithReadOnlyParent), schema, entityType, provider, file);
+        return (table, provider);
+    }
+
+    private static (Db2Table<ChildWithUnconfiguredParent> Table, Db2QueryProvider<ChildWithUnconfiguredParent, RowHandle> Provider) CreateChildWithUnconfiguredParentTable()
+    {
+        var builder = new Db2ModelBuilder();
+        builder.Entity<ChildWithUnconfiguredParent>().HasKey(x => x.Id);
+
+        var model = builder.Build(SchemaResolver);
+
+        var file = InMemoryDb2File.Create(
+            tableName: nameof(ChildWithUnconfiguredParent),
+            flags: Db2Flags.None,
+            denseStringTableBytes: ReadOnlyMemory<byte>.Empty,
+            rows:
+            [
+                new InMemoryDb2File.Row(10, [10, 1]),
+            ]);
+
+        (IDb2File<RowHandle> File, Db2TableSchema Schema) TableResolver(string tableName)
+            => tableName switch
+            {
+                nameof(ChildWithUnconfiguredParent) => (file, SchemaResolver(nameof(ChildWithUnconfiguredParent))),
+                _ => throw new InvalidOperationException($"Unknown table: {tableName}"),
+            };
+
+        var provider = new Db2QueryProvider<ChildWithUnconfiguredParent, RowHandle>(file, model, TableResolver);
+
+        var entityType = model.GetEntityType(typeof(ChildWithUnconfiguredParent));
+        var schema = SchemaResolver(nameof(ChildWithUnconfiguredParent));
+        var table = new Db2Table<ChildWithUnconfiguredParent, RowHandle>(nameof(ChildWithUnconfiguredParent), schema, entityType, provider, file);
         return (table, provider);
     }
 
@@ -338,9 +708,175 @@ public sealed class Db2QueryProviderTests
                     new Db2FieldSchema(nameof(ParentWithChildIds.ChildIds), Db2ValueType.Int64, ColumnStartIndex: 1, ElementCount: 3, IsVerified: true, IsVirtual: false, IsId: false, IsRelation: false, ReferencedTableName: nameof(Child)),
                 ]),
 
+            nameof(ParentWithChildrenArray) => new Db2TableSchema(
+                tableName: nameof(ParentWithChildrenArray),
+                layoutHash: 0,
+                physicalColumnCount: 1,
+                fields:
+                [
+                    new Db2FieldSchema("ID", Db2ValueType.Int64, ColumnStartIndex: 0, ElementCount: 1, IsVerified: true, IsVirtual: false, IsId: true, IsRelation: false, ReferencedTableName: null),
+                ]),
+
+            nameof(ChildForArrayNav) => new Db2TableSchema(
+                tableName: nameof(ChildForArrayNav),
+                layoutHash: 0,
+                physicalColumnCount: 2,
+                fields:
+                [
+                    new Db2FieldSchema("ID", Db2ValueType.Int64, ColumnStartIndex: 0, ElementCount: 1, IsVerified: true, IsVirtual: false, IsId: true, IsRelation: false, ReferencedTableName: null),
+                    new Db2FieldSchema(nameof(ChildForArrayNav.ParentId), Db2ValueType.Int64, ColumnStartIndex: 1, ElementCount: 1, IsVerified: true, IsVirtual: false, IsId: false, IsRelation: false, ReferencedTableName: nameof(ParentWithChildrenArray)),
+                ]),
+
+            nameof(ParentWithChildIdsArray) => new Db2TableSchema(
+                tableName: nameof(ParentWithChildIdsArray),
+                layoutHash: 0,
+                physicalColumnCount: 2,
+                fields:
+                [
+                    new Db2FieldSchema("ID", Db2ValueType.Int64, ColumnStartIndex: 0, ElementCount: 1, IsVerified: true, IsVirtual: false, IsId: true, IsRelation: false, ReferencedTableName: null),
+                    new Db2FieldSchema(nameof(ParentWithChildIdsArray.ChildIds), Db2ValueType.Int64, ColumnStartIndex: 1, ElementCount: 4, IsVerified: true, IsVirtual: false, IsId: false, IsRelation: false, ReferencedTableName: nameof(ChildForArrayNav)),
+                ]),
+
+            nameof(ChildWithReadOnlyParent) => new Db2TableSchema(
+                tableName: nameof(ChildWithReadOnlyParent),
+                layoutHash: 0,
+                physicalColumnCount: 2,
+                fields:
+                [
+                    new Db2FieldSchema("ID", Db2ValueType.Int64, ColumnStartIndex: 0, ElementCount: 1, IsVerified: true, IsVirtual: false, IsId: true, IsRelation: false, ReferencedTableName: null),
+                    new Db2FieldSchema(nameof(ChildWithReadOnlyParent.ParentId), Db2ValueType.Int64, ColumnStartIndex: 1, ElementCount: 1, IsVerified: true, IsVirtual: false, IsId: false, IsRelation: false, ReferencedTableName: null),
+                ]),
+
+            nameof(ChildWithUnconfiguredParent) => new Db2TableSchema(
+                tableName: nameof(ChildWithUnconfiguredParent),
+                layoutHash: 0,
+                physicalColumnCount: 2,
+                fields:
+                [
+                    new Db2FieldSchema("ID", Db2ValueType.Int64, ColumnStartIndex: 0, ElementCount: 1, IsVerified: true, IsVirtual: false, IsId: true, IsRelation: false, ReferencedTableName: null),
+                    new Db2FieldSchema(nameof(ChildWithUnconfiguredParent.ParentId), Db2ValueType.Int64, ColumnStartIndex: 1, ElementCount: 1, IsVerified: true, IsVirtual: false, IsId: false, IsRelation: false, ReferencedTableName: null),
+                ]),
+
             _ => throw new InvalidOperationException($"Unknown table: {tableName}"),
         };
     }
+
+    private static (Db2Table<ParentWithChildrenArray> Parents, Db2Table<ChildForArrayNav> Children, Db2Model Model) CreateParentChildArrayNavigationTables()
+    {
+        var builder = new Db2ModelBuilder();
+
+        builder.Entity<ChildForArrayNav>()
+            .HasOne(x => x.Parent)
+            .WithForeignKey(x => x.ParentId);
+
+        builder.Entity<ParentWithChildrenArray>()
+            .HasMany(x => x.Children)
+            .WithForeignKey(x => x.ParentId);
+
+        builder.Entity<ParentWithChildrenArray>().HasKey(x => x.Id);
+        builder.Entity<ChildForArrayNav>().HasKey(x => x.Id);
+
+        var model = builder.Build(SchemaResolver);
+
+        var parentsFile = InMemoryDb2File.Create(
+            tableName: nameof(ParentWithChildrenArray),
+            flags: Db2Flags.None,
+            denseStringTableBytes: ReadOnlyMemory<byte>.Empty,
+            rows:
+            [
+                new InMemoryDb2File.Row(1, [1]),
+                new InMemoryDb2File.Row(2, [2]),
+            ]);
+
+        var childrenFile = InMemoryDb2File.Create(
+            tableName: nameof(ChildForArrayNav),
+            flags: Db2Flags.None,
+            denseStringTableBytes: ReadOnlyMemory<byte>.Empty,
+            rows:
+            [
+                new InMemoryDb2File.Row(10, [10, 1]),
+                new InMemoryDb2File.Row(11, [11, 1]),
+                new InMemoryDb2File.Row(12, [12, 2]),
+                new InMemoryDb2File.Row(13, [13, 0]),
+            ]);
+
+        (IDb2File<RowHandle> File, Db2TableSchema Schema) TableResolver(string tableName)
+            => tableName switch
+            {
+                nameof(ParentWithChildrenArray) => (parentsFile, SchemaResolver(nameof(ParentWithChildrenArray))),
+                nameof(ChildForArrayNav) => (childrenFile, SchemaResolver(nameof(ChildForArrayNav))),
+                _ => throw new InvalidOperationException($"Unknown table: {tableName}"),
+            };
+
+        var parentsProvider = new Db2QueryProvider<ParentWithChildrenArray, RowHandle>(parentsFile, model, TableResolver);
+        var childrenProvider = new Db2QueryProvider<ChildForArrayNav, RowHandle>(childrenFile, model, TableResolver);
+
+        var parentEntityType = model.GetEntityType(typeof(ParentWithChildrenArray));
+        var childEntityType = model.GetEntityType(typeof(ChildForArrayNav));
+
+        var parents = new Db2Table<ParentWithChildrenArray, RowHandle>(nameof(ParentWithChildrenArray), SchemaResolver(nameof(ParentWithChildrenArray)), parentEntityType, parentsProvider, parentsFile);
+        var children = new Db2Table<ChildForArrayNav, RowHandle>(nameof(ChildForArrayNav), SchemaResolver(nameof(ChildForArrayNav)), childEntityType, childrenProvider, childrenFile);
+
+        return (parents, children, model);
+    }
+
+    private static (Db2Table<ParentWithChildIdsArray> Parents, Db2Table<ChildForArrayNav> Children, Db2Model Model) CreateParentWithChildIdsArrayNavigationTables()
+    {
+        var builder = new Db2ModelBuilder();
+
+        builder.Entity<ParentWithChildIdsArray>()
+            .HasMany(x => x.Children)
+            .WithForeignKeyArray(x => x.ChildIds);
+
+        builder.Entity<ParentWithChildIdsArray>().HasKey(x => x.Id);
+        builder.Entity<ChildForArrayNav>().HasKey(x => x.Id);
+
+        var model = builder.Build(SchemaResolver);
+
+        var parentFile = InMemoryDb2File.Create(
+            tableName: nameof(ParentWithChildIdsArray),
+            flags: Db2Flags.None,
+            denseStringTableBytes: ReadOnlyMemory<byte>.Empty,
+            rows:
+            [
+                new InMemoryDb2File.Row(1000, [1000, new[] { 10, 999, 0, 11 }]),
+            ]);
+
+        var childFile = InMemoryDb2File.Create(
+            tableName: nameof(ChildForArrayNav),
+            flags: Db2Flags.None,
+            denseStringTableBytes: ReadOnlyMemory<byte>.Empty,
+            rows:
+            [
+                new InMemoryDb2File.Row(10, [10, 0]),
+                new InMemoryDb2File.Row(11, [11, 0]),
+            ]);
+
+        (IDb2File<RowHandle> File, Db2TableSchema Schema) TableResolver(string tableName)
+            => tableName switch
+            {
+                nameof(ParentWithChildIdsArray) => (parentFile, SchemaResolver(nameof(ParentWithChildIdsArray))),
+                nameof(ChildForArrayNav) => (childFile, SchemaResolver(nameof(ChildForArrayNav))),
+                _ => throw new InvalidOperationException($"Unknown table: {tableName}"),
+            };
+
+        var parentProvider = new Db2QueryProvider<ParentWithChildIdsArray, RowHandle>(parentFile, model, TableResolver);
+        var childProvider = new Db2QueryProvider<ChildForArrayNav, RowHandle>(childFile, model, TableResolver);
+
+        var parentEntityType = model.GetEntityType(typeof(ParentWithChildIdsArray));
+        var childEntityType = model.GetEntityType(typeof(ChildForArrayNav));
+
+        var parents = new Db2Table<ParentWithChildIdsArray, RowHandle>(nameof(ParentWithChildIdsArray), SchemaResolver(nameof(ParentWithChildIdsArray)), parentEntityType, parentProvider, parentFile);
+        var children = new Db2Table<ChildForArrayNav, RowHandle>(nameof(ChildForArrayNav), SchemaResolver(nameof(ChildForArrayNav)), childEntityType, childProvider, childFile);
+
+        return (parents, children, model);
+    }
+
+    private static bool AlwaysThrowsArgNull(Parent _)
+        => throw new ArgumentNullException("boom");
+
+    private static bool AlwaysThrowsNullRef(Parent _)
+        => throw new NullReferenceException("boom");
 
     private sealed class Parent
     {
@@ -364,6 +900,24 @@ public sealed class Db2QueryProviderTests
         public Parent? Parent { get; set; }
     }
 
+    private sealed class ChildWithReadOnlyParent
+    {
+        public int Id { get; set; }
+
+        public int ParentId { get; set; }
+
+        public Parent? Parent { get; }
+    }
+
+    private sealed class ChildWithUnconfiguredParent
+    {
+        public int Id { get; set; }
+
+        public int ParentId { get; set; }
+
+        public Parent? Parent { get; set; }
+    }
+
     private sealed class ParentWithChildIds
     {
         public int Id { get; set; }
@@ -371,6 +925,31 @@ public sealed class Db2QueryProviderTests
         public int[] ChildIds { get; set; } = [];
 
         public ICollection<Child> Children { get; set; } = [];
+    }
+
+    private sealed class ParentWithChildrenArray
+    {
+        public int Id { get; set; }
+
+        public ChildForArrayNav[] Children { get; set; } = [];
+    }
+
+    private sealed class ParentWithChildIdsArray
+    {
+        public int Id { get; set; }
+
+        public int[] ChildIds { get; set; } = [];
+
+        public ChildForArrayNav[] Children { get; set; } = [];
+    }
+
+    private sealed class ChildForArrayNav
+    {
+        public int Id { get; set; }
+
+        public int ParentId { get; set; }
+
+        public ParentWithChildrenArray? Parent { get; set; }
     }
 
     private sealed class InMemoryDb2File(string tableName, Db2Flags flags, ReadOnlyMemory<byte> denseStringTableBytes, IReadOnlyDictionary<int, object[]> valuesByRowId)
@@ -434,5 +1013,21 @@ public sealed class Db2QueryProviderTests
         }
 
         public readonly record struct Row(int Id, object[] Values);
+    }
+
+    private enum TestKey
+    {
+        Ten = 10,
+        Eleven = 11,
+    }
+
+    private sealed class EntityWithNullableEnumKeys
+    {
+        public TestKey?[] Keys { get; set; } = [];
+    }
+
+    private sealed class EntityWithStringKeys
+    {
+        public string Keys { get; set; } = string.Empty;
     }
 }

@@ -243,9 +243,6 @@ public sealed class Db2ModelBuilder
                 if (p.GetCustomAttribute<ForeignKeyAttribute>(inherit: false) is not { } fkAttr)
                     continue;
 
-                if (string.IsNullOrWhiteSpace(fkAttr.Name))
-                    throw new NotSupportedException($"[ForeignKey] on '{clrType.FullName}.{p.Name}' must specify a property name.");
-
                 var foreignKeyName = ParseSingleForeignKeyName(fkAttr.Name, clrType, p);
                 var overridesSchema = p.GetCustomAttribute<OverridesSchemaAttribute>(inherit: false) is not null;
 

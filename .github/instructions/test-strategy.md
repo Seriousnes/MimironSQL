@@ -54,34 +54,7 @@ Get-Content "$merged\Summary.txt" -Raw
 
 ### Ranking missed coverage (reportcoverage.cs)
 
-This repo includes a small helper, [reportcoverage.cs](../../reportcoverage.cs), to quickly identify which classes/files have the most missed lines in a merged Cobertura report.
-
-Run from the repo root (recommended), after generating a merged `Cobertura.xml`:
-
-```powershell
-dotnet run reportcoverage.cs -- --cobertura .\coverage\history\<timestamp>\merged\Cobertura.xml --top 25 --files
-```
-
-Usage:
-
-```text
-dotnet run reportcoverage.cs -- [--cobertura <path>] [--filter <substring>] [--top <N>] [--files]
-```
-
-Options:
-
-- `--cobertura <path>`: Path to a merged Cobertura XML file.
-    - Default: the latest `coverage/history/*/merged/Cobertura.xml` (chosen by directory name, descending).
-- `--filter <substring>`: Only include classes whose class name or source filename contains the substring (case-insensitive).
-- `--top <N>`: Show only the top N results.
-    - Default: `30` (any `<= 0` resets to `30`).
-- `--files`: Also print an aggregate “top files by missed lines” table (grouped by Cobertura `filename`).
-- `--help` / `-h`: Print usage.
-
-Output:
-
-- “Top classes by missed lines”: sorted by missed lines (descending), then coverage % (ascending).
-- If `--files` is set: “Top files by missed lines”: aggregated per file, sorted by missed lines (descending).
+`reportcoverage.cs` usage is documented in [tools/coverage/README.md](../../tools/coverage/README.md).
 
 ### One-time cleanup (if stray artifacts exist)
 

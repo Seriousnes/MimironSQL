@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Diagnostics;
 using System.Xml.Linq;
 
 static string? TryGetArg(string[] args, string name)
@@ -14,6 +15,20 @@ static string? TryGetArg(string[] args, string name)
 
 static bool HasFlag(string[] args, string name)
     => args.Any(a => string.Equals(a, name, StringComparison.OrdinalIgnoreCase));
+
+static string FindRepoRoot(string startDir)
+{
+    var current = new DirectoryInfo(Path.GetFullPath(startDir));
+    while (current is not null)
+    {
+        if (File.Exists(Path.Combine(current.FullName, "MimironSQL.slnx")))
+            return current.FullName;
+
+        current = current.Parent;
+    }
+
+    return Path.GetFullPath(startDir);
+}
 
 static string? FindLatestCobertura(string repoRoot)
 {
@@ -35,18 +50,42 @@ static string? FindLatestCobertura(string repoRoot)
     return candidates.FirstOrDefault()?.Cobertura;
 }
 
+static string? FindLatestSummary(string repoRoot)
+{
+    var history = Path.Combine(repoRoot, "coverage", "history");
+    if (!Directory.Exists(history))
+        return null;
+
+    var candidates = Directory.EnumerateDirectories(history)
+        .Select(d => new
+        {
+            Name = Path.GetFileName(d),
+            Summary = Path.Combine(d, "merged", "Summary.txt"),
+        })
+        .Where(x => File.Exists(x.Summary))
+        .OrderByDescending(x => x.Name, StringComparer.Ordinal)
+        .ToArray();
+
+    return candidates.FirstOrDefault()?.Summary;
+}
+
 static int ParseInt(string? value)
     => int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var v) ? v : 0;
 
 static void PrintUsage()
 {
     Console.WriteLine("Usage:");
-    Console.WriteLine("  dotnet run reportcoverage.cs -- [--cobertura <path>] [--filter <substring>] [--top <N>] [--files] [--percent]");
-    Console.WriteLine("  dotnet run reportcoverage.cs -- [--cobertura <path>] --class <substring> [--methods] [--missed-lines] [--top <N>]");
+    Console.WriteLine("  dotnet run .\\tools\\coverage\\reportcoverage.cs -- [--skip-tests] [--no-build] [--filter <substring>] [--top <N>] [--files] [--percent]");
+    Console.WriteLine("  dotnet run .\\tools\\coverage\\reportcoverage.cs -- [--skip-tests] [--no-build] --class <substring> [--methods] [--missed-lines] [--top <N>]");
     Console.WriteLine();
     Console.WriteLine("Defaults:");
-    Console.WriteLine("  --cobertura: latest coverage/history/*/merged/Cobertura.xml");
+    Console.WriteLine("  default mode runs: dotnet test + reportgenerator + analysis");
     Console.WriteLine("  --top: 30");
+    Console.WriteLine();
+    Console.WriteLine("Modes:");
+    Console.WriteLine("  (default)           run dotnet test + reportgenerator, then analyze merged Cobertura.xml");
+    Console.WriteLine("  --skip-tests         analyze the latest coverage/history/*/merged/Cobertura.xml (no test run, no merge)");
+    Console.WriteLine("  --no-build           pass --no-build through to dotnet test (default mode only)");
     Console.WriteLine();
     Console.WriteLine("Class drill-down:");
     Console.WriteLine("  --class <substring>: select a single Cobertura <class> by name substring (case-insensitive)");
@@ -56,6 +95,40 @@ static void PrintUsage()
     Console.WriteLine("Sorting:");
     Console.WriteLine("  default: by missed lines (descending)");
     Console.WriteLine("  --percent: by coverage percentage (ascending)");
+}
+
+static int RunProcess(string fileName, string arguments, string workingDirectory)
+{
+    using var p = new Process();
+    p.StartInfo = new ProcessStartInfo
+    {
+        FileName = fileName,
+        Arguments = arguments,
+        WorkingDirectory = workingDirectory,
+        UseShellExecute = false,
+        RedirectStandardOutput = true,
+        RedirectStandardError = true,
+    };
+
+    p.OutputDataReceived += (_, e) =>
+    {
+        if (e.Data is not null)
+            Console.WriteLine(e.Data);
+    };
+
+    p.ErrorDataReceived += (_, e) =>
+    {
+        if (e.Data is not null)
+            Console.Error.WriteLine(e.Data);
+    };
+
+    if (!p.Start())
+        return 1;
+
+    p.BeginOutputReadLine();
+    p.BeginErrorReadLine();
+    p.WaitForExit();
+    return p.ExitCode;
 }
 
 static string FormatPercent(double ratio)
@@ -110,14 +183,7 @@ if (HasFlag(cliArgs, "--help") || HasFlag(cliArgs, "-h"))
     return;
 }
 
-var repoRoot = Directory.GetCurrentDirectory();
-var coberturaPath = TryGetArg(cliArgs, "--cobertura") ?? FindLatestCobertura(repoRoot);
-if (coberturaPath is null)
-{
-    Console.Error.WriteLine("No Cobertura.xml found. Pass --cobertura <path> or run coverage first.");
-    Environment.ExitCode = 1;
-    return;
-}
+var repoRoot = FindRepoRoot(Directory.GetCurrentDirectory());
 
 var filter = TryGetArg(cliArgs, "--filter");
 var classFilter = TryGetArg(cliArgs, "--class");
@@ -126,10 +192,83 @@ var top = int.TryParse(topText, NumberStyles.Integer, CultureInfo.InvariantCultu
 if (top <= 0)
     top = 30;
 
+var skipTests = HasFlag(cliArgs, "--skip-tests");
+var noBuild = HasFlag(cliArgs, "--no-build");
 var showFiles = HasFlag(cliArgs, "--files");
 var sortByPercent = HasFlag(cliArgs, "--percent");
 var showMethods = HasFlag(cliArgs, "--methods");
 var showMissedLines = HasFlag(cliArgs, "--missed-lines");
+
+string? coberturaPath;
+if (skipTests)
+{
+    coberturaPath = FindLatestCobertura(repoRoot);
+    if (coberturaPath is null)
+    {
+        Console.Error.WriteLine("No Cobertura.xml found under coverage/history. Run without --skip-tests first.");
+        Environment.ExitCode = 1;
+        return;
+    }
+
+    var summaryPath = FindLatestSummary(repoRoot);
+    if (summaryPath is not null)
+    {
+        Console.WriteLine($"Summary:   {summaryPath}");
+        Console.WriteLine();
+        Console.WriteLine(File.ReadAllText(summaryPath));
+    }
+}
+else
+{
+    var ts = DateTime.Now.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture);
+    var runDir = Path.Combine(repoRoot, "coverage", "history", ts);
+    var resultsDir = Path.Combine(runDir, "testresults");
+    var mergedDir = Path.Combine(runDir, "merged");
+    Directory.CreateDirectory(resultsDir);
+    Directory.CreateDirectory(mergedDir);
+
+    var slnxPath = Path.Combine(repoRoot, "MimironSQL.slnx");
+    var runSettings = Path.Combine(repoRoot, "tests", "coverlet.runsettings");
+
+    Console.WriteLine($"Repo root: {repoRoot}");
+    Console.WriteLine($"Run dir:   {runDir}");
+    Console.WriteLine();
+
+    var noBuildArg = noBuild ? " --no-build" : string.Empty;
+    var dotnetArgs = $"test .\\MimironSQL.slnx --configuration Release --collect:\"XPlat Code Coverage\" --settings .\\tests\\coverlet.runsettings --results-directory \"{resultsDir}\"{noBuildArg}";
+    Console.WriteLine($"> dotnet {dotnetArgs}");
+    var testExit = RunProcess("dotnet", dotnetArgs, workingDirectory: repoRoot);
+    if (testExit != 0)
+    {
+        Environment.ExitCode = testExit;
+        return;
+    }
+
+    var reportArgs = $"-reports:\"{resultsDir}\\**\\coverage.cobertura.xml\" -targetdir:\"{mergedDir}\" -reporttypes:\"Cobertura;TextSummary\"";
+    Console.WriteLine();
+    Console.WriteLine($"> reportgenerator {reportArgs}");
+    var reportExit = RunProcess("reportgenerator", reportArgs, workingDirectory: repoRoot);
+    if (reportExit != 0)
+    {
+        Environment.ExitCode = reportExit;
+        return;
+    }
+
+    var summary = Path.Combine(mergedDir, "Summary.txt");
+    if (File.Exists(summary))
+    {
+        Console.WriteLine();
+        Console.WriteLine(File.ReadAllText(summary));
+    }
+
+    coberturaPath = Path.Combine(mergedDir, "Cobertura.xml");
+    if (!File.Exists(coberturaPath))
+    {
+        Console.Error.WriteLine($"Cobertura.xml not found at '{coberturaPath}'.");
+        Environment.ExitCode = 1;
+        return;
+    }
+}
 
 Console.WriteLine($"Cobertura: {coberturaPath}");
 if (filter is not null)
@@ -207,24 +346,35 @@ if (classFilter is not null)
 
     if (matches.Length != 1)
     {
-        var simpleNameMatches = matches
-            .Where(m => string.Equals(GetSimpleClassName(m.Name), classFilter, StringComparison.OrdinalIgnoreCase))
+        var exactNameMatches = matches
+            .Where(m => string.Equals(m.Name, classFilter, StringComparison.OrdinalIgnoreCase))
             .ToArray();
 
-        if (simpleNameMatches.Length == 1)
+        if (exactNameMatches.Length == 1)
         {
-            matches = simpleNameMatches;
+            matches = exactNameMatches;
         }
         else
         {
-            Console.Error.WriteLine($"--class '{classFilter}' matched multiple classes. Refine the substring.");
-            Console.Error.WriteLine();
-            Console.Error.WriteLine($"Top {Math.Min(top, matches.Length)} matches by missed lines:");
-            foreach (var m in matches.Take(top))
-                Console.Error.WriteLine($"{m.Missed,5} missed / {m.Total,5} lines ({FormatPercent(m.Coverage)}) | {m.Name} | {m.File}");
+            var simpleNameMatches = matches
+                .Where(m => string.Equals(GetSimpleClassName(m.Name), classFilter, StringComparison.OrdinalIgnoreCase))
+                .ToArray();
 
-            Environment.ExitCode = 2;
-            return;
+            if (simpleNameMatches.Length == 1)
+            {
+                matches = simpleNameMatches;
+            }
+            else
+            {
+                Console.Error.WriteLine($"--class '{classFilter}' matched multiple classes. Refine the substring.");
+                Console.Error.WriteLine();
+                Console.Error.WriteLine($"Top {Math.Min(top, matches.Length)} matches by missed lines:");
+                foreach (var m in matches.Take(top))
+                    Console.Error.WriteLine($"{m.Missed,5} missed / {m.Total,5} lines ({FormatPercent(m.Coverage)}) | {m.Name} | {m.File}");
+
+                Environment.ExitCode = 2;
+                return;
+            }
         }
     }
 

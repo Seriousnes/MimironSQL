@@ -108,6 +108,49 @@ public sealed class Db2NavigationQueryCompilerTests
     }
 
     [Fact]
+    public void SemiJoin_scalar_predicate_and_null_check_intersects_target_ids()
+    {
+        var model = BuildParentChildModel();
+
+        var parents = InMemoryDb2File.Create(
+            tableName: nameof(Parent),
+            flags: Db2Flags.None,
+            denseStringTableBytes: ReadOnlyMemory<byte>.Empty,
+            rows:
+            [
+                new InMemoryDb2File.Row(1, [1, 1, "abc"]),
+                new InMemoryDb2File.Row(2, [2, 5, "zzz"]),
+            ]);
+
+        var children = InMemoryDb2File.Create(
+            tableName: nameof(Child),
+            flags: Db2Flags.None,
+            denseStringTableBytes: ReadOnlyMemory<byte>.Empty,
+            rows:
+            [
+                new InMemoryDb2File.Row(100, [100, 0, "c0"]),
+                new InMemoryDb2File.Row(101, [101, 2, "c2"]),
+                new InMemoryDb2File.Row(102, [102, 12345, "c-missing"]),
+            ]);
+
+        (IDb2File<RowHandle> File, Db2TableSchema Schema) TableResolver(string tableName)
+            => tableName switch
+            {
+                nameof(Parent) => (parents, SchemaResolver(tableName)),
+                nameof(Child) => (children, SchemaResolver(tableName)),
+                _ => throw new InvalidOperationException($"Unknown table: {tableName}"),
+            };
+
+        Expression<Func<Child, bool>> predicate = c => c.Parent!.Level > 3 && c.Parent != null;
+
+        Db2NavigationQueryCompiler.TryCompileSemiJoinPredicate(model, children, TableResolver, predicate, out var rowPredicate)
+            .ShouldBeTrue();
+
+        children.EnumerateRows().Where(rowPredicate).Select(r => r.RowId).ToArray()
+            .ShouldBe([101]);
+    }
+
+    [Fact]
     public void SemiJoin_string_predicate_uses_dense_string_index_provider_when_available()
     {
         var model = BuildParentChildModel();
@@ -295,6 +338,46 @@ public sealed class Db2NavigationQueryCompilerTests
     }
 
     [Fact]
+    public void SemiJoin_scalar_and_string_predicates_on_same_navigation_intersect_target_ids()
+    {
+        var model = BuildParentChildModel();
+
+        var parents = InMemoryDb2File.Create(
+            tableName: nameof(Parent),
+            flags: Db2Flags.None,
+            denseStringTableBytes: ReadOnlyMemory<byte>.Empty,
+            rows:
+            [
+                new InMemoryDb2File.Row(101, [101, 5, "zzz"]),
+            ]);
+
+        var children = InMemoryDb2File.Create(
+            tableName: nameof(Child),
+            flags: Db2Flags.None,
+            denseStringTableBytes: ReadOnlyMemory<byte>.Empty,
+            rows:
+            [
+                new InMemoryDb2File.Row(101, [101, 101, "c2"]),
+            ]);
+
+        (IDb2File<RowHandle> File, Db2TableSchema Schema) TableResolver(string tableName)
+            => tableName switch
+            {
+                nameof(Parent) => (parents, SchemaResolver(tableName)),
+                nameof(Child) => (children, SchemaResolver(tableName)),
+                _ => throw new InvalidOperationException($"Unknown table: {tableName}"),
+            };
+
+        Expression<Func<Child, bool>> predicate = c => c.Parent!.Level == 5 && c.Parent.Name == "zzz";
+
+        Db2NavigationQueryCompiler.TryCompileSemiJoinPredicate(model, children, TableResolver, predicate, out var rowPredicate)
+            .ShouldBeTrue();
+
+        children.EnumerateRows().Where(rowPredicate).Select(r => r.RowId).ToArray()
+            .ShouldBe([101]);
+    }
+
+    [Fact]
     public void SemiJoin_scalar_and_row_predicates_combine_with_andalso()
     {
         var model = BuildParentChildModel();
@@ -390,6 +473,112 @@ public sealed class Db2NavigationQueryCompilerTests
     }
 
     [Fact]
+    public void SemiJoin_cross_navigation_string_and_scalar_predicates_both_apply()
+    {
+        var model = BuildChildWithTwoReferencesModel();
+
+        var parents = InMemoryDb2File.Create(
+            tableName: nameof(Parent),
+            flags: Db2Flags.None,
+            denseStringTableBytes: ReadOnlyMemory<byte>.Empty,
+            rows:
+            [
+                new InMemoryDb2File.Row(1, [1, 1, "p1"]),
+                new InMemoryDb2File.Row(2, [2, 5, "p2"]),
+            ]);
+
+        var categories = InMemoryDb2File.Create(
+            tableName: nameof(Category),
+            flags: Db2Flags.None,
+            denseStringTableBytes: ReadOnlyMemory<byte>.Empty,
+            rows:
+            [
+                new InMemoryDb2File.Row(10, [10, "alpha"]),
+                new InMemoryDb2File.Row(20, [20, "bravo"]),
+            ]);
+
+        var children = InMemoryDb2File.Create(
+            tableName: nameof(ChildWithTwoRefs),
+            flags: Db2Flags.None,
+            denseStringTableBytes: ReadOnlyMemory<byte>.Empty,
+            rows:
+            [
+                new InMemoryDb2File.Row(100, [100, 1, 10, "c1"]),
+                new InMemoryDb2File.Row(101, [101, 2, 20, "c2"]),
+            ]);
+
+        (IDb2File<RowHandle> File, Db2TableSchema Schema) TableResolver(string tableName)
+            => tableName switch
+            {
+                nameof(Parent) => (parents, SchemaResolver2(tableName)),
+                nameof(Category) => (categories, SchemaResolver2(tableName)),
+                nameof(ChildWithTwoRefs) => (children, SchemaResolver2(tableName)),
+                _ => throw new InvalidOperationException($"Unknown table: {tableName}"),
+            };
+
+        Expression<Func<ChildWithTwoRefs, bool>> predicate = c => c.Category!.Name == "bravo" && c.Parent!.Level == 5;
+
+        Db2NavigationQueryCompiler.TryCompileSemiJoinPredicate(model, children, TableResolver, predicate, out var rowPredicate)
+            .ShouldBeTrue();
+
+        children.EnumerateRows().Where(rowPredicate).Select(r => r.RowId).ToArray()
+            .ShouldBe([101]);
+    }
+
+    [Fact]
+    public void SemiJoin_cross_navigation_two_scalar_predicates_both_apply()
+    {
+        var model = BuildChildWithTwoReferencesModel();
+
+        var parents = InMemoryDb2File.Create(
+            tableName: nameof(Parent),
+            flags: Db2Flags.None,
+            denseStringTableBytes: ReadOnlyMemory<byte>.Empty,
+            rows:
+            [
+                new InMemoryDb2File.Row(1, [1, 1, "p1"]),
+                new InMemoryDb2File.Row(2, [2, 5, "p2"]),
+            ]);
+
+        var categories = InMemoryDb2File.Create(
+            tableName: nameof(Category),
+            flags: Db2Flags.None,
+            denseStringTableBytes: ReadOnlyMemory<byte>.Empty,
+            rows:
+            [
+                new InMemoryDb2File.Row(10, [10, "alpha"]),
+                new InMemoryDb2File.Row(20, [20, "bravo"]),
+            ]);
+
+        var children = InMemoryDb2File.Create(
+            tableName: nameof(ChildWithTwoRefs),
+            flags: Db2Flags.None,
+            denseStringTableBytes: ReadOnlyMemory<byte>.Empty,
+            rows:
+            [
+                new InMemoryDb2File.Row(100, [100, 1, 10, "c1"]),
+                new InMemoryDb2File.Row(101, [101, 2, 20, "c2"]),
+            ]);
+
+        (IDb2File<RowHandle> File, Db2TableSchema Schema) TableResolver(string tableName)
+            => tableName switch
+            {
+                nameof(Parent) => (parents, SchemaResolver2(tableName)),
+                nameof(Category) => (categories, SchemaResolver2(tableName)),
+                nameof(ChildWithTwoRefs) => (children, SchemaResolver2(tableName)),
+                _ => throw new InvalidOperationException($"Unknown table: {tableName}"),
+            };
+
+        Expression<Func<ChildWithTwoRefs, bool>> predicate = c => c.Parent!.Level == 5 && c.Category!.Id == 20;
+
+        Db2NavigationQueryCompiler.TryCompileSemiJoinPredicate(model, children, TableResolver, predicate, out var rowPredicate)
+            .ShouldBeTrue();
+
+        children.EnumerateRows().Where(rowPredicate).Select(r => r.RowId).ToArray()
+            .ShouldBe([101]);
+    }
+
+    [Fact]
     public void SemiJoin_two_collection_any_predicates_on_different_navigations_both_apply()
     {
         var model = BuildParentWithTwoCollectionsModel();
@@ -444,6 +633,751 @@ public sealed class Db2NavigationQueryCompilerTests
             .ShouldBe([1]);
     }
 
+    [Fact]
+    public void SemiJoin_null_check_is_null_matches_zero_or_missing_foreign_keys()
+    {
+        var model = BuildParentChildModel();
+
+        var parents = InMemoryDb2File.Create(
+            tableName: nameof(Parent),
+            flags: Db2Flags.None,
+            denseStringTableBytes: ReadOnlyMemory<byte>.Empty,
+            rows:
+            [
+                new InMemoryDb2File.Row(1, [1, 1, "p1"]),
+                new InMemoryDb2File.Row(2, [2, 5, "p2"]),
+            ]);
+
+        var children = InMemoryDb2File.Create(
+            tableName: nameof(Child),
+            flags: Db2Flags.None,
+            denseStringTableBytes: ReadOnlyMemory<byte>.Empty,
+            rows:
+            [
+                new InMemoryDb2File.Row(100, [100, 0, "c0"]),
+                new InMemoryDb2File.Row(101, [101, 2, "c2"]),
+                new InMemoryDb2File.Row(102, [102, 12345, "c-missing"]),
+            ]);
+
+        (IDb2File<RowHandle> File, Db2TableSchema Schema) TableResolver(string tableName)
+            => tableName switch
+            {
+                nameof(Parent) => (parents, SchemaResolver(tableName)),
+                nameof(Child) => (children, SchemaResolver(tableName)),
+                _ => throw new InvalidOperationException($"Unknown table: {tableName}"),
+            };
+
+        Expression<Func<Child, bool>> predicate = c => c.Parent == null;
+
+        Db2NavigationQueryCompiler.TryCompileSemiJoinPredicate(model, children, TableResolver, predicate, out var rowPredicate)
+            .ShouldBeTrue();
+
+        children.EnumerateRows().Where(rowPredicate).Select(r => r.RowId).ToArray()
+            .ShouldBe([100, 102]);
+    }
+
+    [Fact]
+    public void SemiJoin_null_check_is_not_null_matches_existing_foreign_keys()
+    {
+        var model = BuildParentChildModel();
+
+        var parents = InMemoryDb2File.Create(
+            tableName: nameof(Parent),
+            flags: Db2Flags.None,
+            denseStringTableBytes: ReadOnlyMemory<byte>.Empty,
+            rows:
+            [
+                new InMemoryDb2File.Row(1, [1, 1, "p1"]),
+                new InMemoryDb2File.Row(2, [2, 5, "p2"]),
+            ]);
+
+        var children = InMemoryDb2File.Create(
+            tableName: nameof(Child),
+            flags: Db2Flags.None,
+            denseStringTableBytes: ReadOnlyMemory<byte>.Empty,
+            rows:
+            [
+                new InMemoryDb2File.Row(100, [100, 0, "c0"]),
+                new InMemoryDb2File.Row(101, [101, 2, "c2"]),
+                new InMemoryDb2File.Row(102, [102, 12345, "c-missing"]),
+            ]);
+
+        (IDb2File<RowHandle> File, Db2TableSchema Schema) TableResolver(string tableName)
+            => tableName switch
+            {
+                nameof(Parent) => (parents, SchemaResolver(tableName)),
+                nameof(Child) => (children, SchemaResolver(tableName)),
+                _ => throw new InvalidOperationException($"Unknown table: {tableName}"),
+            };
+
+        Expression<Func<Child, bool>> predicate = c => c.Parent != null;
+
+        Db2NavigationQueryCompiler.TryCompileSemiJoinPredicate(model, children, TableResolver, predicate, out var rowPredicate)
+            .ShouldBeTrue();
+
+        children.EnumerateRows().Where(rowPredicate).Select(r => r.RowId).ToArray()
+            .ShouldBe([101]);
+    }
+
+    [Fact]
+    public void SemiJoin_string_predicate_startswith_uses_dense_string_index_provider_when_available()
+    {
+        var model = BuildParentChildModel();
+
+        var dense = BuildDenseStringTable(["alpha", "bravo"]);
+
+        var parents = InMemoryDb2File.Create(
+            tableName: nameof(Parent),
+            flags: Db2Flags.None,
+            denseStringTableBytes: dense.Bytes,
+            rows:
+            [
+                new InMemoryDb2File.Row(1, [1, 1, "alpha"]),
+                new InMemoryDb2File.Row(2, [2, 5, "bravo"]),
+            ],
+            denseStringIndexProvider: dense.OffsetByString);
+
+        var children = InMemoryDb2File.Create(
+            tableName: nameof(Child),
+            flags: Db2Flags.None,
+            denseStringTableBytes: ReadOnlyMemory<byte>.Empty,
+            rows:
+            [
+                new InMemoryDb2File.Row(100, [100, 1, "c1"]),
+                new InMemoryDb2File.Row(101, [101, 2, "c2"]),
+            ]);
+
+        (IDb2File<RowHandle> File, Db2TableSchema Schema) TableResolver(string tableName)
+            => tableName switch
+            {
+                nameof(Parent) => (parents, SchemaResolver(tableName)),
+                nameof(Child) => (children, SchemaResolver(tableName)),
+                _ => throw new InvalidOperationException($"Unknown table: {tableName}"),
+            };
+
+        Expression<Func<Child, bool>> predicate = c => c.Parent!.Name.StartsWith("al");
+
+        Db2NavigationQueryCompiler.TryCompileSemiJoinPredicate(model, children, TableResolver, predicate, out var rowPredicate)
+            .ShouldBeTrue();
+
+        children.EnumerateRows().Where(rowPredicate).Select(r => r.RowId).ToArray()
+            .ShouldBe([100]);
+    }
+
+    [Fact]
+    public void SemiJoin_string_predicate_endswith_falls_back_to_string_ops_when_sparse()
+    {
+        var model = BuildParentChildModel();
+
+        var dense = BuildDenseStringTable(["alpha", "bravo"]);
+
+        var parents = InMemoryDb2File.Create(
+            tableName: nameof(Parent),
+            flags: Db2Flags.Sparse,
+            denseStringTableBytes: dense.Bytes,
+            rows:
+            [
+                new InMemoryDb2File.Row(1, [1, 1, "alpha"]),
+                new InMemoryDb2File.Row(2, [2, 5, "bravo"]),
+            ],
+            denseStringIndexProvider: dense.OffsetByString);
+
+        var children = InMemoryDb2File.Create(
+            tableName: nameof(Child),
+            flags: Db2Flags.None,
+            denseStringTableBytes: ReadOnlyMemory<byte>.Empty,
+            rows:
+            [
+                new InMemoryDb2File.Row(100, [100, 1, "c1"]),
+                new InMemoryDb2File.Row(101, [101, 2, "c2"]),
+            ]);
+
+        (IDb2File<RowHandle> File, Db2TableSchema Schema) TableResolver(string tableName)
+            => tableName switch
+            {
+                nameof(Parent) => (parents, SchemaResolver(tableName)),
+                nameof(Child) => (children, SchemaResolver(tableName)),
+                _ => throw new InvalidOperationException($"Unknown table: {tableName}"),
+            };
+
+        Expression<Func<Child, bool>> predicate = c => c.Parent!.Name.EndsWith("vo");
+
+        Db2NavigationQueryCompiler.TryCompileSemiJoinPredicate(model, children, TableResolver, predicate, out var rowPredicate)
+            .ShouldBeTrue();
+
+        children.EnumerateRows().Where(rowPredicate).Select(r => r.RowId).ToArray()
+            .ShouldBe([101]);
+    }
+
+    [Fact]
+    public void SemiJoin_scalar_predicate_supports_not_equal_and_less_than_or_equal()
+    {
+        var model = BuildParentChildModel();
+
+        var parents = InMemoryDb2File.Create(
+            tableName: nameof(Parent),
+            flags: Db2Flags.None,
+            denseStringTableBytes: ReadOnlyMemory<byte>.Empty,
+            rows:
+            [
+                new InMemoryDb2File.Row(1, [1, 1, "p1"]),
+                new InMemoryDb2File.Row(2, [2, 5, "p2"]),
+            ]);
+
+        var children = InMemoryDb2File.Create(
+            tableName: nameof(Child),
+            flags: Db2Flags.None,
+            denseStringTableBytes: ReadOnlyMemory<byte>.Empty,
+            rows:
+            [
+                new InMemoryDb2File.Row(100, [100, 1, "c1"]),
+                new InMemoryDb2File.Row(101, [101, 2, "c2"]),
+            ]);
+
+        (IDb2File<RowHandle> File, Db2TableSchema Schema) TableResolver(string tableName)
+            => tableName switch
+            {
+                nameof(Parent) => (parents, SchemaResolver(tableName)),
+                nameof(Child) => (children, SchemaResolver(tableName)),
+                _ => throw new InvalidOperationException($"Unknown table: {tableName}"),
+            };
+
+        Expression<Func<Child, bool>> predicate = c => c.Parent!.Level != 1 && c.Parent.Level <= 5;
+
+        Db2NavigationQueryCompiler.TryCompileSemiJoinPredicate(model, children, TableResolver, predicate, out var rowPredicate)
+            .ShouldBeTrue();
+
+        children.EnumerateRows().Where(rowPredicate).Select(r => r.RowId).ToArray()
+            .ShouldBe([101]);
+    }
+
+    [Fact]
+    public void SemiJoin_scalar_predicate_supports_flipped_comparison_constant_on_left()
+    {
+        var model = BuildParentChildModel();
+
+        var parents = InMemoryDb2File.Create(
+            tableName: nameof(Parent),
+            flags: Db2Flags.None,
+            denseStringTableBytes: ReadOnlyMemory<byte>.Empty,
+            rows:
+            [
+                new InMemoryDb2File.Row(1, [1, 1, "p1"]),
+                new InMemoryDb2File.Row(2, [2, 5, "p2"]),
+            ]);
+
+        var children = InMemoryDb2File.Create(
+            tableName: nameof(Child),
+            flags: Db2Flags.None,
+            denseStringTableBytes: ReadOnlyMemory<byte>.Empty,
+            rows:
+            [
+                new InMemoryDb2File.Row(100, [100, 1, "c1"]),
+                new InMemoryDb2File.Row(101, [101, 2, "c2"]),
+            ]);
+
+        (IDb2File<RowHandle> File, Db2TableSchema Schema) TableResolver(string tableName)
+            => tableName switch
+            {
+                nameof(Parent) => (parents, SchemaResolver(tableName)),
+                nameof(Child) => (children, SchemaResolver(tableName)),
+                _ => throw new InvalidOperationException($"Unknown table: {tableName}"),
+            };
+
+        Expression<Func<Child, bool>> predicate = c => 3 < c.Parent!.Level;
+
+        Db2NavigationQueryCompiler.TryCompileSemiJoinPredicate(model, children, TableResolver, predicate, out var rowPredicate)
+            .ShouldBeTrue();
+
+        children.EnumerateRows().Where(rowPredicate).Select(r => r.RowId).ToArray()
+            .ShouldBe([101]);
+    }
+
+    [Fact]
+    public void SemiJoin_virtual_foreign_key_field_throws_not_supported()
+    {
+        var model = BuildParentChildModelVirtualForeignKey();
+
+        var parents = InMemoryDb2File.Create(
+            tableName: nameof(Parent),
+            flags: Db2Flags.None,
+            denseStringTableBytes: ReadOnlyMemory<byte>.Empty,
+            rows:
+            [
+                new InMemoryDb2File.Row(1, [1, 1, "p1"]),
+            ]);
+
+        var children = InMemoryDb2File.Create(
+            tableName: nameof(Child),
+            flags: Db2Flags.None,
+            denseStringTableBytes: ReadOnlyMemory<byte>.Empty,
+            rows:
+            [
+                new InMemoryDb2File.Row(100, [100, 1, "c1"]),
+            ]);
+
+        (IDb2File<RowHandle> File, Db2TableSchema Schema) TableResolver(string tableName)
+            => tableName switch
+            {
+                nameof(Parent) => (parents, SchemaResolverVirtualForeignKey(tableName)),
+                nameof(Child) => (children, SchemaResolverVirtualForeignKey(tableName)),
+                _ => throw new InvalidOperationException($"Unknown table: {tableName}"),
+            };
+
+        Expression<Func<Child, bool>> predicate = c => c.Parent != null;
+
+        Should.Throw<NotSupportedException>(() =>
+        {
+            Db2NavigationQueryCompiler.TryCompileSemiJoinPredicate(model, children, TableResolver, predicate, out _);
+        });
+    }
+
+    [Fact]
+    public void SemiJoin_collection_any_and_row_predicates_combine_with_andalso_any_left()
+    {
+        var model = BuildParentChildCollectionModel();
+
+        var parents = InMemoryDb2File.Create(
+            tableName: nameof(Parent),
+            flags: Db2Flags.None,
+            denseStringTableBytes: ReadOnlyMemory<byte>.Empty,
+            rows:
+            [
+                new InMemoryDb2File.Row(1, [1, 0, "p1"]),
+                new InMemoryDb2File.Row(2, [2, 0, "p2"]),
+            ]);
+
+        var children = InMemoryDb2File.Create(
+            tableName: nameof(Child),
+            flags: Db2Flags.None,
+            denseStringTableBytes: ReadOnlyMemory<byte>.Empty,
+            rows:
+            [
+                new InMemoryDb2File.Row(100, [100, 1, "c1"]),
+                new InMemoryDb2File.Row(101, [101, 2, "c2"]),
+            ]);
+
+        (IDb2File<RowHandle> File, Db2TableSchema Schema) TableResolver(string tableName)
+            => tableName switch
+            {
+                nameof(Parent) => (parents, SchemaResolver(tableName)),
+                nameof(Child) => (children, SchemaResolver(tableName)),
+                _ => throw new InvalidOperationException($"Unknown table: {tableName}"),
+            };
+
+        Expression<Func<Parent, bool>> predicate = p => p.Children.Any(c => c.Id == 100) && p.Name == "p1";
+
+        Db2NavigationQueryCompiler.TryCompileSemiJoinPredicate(model, parents, TableResolver, predicate, out var rowPredicate)
+            .ShouldBeTrue();
+
+        parents.EnumerateRows().Where(rowPredicate).Select(r => r.RowId).ToArray()
+            .ShouldBe([1]);
+    }
+
+    [Fact]
+    public void SemiJoin_collection_any_and_row_predicates_combine_with_andalso_any_right()
+    {
+        var model = BuildParentChildCollectionModel();
+
+        var parents = InMemoryDb2File.Create(
+            tableName: nameof(Parent),
+            flags: Db2Flags.None,
+            denseStringTableBytes: ReadOnlyMemory<byte>.Empty,
+            rows:
+            [
+                new InMemoryDb2File.Row(1, [1, 0, "p1"]),
+                new InMemoryDb2File.Row(2, [2, 0, "p2"]),
+            ]);
+
+        var children = InMemoryDb2File.Create(
+            tableName: nameof(Child),
+            flags: Db2Flags.None,
+            denseStringTableBytes: ReadOnlyMemory<byte>.Empty,
+            rows:
+            [
+                new InMemoryDb2File.Row(100, [100, 1, "c1"]),
+                new InMemoryDb2File.Row(101, [101, 2, "c2"]),
+            ]);
+
+        (IDb2File<RowHandle> File, Db2TableSchema Schema) TableResolver(string tableName)
+            => tableName switch
+            {
+                nameof(Parent) => (parents, SchemaResolver(tableName)),
+                nameof(Child) => (children, SchemaResolver(tableName)),
+                _ => throw new InvalidOperationException($"Unknown table: {tableName}"),
+            };
+
+        Expression<Func<Parent, bool>> predicate = p => p.Name == "p1" && p.Children.Any(c => c.Id == 100);
+
+        Db2NavigationQueryCompiler.TryCompileSemiJoinPredicate(model, parents, TableResolver, predicate, out var rowPredicate)
+            .ShouldBeTrue();
+
+        parents.EnumerateRows().Where(rowPredicate).Select(r => r.RowId).ToArray()
+            .ShouldBe([1]);
+    }
+
+    [Fact]
+    public void SemiJoin_two_collection_any_predicates_on_same_navigation_intersect_matching_ids()
+    {
+        var model = BuildParentChildCollectionModel();
+
+        var parents = InMemoryDb2File.Create(
+            tableName: nameof(Parent),
+            flags: Db2Flags.None,
+            denseStringTableBytes: ReadOnlyMemory<byte>.Empty,
+            rows:
+            [
+                new InMemoryDb2File.Row(1, [1, 0, "p1"]),
+                new InMemoryDb2File.Row(2, [2, 0, "p2"]),
+            ]);
+
+        var children = InMemoryDb2File.Create(
+            tableName: nameof(Child),
+            flags: Db2Flags.None,
+            denseStringTableBytes: ReadOnlyMemory<byte>.Empty,
+            rows:
+            [
+                new InMemoryDb2File.Row(100, [100, 1, "alpha"]),
+                new InMemoryDb2File.Row(101, [101, 1, "bravo"]),
+                new InMemoryDb2File.Row(102, [102, 2, "alpha"]),
+            ]);
+
+        (IDb2File<RowHandle> File, Db2TableSchema Schema) TableResolver(string tableName)
+            => tableName switch
+            {
+                nameof(Parent) => (parents, SchemaResolver(tableName)),
+                nameof(Child) => (children, SchemaResolver(tableName)),
+                _ => throw new InvalidOperationException($"Unknown table: {tableName}"),
+            };
+
+        Expression<Func<Parent, bool>> predicate = p =>
+            p.Children.Any(c => c.Id == 100) &&
+            p.Children.Any(c => c.Name == "alpha");
+
+        Db2NavigationQueryCompiler.TryCompileSemiJoinPredicate(model, parents, TableResolver, predicate, out var rowPredicate)
+            .ShouldBeTrue();
+
+        parents.EnumerateRows().Where(rowPredicate).Select(r => r.RowId).ToArray()
+            .ShouldBe([1]);
+    }
+
+    [Fact]
+    public void SemiJoin_string_and_row_predicates_combine_with_andalso_string_left()
+    {
+        var model = BuildParentChildModel();
+
+        var dense = BuildDenseStringTable(["p1", "p2"]);
+
+        var parents = InMemoryDb2File.Create(
+            tableName: nameof(Parent),
+            flags: Db2Flags.None,
+            denseStringTableBytes: dense.Bytes,
+            rows:
+            [
+                new InMemoryDb2File.Row(1, [1, 1, "p1"]),
+                new InMemoryDb2File.Row(2, [2, 5, "p2"]),
+            ],
+            denseStringIndexProvider: dense.OffsetByString);
+
+        var children = InMemoryDb2File.Create(
+            tableName: nameof(Child),
+            flags: Db2Flags.None,
+            denseStringTableBytes: ReadOnlyMemory<byte>.Empty,
+            rows:
+            [
+                new InMemoryDb2File.Row(100, [100, 1, "c1"]),
+                new InMemoryDb2File.Row(101, [101, 2, "c2"]),
+            ]);
+
+        (IDb2File<RowHandle> File, Db2TableSchema Schema) TableResolver(string tableName)
+            => tableName switch
+            {
+                nameof(Parent) => (parents, SchemaResolver(tableName)),
+                nameof(Child) => (children, SchemaResolver(tableName)),
+                _ => throw new InvalidOperationException($"Unknown table: {tableName}"),
+            };
+
+        Expression<Func<Child, bool>> predicate = c => c.Parent!.Name.Contains("p") && c.Name == "c2";
+
+        Db2NavigationQueryCompiler.TryCompileSemiJoinPredicate(model, children, TableResolver, predicate, out var rowPredicate)
+            .ShouldBeTrue();
+
+        children.EnumerateRows().Where(rowPredicate).Select(r => r.RowId).ToArray()
+            .ShouldBe([101]);
+    }
+
+    [Fact]
+    public void SemiJoin_string_and_row_predicates_combine_with_andalso_string_right()
+    {
+        var model = BuildParentChildModel();
+
+        var dense = BuildDenseStringTable(["p1", "p2"]);
+
+        var parents = InMemoryDb2File.Create(
+            tableName: nameof(Parent),
+            flags: Db2Flags.None,
+            denseStringTableBytes: dense.Bytes,
+            rows:
+            [
+                new InMemoryDb2File.Row(1, [1, 1, "p1"]),
+                new InMemoryDb2File.Row(2, [2, 5, "p2"]),
+            ],
+            denseStringIndexProvider: dense.OffsetByString);
+
+        var children = InMemoryDb2File.Create(
+            tableName: nameof(Child),
+            flags: Db2Flags.None,
+            denseStringTableBytes: ReadOnlyMemory<byte>.Empty,
+            rows:
+            [
+                new InMemoryDb2File.Row(100, [100, 1, "c1"]),
+                new InMemoryDb2File.Row(101, [101, 2, "c2"]),
+            ]);
+
+        (IDb2File<RowHandle> File, Db2TableSchema Schema) TableResolver(string tableName)
+            => tableName switch
+            {
+                nameof(Parent) => (parents, SchemaResolver(tableName)),
+                nameof(Child) => (children, SchemaResolver(tableName)),
+                _ => throw new InvalidOperationException($"Unknown table: {tableName}"),
+            };
+
+        Expression<Func<Child, bool>> predicate = c => c.Name == "c2" && c.Parent!.Name.Contains("p");
+
+        Db2NavigationQueryCompiler.TryCompileSemiJoinPredicate(model, children, TableResolver, predicate, out var rowPredicate)
+            .ShouldBeTrue();
+
+        children.EnumerateRows().Where(rowPredicate).Select(r => r.RowId).ToArray()
+            .ShouldBe([101]);
+    }
+
+    [Fact]
+    public void SemiJoin_scalar_and_row_predicates_combine_with_andalso_scalar_right()
+    {
+        var model = BuildParentChildModel();
+
+        var parents = InMemoryDb2File.Create(
+            tableName: nameof(Parent),
+            flags: Db2Flags.None,
+            denseStringTableBytes: ReadOnlyMemory<byte>.Empty,
+            rows:
+            [
+                new InMemoryDb2File.Row(1, [1, 1, "p1"]),
+                new InMemoryDb2File.Row(2, [2, 5, "p2"]),
+            ]);
+
+        var children = InMemoryDb2File.Create(
+            tableName: nameof(Child),
+            flags: Db2Flags.None,
+            denseStringTableBytes: ReadOnlyMemory<byte>.Empty,
+            rows:
+            [
+                new InMemoryDb2File.Row(100, [100, 1, "c1"]),
+                new InMemoryDb2File.Row(101, [101, 2, "c2"]),
+            ]);
+
+        (IDb2File<RowHandle> File, Db2TableSchema Schema) TableResolver(string tableName)
+            => tableName switch
+            {
+                nameof(Parent) => (parents, SchemaResolver(tableName)),
+                nameof(Child) => (children, SchemaResolver(tableName)),
+                _ => throw new InvalidOperationException($"Unknown table: {tableName}"),
+            };
+
+        Expression<Func<Child, bool>> predicate = c => c.Name == "c2" && c.Parent!.Level > 3;
+
+        Db2NavigationQueryCompiler.TryCompileSemiJoinPredicate(model, children, TableResolver, predicate, out var rowPredicate)
+            .ShouldBeTrue();
+
+        children.EnumerateRows().Where(rowPredicate).Select(r => r.RowId).ToArray()
+            .ShouldBe([101]);
+    }
+
+    [Fact]
+    public void SemiJoin_two_string_predicates_on_same_navigation_intersect_target_ids()
+    {
+        var model = BuildParentChildModel();
+
+        var dense = BuildDenseStringTable(["p1", "p2"]);
+
+        var parents = InMemoryDb2File.Create(
+            tableName: nameof(Parent),
+            flags: Db2Flags.None,
+            denseStringTableBytes: dense.Bytes,
+            rows:
+            [
+                new InMemoryDb2File.Row(1, [1, 1, "p1"]),
+                new InMemoryDb2File.Row(2, [2, 5, "p2"]),
+            ],
+            denseStringIndexProvider: dense.OffsetByString);
+
+        var children = InMemoryDb2File.Create(
+            tableName: nameof(Child),
+            flags: Db2Flags.None,
+            denseStringTableBytes: ReadOnlyMemory<byte>.Empty,
+            rows:
+            [
+                new InMemoryDb2File.Row(100, [100, 1, "c1"]),
+                new InMemoryDb2File.Row(101, [101, 2, "c2"]),
+            ]);
+
+        (IDb2File<RowHandle> File, Db2TableSchema Schema) TableResolver(string tableName)
+            => tableName switch
+            {
+                nameof(Parent) => (parents, SchemaResolver(tableName)),
+                nameof(Child) => (children, SchemaResolver(tableName)),
+                _ => throw new InvalidOperationException($"Unknown table: {tableName}"),
+            };
+
+        Expression<Func<Child, bool>> predicate = c => c.Parent!.Name.StartsWith("p") && c.Parent.Name.EndsWith("2");
+
+        Db2NavigationQueryCompiler.TryCompileSemiJoinPredicate(model, children, TableResolver, predicate, out var rowPredicate)
+            .ShouldBeTrue();
+
+        children.EnumerateRows().Where(rowPredicate).Select(r => r.RowId).ToArray()
+            .ShouldBe([101]);
+    }
+
+    [Fact]
+    public void SemiJoin_two_scalar_predicates_on_same_navigation_intersect_target_ids()
+    {
+        var model = BuildParentChildModel();
+
+        var parents = InMemoryDb2File.Create(
+            tableName: nameof(Parent),
+            flags: Db2Flags.None,
+            denseStringTableBytes: ReadOnlyMemory<byte>.Empty,
+            rows:
+            [
+                new InMemoryDb2File.Row(1, [1, 1, "p1"]),
+                new InMemoryDb2File.Row(2, [2, 5, "p2"]),
+            ]);
+
+        var children = InMemoryDb2File.Create(
+            tableName: nameof(Child),
+            flags: Db2Flags.None,
+            denseStringTableBytes: ReadOnlyMemory<byte>.Empty,
+            rows:
+            [
+                new InMemoryDb2File.Row(100, [100, 1, "c1"]),
+                new InMemoryDb2File.Row(101, [101, 2, "c2"]),
+            ]);
+
+        (IDb2File<RowHandle> File, Db2TableSchema Schema) TableResolver(string tableName)
+            => tableName switch
+            {
+                nameof(Parent) => (parents, SchemaResolver(tableName)),
+                nameof(Child) => (children, SchemaResolver(tableName)),
+                _ => throw new InvalidOperationException($"Unknown table: {tableName}"),
+            };
+
+        Expression<Func<Child, bool>> predicate = c => c.Parent!.Level > 3 && c.Parent.Level < 10;
+
+        Db2NavigationQueryCompiler.TryCompileSemiJoinPredicate(model, children, TableResolver, predicate, out var rowPredicate)
+            .ShouldBeTrue();
+
+        children.EnumerateRows().Where(rowPredicate).Select(r => r.RowId).ToArray()
+            .ShouldBe([101]);
+    }
+
+    [Fact]
+    public void SemiJoin_collection_count_rewrite_supports_not_equal_and_greater_than_or_equal_and_flipped()
+    {
+        var model = BuildParentChildCollectionModel();
+
+        var parents = InMemoryDb2File.Create(
+            tableName: nameof(Parent),
+            flags: Db2Flags.None,
+            denseStringTableBytes: ReadOnlyMemory<byte>.Empty,
+            rows:
+            [
+                new InMemoryDb2File.Row(1, [1, 0, "p1"]),
+                new InMemoryDb2File.Row(2, [2, 0, "p2"]),
+            ]);
+
+        var children = InMemoryDb2File.Create(
+            tableName: nameof(Child),
+            flags: Db2Flags.None,
+            denseStringTableBytes: ReadOnlyMemory<byte>.Empty,
+            rows:
+            [
+                new InMemoryDb2File.Row(100, [100, 1, "c1"]),
+                new InMemoryDb2File.Row(101, [101, 1, "c2"]),
+                new InMemoryDb2File.Row(102, [102, 0, "c0"]),
+            ]);
+
+        (IDb2File<RowHandle> File, Db2TableSchema Schema) TableResolver(string tableName)
+            => tableName switch
+            {
+                nameof(Parent) => (parents, SchemaResolver(tableName)),
+                nameof(Child) => (children, SchemaResolver(tableName)),
+                _ => throw new InvalidOperationException($"Unknown table: {tableName}"),
+            };
+
+        Expression<Func<Parent, bool>> predicate1 = p => p.Children.Count != 0;
+        Db2NavigationQueryCompiler.TryCompileSemiJoinPredicate(model, parents, TableResolver, predicate1, out var rowPredicate1)
+            .ShouldBeTrue();
+
+        parents.EnumerateRows().Where(rowPredicate1).Select(r => r.RowId).ToArray()
+            .ShouldBe([1]);
+
+        Expression<Func<Parent, bool>> predicate2 = p => p.Children.Count >= 1;
+        Db2NavigationQueryCompiler.TryCompileSemiJoinPredicate(model, parents, TableResolver, predicate2, out var rowPredicate2)
+            .ShouldBeTrue();
+
+        parents.EnumerateRows().Where(rowPredicate2).Select(r => r.RowId).ToArray()
+            .ShouldBe([1]);
+
+        Expression<Func<Parent, bool>> predicate3 = p => 0 < p.Children.Count;
+        Db2NavigationQueryCompiler.TryCompileSemiJoinPredicate(model, parents, TableResolver, predicate3, out var rowPredicate3)
+            .ShouldBeTrue();
+
+        parents.EnumerateRows().Where(rowPredicate3).Select(r => r.RowId).ToArray()
+            .ShouldBe([1]);
+    }
+
+    [Fact]
+    public void SemiJoin_shared_primary_key_one_to_one_uses_row_id_matching()
+    {
+        var model = BuildSharedPrimaryKeyModel();
+
+        var parents = InMemoryDb2File.Create(
+            tableName: nameof(SpkParent),
+            flags: Db2Flags.None,
+            denseStringTableBytes: ReadOnlyMemory<byte>.Empty,
+            rows:
+            [
+                new InMemoryDb2File.Row(1, [1, "alpha"]),
+                new InMemoryDb2File.Row(2, [2, "bravo"]),
+            ]);
+
+        var children = InMemoryDb2File.Create(
+            tableName: nameof(SpkChild),
+            flags: Db2Flags.None,
+            denseStringTableBytes: ReadOnlyMemory<byte>.Empty,
+            rows:
+            [
+                new InMemoryDb2File.Row(1, [1, "c1"]),
+                new InMemoryDb2File.Row(2, [2, "c2"]),
+            ]);
+
+        (IDb2File<RowHandle> File, Db2TableSchema Schema) TableResolver(string tableName)
+            => tableName switch
+            {
+                nameof(SpkParent) => (parents, SchemaResolverSpk(tableName)),
+                nameof(SpkChild) => (children, SchemaResolverSpk(tableName)),
+                _ => throw new InvalidOperationException($"Unknown table: {tableName}"),
+            };
+
+        Expression<Func<SpkChild, bool>> predicate = c => c.Parent!.Name == "alpha";
+
+        Db2NavigationQueryCompiler.TryCompileSemiJoinPredicate(model, children, TableResolver, predicate, out var rowPredicate)
+            .ShouldBeTrue();
+
+        children.EnumerateRows().Where(rowPredicate).Select(r => r.RowId).ToArray()
+            .ShouldBe([1]);
+    }
+
     private static Db2Model BuildParentChildModel()
     {
         var builder = new Db2ModelBuilder();
@@ -456,6 +1390,34 @@ public sealed class Db2NavigationQueryCompilerTests
         builder.Entity<Child>().HasKey(x => x.Id);
 
         return builder.Build(SchemaResolver);
+    }
+
+    private static Db2Model BuildParentChildModelVirtualForeignKey()
+    {
+        var builder = new Db2ModelBuilder();
+
+        builder.Entity<Child>()
+            .HasOne(x => x.Parent)
+            .WithForeignKey(x => x.ParentId);
+
+        builder.Entity<Parent>().HasKey(x => x.Id);
+        builder.Entity<Child>().HasKey(x => x.Id);
+
+        return builder.Build(SchemaResolverVirtualForeignKey);
+    }
+
+    private static Db2Model BuildSharedPrimaryKeyModel()
+    {
+        var builder = new Db2ModelBuilder();
+
+        builder.Entity<SpkChild>()
+            .HasOne(x => x.Parent)
+            .WithSharedPrimaryKey(x => x.Id, x => x.Id);
+
+        builder.Entity<SpkParent>().HasKey(x => x.Id);
+        builder.Entity<SpkChild>().HasKey(x => x.Id);
+
+        return builder.Build(SchemaResolverSpk);
     }
 
     private static Db2Model BuildParentChildCollectionModel()
@@ -496,6 +1458,64 @@ public sealed class Db2NavigationQueryCompilerTests
                     new Db2FieldSchema("ID", Db2ValueType.Int64, ColumnStartIndex: 0, ElementCount: 1, IsVerified: true, IsVirtual: false, IsId: true, IsRelation: false, ReferencedTableName: null),
                     new Db2FieldSchema(nameof(Child.ParentId), Db2ValueType.Int64, ColumnStartIndex: 1, ElementCount: 1, IsVerified: true, IsVirtual: false, IsId: false, IsRelation: false, ReferencedTableName: nameof(Parent)),
                     new Db2FieldSchema(nameof(Child.Name), Db2ValueType.String, ColumnStartIndex: 2, ElementCount: 1, IsVerified: true, IsVirtual: false, IsId: false, IsRelation: false, ReferencedTableName: null),
+                ]),
+
+            _ => throw new InvalidOperationException($"Unknown table: {tableName}"),
+        };
+    }
+
+    private static Db2TableSchema SchemaResolverVirtualForeignKey(string tableName)
+    {
+        return tableName switch
+        {
+            nameof(Parent) => new Db2TableSchema(
+                tableName: nameof(Parent),
+                layoutHash: 0,
+                physicalColumnCount: 3,
+                fields:
+                [
+                    new Db2FieldSchema("ID", Db2ValueType.Int64, ColumnStartIndex: 0, ElementCount: 1, IsVerified: true, IsVirtual: false, IsId: true, IsRelation: false, ReferencedTableName: null),
+                    new Db2FieldSchema(nameof(Parent.Level), Db2ValueType.Int64, ColumnStartIndex: 1, ElementCount: 1, IsVerified: true, IsVirtual: false, IsId: false, IsRelation: false, ReferencedTableName: null),
+                    new Db2FieldSchema(nameof(Parent.Name), Db2ValueType.String, ColumnStartIndex: 2, ElementCount: 1, IsVerified: true, IsVirtual: false, IsId: false, IsRelation: false, ReferencedTableName: null),
+                ]),
+
+            nameof(Child) => new Db2TableSchema(
+                tableName: nameof(Child),
+                layoutHash: 0,
+                physicalColumnCount: 3,
+                fields:
+                [
+                    new Db2FieldSchema("ID", Db2ValueType.Int64, ColumnStartIndex: 0, ElementCount: 1, IsVerified: true, IsVirtual: false, IsId: true, IsRelation: false, ReferencedTableName: null),
+                    new Db2FieldSchema(nameof(Child.ParentId), Db2ValueType.Int64, ColumnStartIndex: 1, ElementCount: 1, IsVerified: true, IsVirtual: true, IsId: false, IsRelation: false, ReferencedTableName: nameof(Parent)),
+                    new Db2FieldSchema(nameof(Child.Name), Db2ValueType.String, ColumnStartIndex: 2, ElementCount: 1, IsVerified: true, IsVirtual: false, IsId: false, IsRelation: false, ReferencedTableName: null),
+                ]),
+
+            _ => throw new InvalidOperationException($"Unknown table: {tableName}"),
+        };
+    }
+
+    private static Db2TableSchema SchemaResolverSpk(string tableName)
+    {
+        return tableName switch
+        {
+            nameof(SpkParent) => new Db2TableSchema(
+                tableName: nameof(SpkParent),
+                layoutHash: 0,
+                physicalColumnCount: 2,
+                fields:
+                [
+                    new Db2FieldSchema("ID", Db2ValueType.Int64, ColumnStartIndex: 0, ElementCount: 1, IsVerified: true, IsVirtual: false, IsId: true, IsRelation: false, ReferencedTableName: null),
+                    new Db2FieldSchema(nameof(SpkParent.Name), Db2ValueType.String, ColumnStartIndex: 1, ElementCount: 1, IsVerified: true, IsVirtual: false, IsId: false, IsRelation: false, ReferencedTableName: null),
+                ]),
+
+            nameof(SpkChild) => new Db2TableSchema(
+                tableName: nameof(SpkChild),
+                layoutHash: 0,
+                physicalColumnCount: 2,
+                fields:
+                [
+                    new Db2FieldSchema("ID", Db2ValueType.Int64, ColumnStartIndex: 0, ElementCount: 1, IsVerified: true, IsVirtual: false, IsId: true, IsRelation: false, ReferencedTableName: null),
+                    new Db2FieldSchema(nameof(SpkChild.Name), Db2ValueType.String, ColumnStartIndex: 1, ElementCount: 1, IsVerified: true, IsVirtual: false, IsId: false, IsRelation: false, ReferencedTableName: null),
                 ]),
 
             _ => throw new InvalidOperationException($"Unknown table: {tableName}"),
@@ -588,6 +1608,22 @@ public sealed class Db2NavigationQueryCompilerTests
         public int ParentId { get; set; }
 
         public string Name { get; set; } = string.Empty;
+    }
+
+    private sealed class SpkParent
+    {
+        public int Id { get; set; }
+
+        public string Name { get; set; } = string.Empty;
+    }
+
+    private sealed class SpkChild
+    {
+        public int Id { get; set; }
+
+        public string Name { get; set; } = string.Empty;
+
+        public SpkParent? Parent { get; set; }
     }
 
     private sealed class InMemoryDb2File(string tableName,

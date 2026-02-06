@@ -21,6 +21,8 @@ internal sealed class Db2QueryProvider<TEntity, TRow>(
     private static readonly ConcurrentDictionary<Type, Func<Db2QueryProvider<TEntity, TRow>, IEnumerable<TEntity>, LambdaExpression, IEnumerable<TEntity>>> IncludeDelegates = new();
     private static readonly ConcurrentDictionary<(Type NavigationType, Type TargetType), Func<Db2QueryProvider<TEntity, TRow>, IEnumerable<TEntity>, MemberInfo, string, Db2CollectionNavigation, IEnumerable<TEntity>>> ForeignKeyArrayToPrimaryKeyIncludeDelegates = new();
     private static readonly ConcurrentDictionary<(Type NavigationType, Type TargetType), Func<Db2QueryProvider<TEntity, TRow>, IEnumerable<TEntity>, MemberInfo, string, Db2CollectionNavigation, IEnumerable<TEntity>>> DependentForeignKeyToPrimaryKeyIncludeDelegates = new();
+    private static readonly ConcurrentDictionary<(Type DeclaringType, string MemberName), Func<object, object?>> CompiledNavigationDelegates = new();
+    private static readonly ConcurrentDictionary<Type, Action<Db2QueryProvider<TEntity, TRow>, Array, List<LambdaExpression>>> NestedIncludeDelegates = new();
 
     private readonly Db2EntityType _rootEntityType = model.GetEntityType(typeof(TEntity));
     private readonly Db2EntityMaterializer<TEntity, TRow> _materializer = new(model.GetEntityType(typeof(TEntity)));
@@ -157,7 +159,7 @@ internal sealed class Db2QueryProvider<TEntity, TRow>(
                 selectOp.Selector.Parameters[0].Type == typeof(TEntity) &&
                 selectOp.Selector.ReturnType == typeof(TElement) &&
                 SelectorUsesNavigation(selectOp.Selector) &&
-                postOps.All(op => op is not Db2WhereOperation && op is not Db2IncludeOperation) &&
+                postOps.All(op => op is not Db2WhereOperation && op is not Db2IncludeOperation && op is not Db2ThenIncludeOperation) &&
                 postOps.Count(op => op is Db2SelectOperation) <= 1;
 
             if (canAttemptNavigationPrune && TryExecuteNavigationProjectionPruned<TElement>(preEntityWhere, stopAfter, selectOp.Selector, postOps, out var navPruned))
@@ -216,12 +218,23 @@ internal sealed class Db2QueryProvider<TEntity, TRow>(
                     current = ApplySelect(current, currentElementType, select.Selector);
                     currentElementType = select.Selector.ReturnType;
                     break;
-                case Db2IncludeOperation:
+                case Db2IncludeOperation include:
                     if (currentElementType != typeof(TEntity))
                         throw new NotSupportedException("Include must appear before Select for this provider.");
 
-                    current = ApplyInclude((IEnumerable<TEntity>)current, ((Db2IncludeOperation)op).Navigation);
+                    var includeChain = new List<LambdaExpression> { include.Navigation };
+                    while (opIndex + 1 < postOps.Count && postOps[opIndex + 1] is Db2ThenIncludeOperation thenInclude)
+                    {
+                        includeChain.Add(thenInclude.Navigation);
+                        opIndex++;
+                    }
+
+                    current = ApplyIncludeChain((IEnumerable<TEntity>)current, includeChain);
                     break;
+                case Db2ThenIncludeOperation:
+                    // Defensive: ThenInclude operations should always be consumed by the Include case above.
+                    // This case would only be reached if the expression tree is malformed.
+                    throw new NotSupportedException("ThenInclude must follow an Include or another ThenInclude for this provider.");
                 case Db2TakeOperation take:
                     current = ApplyTake(current, currentElementType, take.Count);
                     break;
@@ -785,6 +798,148 @@ internal sealed class Db2QueryProvider<TEntity, TRow>(
 
         elementType = typeof(string).BaseType!;
         return false;
+    }
+
+    private IEnumerable<TEntity> ApplyIncludeChain(IEnumerable<TEntity> source, List<LambdaExpression> navigationChain)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(navigationChain);
+
+        if (navigationChain.Count == 0)
+            throw new ArgumentException("Navigation chain must contain at least one navigation.", nameof(navigationChain));
+
+        if (navigationChain.Count == 1)
+            return ApplyInclude(source, navigationChain[0]);
+
+        var firstNav = navigationChain[0];
+        var remainingNav = navigationChain.Skip(1).ToList();
+
+        var firstNavType = firstNav.ReturnType;
+
+        if (firstNavType.IsValueType)
+            throw new NotSupportedException("Include only supports reference-type navigations.");
+
+        if (TryGetEnumerableElementType(firstNavType, out var collectionElementType))
+            return ApplyIncludeChainAfterCollection(source, firstNav, remainingNav, collectionElementType);
+
+        return ApplyIncludeChainAfterReference(source, firstNav, remainingNav);
+    }
+
+    private IEnumerable<TEntity> ApplyIncludeChainAfterReference(
+        IEnumerable<TEntity> source,
+        LambdaExpression firstNavigation,
+        List<LambdaExpression> remainingChain)
+    {
+        var firstNavType = firstNavigation.ReturnType;
+        var materialized = ApplyInclude(source, firstNavigation).ToArray();
+
+        var relatedEntities = materialized
+            .Select(e => GetNavigationValue(e!, firstNavigation))
+            .Where(r => r is not null)
+            .Distinct()
+            .Cast<object>()
+            .ToArray();
+
+        if (relatedEntities.Length == 0)
+            return materialized;
+
+        ApplyNestedInclude(relatedEntities, firstNavType, remainingChain);
+
+        return materialized;
+    }
+
+    private IEnumerable<TEntity> ApplyIncludeChainAfterCollection(
+        IEnumerable<TEntity> source,
+        LambdaExpression firstNavigation,
+        List<LambdaExpression> remainingChain,
+        Type collectionElementType)
+    {
+        var materialized = ApplyInclude(source, firstNavigation).ToArray();
+
+        var allRelatedEntities = materialized
+            .Select(entity => GetNavigationValue(entity!, firstNavigation))
+            .OfType<System.Collections.IEnumerable>()
+            .SelectMany(enumerable => enumerable.Cast<object>())
+            .Where(item => item is not null)
+            .ToList();
+
+        if (allRelatedEntities.Count == 0)
+            return materialized;
+
+        var distinctRelated = allRelatedEntities.Distinct().ToArray();
+        ApplyNestedInclude(distinctRelated, collectionElementType, remainingChain);
+
+        return materialized;
+    }
+
+    private void ApplyNestedInclude(object[] relatedEntities, Type relatedType, List<LambdaExpression> navigationChain)
+    {
+        var typedArray = Array.CreateInstance(relatedType, relatedEntities.Length);
+        Array.Copy(relatedEntities, typedArray, relatedEntities.Length);
+
+        var dispatcher = NestedIncludeDelegates.GetOrAdd(
+            relatedType,
+            static type =>
+            {
+                var method = typeof(Db2QueryProvider<TEntity, TRow>)
+                    .GetMethod(nameof(ApplyNestedIncludeTyped), BindingFlags.Instance | BindingFlags.NonPublic)!
+                    .MakeGenericMethod(type);
+
+                var providerParam = Expression.Parameter(typeof(Db2QueryProvider<TEntity, TRow>), "provider");
+                var entitiesParam = Expression.Parameter(typeof(Array), "entities");
+                var chainParam = Expression.Parameter(typeof(List<LambdaExpression>), "navigationChain");
+
+                var relatedArrayType = type.MakeArrayType();
+                var call = Expression.Call(
+                    providerParam,
+                    method,
+                    Expression.Convert(entitiesParam, relatedArrayType),
+                    chainParam);
+
+                var lambda = Expression.Lambda<Action<Db2QueryProvider<TEntity, TRow>, Array, List<LambdaExpression>>>(
+                    call,
+                    providerParam,
+                    entitiesParam,
+                    chainParam);
+
+                return lambda.Compile();
+            });
+
+        dispatcher(this, typedArray, navigationChain);
+    }
+
+    private void ApplyNestedIncludeTyped<TRelated>(TRelated[] relatedEntities, List<LambdaExpression> navigationChain)
+        where TRelated : class
+    {
+        var relatedTableName = _model.GetEntityType(typeof(TRelated)).TableName;
+        var (relatedFile, _) = _tableResolver(relatedTableName);
+        var relatedProvider = new Db2QueryProvider<TRelated, TRow>(relatedFile, _model, _tableResolver);
+
+        relatedProvider.ApplyIncludeChain(relatedEntities, navigationChain).ToArray();
+    }
+
+    private static object? GetNavigationValue(object entity, LambdaExpression navigation)
+    {
+        if (navigation.Body is not MemberExpression { Member: var member } memberExpr)
+            throw new InvalidOperationException("Navigation expression must be a simple member access.");
+
+        var declaringType = member.DeclaringType ?? throw new InvalidOperationException("Member must have a declaring type.");
+        var key = (declaringType, member.Name);
+
+        var compiled = CompiledNavigationDelegates.GetOrAdd(
+            key,
+            _ =>
+            {
+                var entityParam = Expression.Parameter(typeof(object), "entity");
+                var typedEntity = Expression.Convert(entityParam, navigation.Parameters[0].Type);
+                var invokeBody = Expression.Invoke(navigation, typedEntity);
+                var convertedBody = Expression.Convert(invokeBody, typeof(object));
+
+                var lambda = Expression.Lambda<Func<object, object?>>(convertedBody, entityParam);
+                return lambda.Compile();
+            });
+
+        return compiled(entity);
     }
 
     private IEnumerable<TEntity> ApplyInclude(IEnumerable<TEntity> source, LambdaExpression navigation)

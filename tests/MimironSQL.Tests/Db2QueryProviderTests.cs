@@ -379,6 +379,98 @@ public sealed class Db2QueryProviderTests
     }
 
     [Fact]
+    public void ThenInclude_reference_then_reference_loads_nested_navigation()
+    {
+        var (grandChildren, _, _, _) = CreateGrandParentParentChildTables();
+
+        var result = grandChildren
+            .Include(gc => gc.Parent)
+            .ThenIncludeReference(c => c.GrandParent)
+            .ToArray();
+
+        result.Length.ShouldBe(3);
+
+        var gc1 = result.Single(x => x.Id == 100);
+        gc1.Parent.ShouldNotBeNull();
+        gc1.Parent!.GrandParent.ShouldNotBeNull();
+        gc1.Parent.GrandParent!.Name.ShouldBe("gp1");
+
+        var gc2 = result.Single(x => x.Id == 101);
+        gc2.Parent.ShouldNotBeNull();
+        gc2.Parent!.GrandParent.ShouldNotBeNull();
+        gc2.Parent.GrandParent!.Name.ShouldBe("gp2");
+
+        var gc0 = result.Single(x => x.Id == 102);
+        gc0.Parent.ShouldBeNull();
+    }
+
+    [Fact]
+    public void ThenInclude_reference_then_collection_loads_nested_collection()
+    {
+        var (grandChildren, _, _, _) = CreateGrandParentParentChildTables();
+
+        var result = grandChildren
+            .Where(gc => gc.Id == 100)
+            .Include(gc => gc.Parent)
+            .ThenIncludeReference(c => c.GrandParent)
+            .ThenIncludeReference(gp => gp.OtherChildren)
+            .ToArray();
+
+        result.Length.ShouldBe(1);
+
+        var gc = result[0];
+        gc.Parent.ShouldNotBeNull();
+        gc.Parent!.GrandParent.ShouldNotBeNull();
+        gc.Parent.GrandParent!.OtherChildren.ShouldNotBeNull();
+
+        var otherChildren = (ChildWithGrandParent[])gc.Parent.GrandParent.OtherChildren;
+        otherChildren.Length.ShouldBe(2);
+        otherChildren.Select(c => c.Id).OrderBy(x => x).ToArray().ShouldBe([10, 11]);
+    }
+
+    [Fact]
+    public void ThenInclude_collection_then_reference_loads_nested_references_for_all_collection_items()
+    {
+        var (_, _, grandParents, _) = CreateGrandParentParentChildTables();
+
+        var result = grandParents
+            .Where(gp => gp.Id == 1)
+            .Include(gp => gp.OtherChildren)
+            .ThenIncludeCollection(c => c.GrandParent)
+            .ToArray();
+
+        result.Length.ShouldBe(1);
+
+        var gp = result[0];
+        gp.OtherChildren.ShouldNotBeNull();
+
+        var children = (ChildWithGrandParent[])gp.OtherChildren;
+        children.Length.ShouldBe(2);
+
+        foreach (var child in children)
+        {
+            child.GrandParent.ShouldNotBeNull();
+            child.GrandParent!.Name.ShouldBe("gp1");
+        }
+    }
+
+    [Fact]
+    public void ThenInclude_handles_null_reference_in_chain()
+    {
+        var (grandChildren, _, _, _) = CreateGrandParentParentChildTables();
+
+        var result = grandChildren
+            .Include(gc => gc.Parent)
+            .ThenIncludeReference(c => c.GrandParent)
+            .ToArray();
+
+        result.Length.ShouldBe(3);
+
+        var gc0 = result.Single(x => x.Id == 102);
+        gc0.Parent.ShouldBeNull();
+    }
+
+    [Fact]
     public void Include_collection_navigation_dependent_foreign_key_materializes_arrays()
     {
         var (parents, _, _) = CreateParentChildArrayNavigationTables();
@@ -757,6 +849,49 @@ public sealed class Db2QueryProviderTests
                     new Db2FieldSchema(nameof(ChildWithUnconfiguredParent.ParentId), Db2ValueType.Int64, ColumnStartIndex: 1, ElementCount: 1, IsVerified: true, IsVirtual: false, IsId: false, IsRelation: false, ReferencedTableName: null),
                 ]),
 
+            nameof(GrandParent) => new Db2TableSchema(
+                tableName: nameof(GrandParent),
+                layoutHash: 0,
+                physicalColumnCount: 2,
+                fields:
+                [
+                    new Db2FieldSchema("ID", Db2ValueType.Int64, ColumnStartIndex: 0, ElementCount: 1, IsVerified: true, IsVirtual: false, IsId: true, IsRelation: false, ReferencedTableName: null),
+                    new Db2FieldSchema(nameof(GrandParent.Name), Db2ValueType.String, ColumnStartIndex: 1, ElementCount: 1, IsVerified: true, IsVirtual: false, IsId: false, IsRelation: false, ReferencedTableName: null),
+                ]),
+
+            nameof(ParentWithGrandParent) => new Db2TableSchema(
+                tableName: nameof(ParentWithGrandParent),
+                layoutHash: 0,
+                physicalColumnCount: 3,
+                fields:
+                [
+                    new Db2FieldSchema("ID", Db2ValueType.Int64, ColumnStartIndex: 0, ElementCount: 1, IsVerified: true, IsVirtual: false, IsId: true, IsRelation: false, ReferencedTableName: null),
+                    new Db2FieldSchema(nameof(ParentWithGrandParent.GrandParentId), Db2ValueType.Int64, ColumnStartIndex: 1, ElementCount: 1, IsVerified: true, IsVirtual: false, IsId: false, IsRelation: false, ReferencedTableName: nameof(GrandParent)),
+                    new Db2FieldSchema(nameof(ParentWithGrandParent.Name), Db2ValueType.String, ColumnStartIndex: 2, ElementCount: 1, IsVerified: true, IsVirtual: false, IsId: false, IsRelation: false, ReferencedTableName: null),
+                ]),
+
+            nameof(GrandChild) => new Db2TableSchema(
+                tableName: nameof(GrandChild),
+                layoutHash: 0,
+                physicalColumnCount: 3,
+                fields:
+                [
+                    new Db2FieldSchema("ID", Db2ValueType.Int64, ColumnStartIndex: 0, ElementCount: 1, IsVerified: true, IsVirtual: false, IsId: true, IsRelation: false, ReferencedTableName: null),
+                    new Db2FieldSchema(nameof(GrandChild.ParentId), Db2ValueType.Int64, ColumnStartIndex: 1, ElementCount: 1, IsVerified: true, IsVirtual: false, IsId: false, IsRelation: false, ReferencedTableName: nameof(ParentWithGrandParent)),
+                    new Db2FieldSchema(nameof(GrandChild.Name), Db2ValueType.String, ColumnStartIndex: 2, ElementCount: 1, IsVerified: true, IsVirtual: false, IsId: false, IsRelation: false, ReferencedTableName: null),
+                ]),
+
+            nameof(ChildWithGrandParent) => new Db2TableSchema(
+                tableName: nameof(ChildWithGrandParent),
+                layoutHash: 0,
+                physicalColumnCount: 3,
+                fields:
+                [
+                    new Db2FieldSchema("ID", Db2ValueType.Int64, ColumnStartIndex: 0, ElementCount: 1, IsVerified: true, IsVirtual: false, IsId: true, IsRelation: false, ReferencedTableName: null),
+                    new Db2FieldSchema(nameof(ChildWithGrandParent.GrandParentId), Db2ValueType.Int64, ColumnStartIndex: 1, ElementCount: 1, IsVerified: true, IsVirtual: false, IsId: false, IsRelation: false, ReferencedTableName: nameof(GrandParent)),
+                    new Db2FieldSchema(nameof(ChildWithGrandParent.Name), Db2ValueType.String, ColumnStartIndex: 2, ElementCount: 1, IsVerified: true, IsVirtual: false, IsId: false, IsRelation: false, ReferencedTableName: null),
+                ]),
+
             _ => throw new InvalidOperationException($"Unknown table: {tableName}"),
         };
     }
@@ -872,6 +1007,99 @@ public sealed class Db2QueryProviderTests
         return (parents, children, model);
     }
 
+    private static (Db2Table<GrandChild> GrandChildren, Db2Table<ParentWithGrandParent> Parents, Db2Table<GrandParent> GrandParents, Db2Model Model) CreateGrandParentParentChildTables()
+    {
+        var builder = new Db2ModelBuilder();
+
+        builder.Entity<GrandChild>()
+            .HasOne(x => x.Parent)
+            .WithForeignKey(x => x.ParentId);
+
+        builder.Entity<ParentWithGrandParent>()
+            .HasOne(x => x.GrandParent)
+            .WithForeignKey(x => x.GrandParentId);
+
+        builder.Entity<ChildWithGrandParent>()
+            .HasOne(x => x.GrandParent)
+            .WithForeignKey(x => x.GrandParentId);
+
+        builder.Entity<GrandParent>()
+            .HasMany(x => x.OtherChildren)
+            .WithForeignKey(x => x.GrandParentId);
+
+        builder.Entity<GrandChild>().HasKey(x => x.Id);
+        builder.Entity<ParentWithGrandParent>().HasKey(x => x.Id);
+        builder.Entity<GrandParent>().HasKey(x => x.Id);
+        builder.Entity<ChildWithGrandParent>().HasKey(x => x.Id);
+
+        var model = builder.Build(SchemaResolver);
+
+        var grandParentsFile = InMemoryDb2File.Create(
+            tableName: nameof(GrandParent),
+            flags: Db2Flags.None,
+            denseStringTableBytes: ReadOnlyMemory<byte>.Empty,
+            rows:
+            [
+                new InMemoryDb2File.Row(1, [1, "gp1"]),
+                new InMemoryDb2File.Row(2, [2, "gp2"]),
+            ]);
+
+        var parentsFile = InMemoryDb2File.Create(
+            tableName: nameof(ParentWithGrandParent),
+            flags: Db2Flags.None,
+            denseStringTableBytes: ReadOnlyMemory<byte>.Empty,
+            rows:
+            [
+                new InMemoryDb2File.Row(10, [10, 1, "p1"]),
+                new InMemoryDb2File.Row(11, [11, 2, "p2"]),
+            ]);
+
+        var grandChildrenFile = InMemoryDb2File.Create(
+            tableName: nameof(GrandChild),
+            flags: Db2Flags.None,
+            denseStringTableBytes: ReadOnlyMemory<byte>.Empty,
+            rows:
+            [
+                new InMemoryDb2File.Row(100, [100, 10, "gc1"]),
+                new InMemoryDb2File.Row(101, [101, 11, "gc2"]),
+                new InMemoryDb2File.Row(102, [102, 0, "gc0"]),
+            ]);
+
+        var otherChildrenFile = InMemoryDb2File.Create(
+            tableName: nameof(ChildWithGrandParent),
+            flags: Db2Flags.None,
+            denseStringTableBytes: ReadOnlyMemory<byte>.Empty,
+            rows:
+            [
+                new InMemoryDb2File.Row(10, [10, 1, "c1"]),
+                new InMemoryDb2File.Row(11, [11, 1, "c2"]),
+            ]);
+
+        (IDb2File<RowHandle> File, Db2TableSchema Schema) TableResolver(string tableName)
+            => tableName switch
+            {
+                nameof(GrandParent) => (grandParentsFile, SchemaResolver(nameof(GrandParent))),
+                nameof(ParentWithGrandParent) => (parentsFile, SchemaResolver(nameof(ParentWithGrandParent))),
+                nameof(GrandChild) => (grandChildrenFile, SchemaResolver(nameof(GrandChild))),
+                nameof(ChildWithGrandParent) => (otherChildrenFile, SchemaResolver(nameof(ChildWithGrandParent))),
+                _ => throw new InvalidOperationException($"Unknown table: {tableName}"),
+            };
+
+        var grandParentsProvider = new Db2QueryProvider<GrandParent, RowHandle>(grandParentsFile, model, TableResolver);
+        var parentsProvider = new Db2QueryProvider<ParentWithGrandParent, RowHandle>(parentsFile, model, TableResolver);
+        var grandChildrenProvider = new Db2QueryProvider<GrandChild, RowHandle>(grandChildrenFile, model, TableResolver);
+
+        var grandParentEntityType = model.GetEntityType(typeof(GrandParent));
+        var parentEntityType = model.GetEntityType(typeof(ParentWithGrandParent));
+        var grandChildEntityType = model.GetEntityType(typeof(GrandChild));
+
+        var grandParents = new Db2Table<GrandParent, RowHandle>(nameof(GrandParent), SchemaResolver(nameof(GrandParent)), grandParentEntityType, grandParentsProvider, grandParentsFile);
+        var parents = new Db2Table<ParentWithGrandParent, RowHandle>(nameof(ParentWithGrandParent), SchemaResolver(nameof(ParentWithGrandParent)), parentEntityType, parentsProvider, parentsFile);
+        var grandChildren = new Db2Table<GrandChild, RowHandle>(nameof(GrandChild), SchemaResolver(nameof(GrandChild)), grandChildEntityType, grandChildrenProvider, grandChildrenFile);
+
+        return (grandChildren, parents, grandParents, model);
+    }
+
     private static bool AlwaysThrowsArgNull(Parent _)
         => throw new ArgumentNullException("boom");
 
@@ -950,6 +1178,48 @@ public sealed class Db2QueryProviderTests
         public int ParentId { get; set; }
 
         public ParentWithChildrenArray? Parent { get; set; }
+    }
+
+    private sealed class GrandParent
+    {
+        public int Id { get; set; }
+
+        public string Name { get; set; } = string.Empty;
+
+        public ICollection<ChildWithGrandParent> OtherChildren { get; set; } = [];
+    }
+
+    private sealed class ChildWithGrandParent
+    {
+        public int Id { get; set; }
+
+        public int GrandParentId { get; set; }
+
+        public string Name { get; set; } = string.Empty;
+
+        public GrandParent? GrandParent { get; set; }
+    }
+
+    private sealed class ParentWithGrandParent
+    {
+        public int Id { get; set; }
+
+        public int GrandParentId { get; set; }
+
+        public string Name { get; set; } = string.Empty;
+
+        public GrandParent? GrandParent { get; set; }
+    }
+
+    private sealed class GrandChild
+    {
+        public int Id { get; set; }
+
+        public int ParentId { get; set; }
+
+        public string Name { get; set; } = string.Empty;
+
+        public ParentWithGrandParent? Parent { get; set; }
     }
 
     private sealed class InMemoryDb2File(string tableName, Db2Flags flags, ReadOnlyMemory<byte> denseStringTableBytes, IReadOnlyDictionary<int, object[]> valuesByRowId)

@@ -231,6 +231,8 @@ internal sealed class Db2QueryProvider<TEntity, TRow>(
                     current = ApplyIncludeChain((IEnumerable<TEntity>)current, includeChain);
                     break;
                 case Db2ThenIncludeOperation:
+                    // Defensive: ThenInclude operations should always be consumed by the Include case above.
+                    // This case would only be reached if the expression tree is malformed.
                     throw new NotSupportedException("ThenInclude must follow an Include or another ThenInclude for this provider.");
                 case Db2TakeOperation take:
                     current = ApplyTake(current, currentElementType, take.Count);

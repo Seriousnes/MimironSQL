@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Linq.Expressions;
 using System.Reflection;
 
@@ -81,6 +82,6 @@ public static class Db2QueryableExtensions
         public IQueryProvider Provider => queryable.Provider;
 
         public IEnumerator<TEntity> GetEnumerator() => queryable.GetEnumerator();
-        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => queryable.GetEnumerator();
+        IEnumerator IEnumerable.GetEnumerator() => queryable.GetEnumerator();
     }
 }

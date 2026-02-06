@@ -53,6 +53,16 @@ public class MimironDb2OptionsExtension : IDbContextOptionsExtension
 
     public void ApplyServices(IServiceCollection services)
     {
+        if (ProviderType == MimironDb2ProviderType.FileSystem && !string.IsNullOrWhiteSpace(Db2Path))
+        {
+            services.AddSingleton<IDb2StreamProvider>(_ =>
+                new FileSystemDb2StreamProvider(new FileSystemDb2StreamProviderOptions(Db2Path)));
+
+            var dbdPath = DbdDefinitionsPath ?? Path.Combine(Db2Path, "definitions");
+            services.AddSingleton<IDbdProvider>(_ =>
+                new FileSystemDbdProvider(new FileSystemDbdProviderOptions(dbdPath)));
+        }
+
         services.AddSingleton<IDb2Format>(_ => Wdc5Format.Instance);
         services.AddSingleton<IMimironDb2Store, MimironDb2Store>();
     }

@@ -45,10 +45,10 @@ public class MimironDb2ServiceCollectionExtensionsTests
     {
         var services = new ServiceCollection();
         var tempPath = Path.Combine(Path.GetTempPath(), "MimironSQLTest_" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(tempPath);
-
+        
         try
         {
+            Directory.CreateDirectory(tempPath);
             services.AddMimironDb2FileSystem(tempPath);
 
             var serviceProvider = services.BuildServiceProvider();
@@ -60,7 +60,8 @@ public class MimironDb2ServiceCollectionExtensionsTests
         }
         finally
         {
-            Directory.Delete(tempPath, true);
+            if (Directory.Exists(tempPath))
+                Directory.Delete(tempPath, true);
         }
     }
 
@@ -107,10 +108,10 @@ public class MimironDb2ServiceCollectionExtensionsTests
     {
         var services = new ServiceCollection();
         var tempPath = Path.Combine(Path.GetTempPath(), "MimironSQLTest_" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(tempPath);
-
+        
         try
         {
+            Directory.CreateDirectory(tempPath);
             services.AddMimironDb2FileSystem(tempPath);
 
             var serviceProvider = services.BuildServiceProvider();
@@ -122,7 +123,8 @@ public class MimironDb2ServiceCollectionExtensionsTests
         }
         finally
         {
-            Directory.Delete(tempPath, true);
+            if (Directory.Exists(tempPath))
+                Directory.Delete(tempPath, true);
         }
     }
 }

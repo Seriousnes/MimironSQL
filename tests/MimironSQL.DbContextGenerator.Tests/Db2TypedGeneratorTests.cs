@@ -110,6 +110,159 @@ Map<32>
         foo.SourceText.ShouldContain("public Map? MapEntity { get; set; }");
     }
 
+    [Fact]
+    public void Generator_emits_ef_core_dbcontext_with_dbset_properties()
+    {
+        var env = "WOW_VERSION=1.0.0.1\n";
+
+        var mapDbd = """
+COLUMNS
+int ID
+string Directory
+
+BUILD 1.0.0.1
+$id$ID<32>
+Directory<32>
+""";
+
+        var results = RunGenerator(
+            additionalFiles:
+            [
+                (".env", env),
+                ("Map.dbd", mapDbd),
+            ]);
+
+        var context = results.Single(s => s.HintName.EndsWith("WoWDb2Context.g.cs", StringComparison.Ordinal));
+        
+        context.SourceText.ShouldContain("using Microsoft.EntityFrameworkCore;");
+        context.SourceText.ShouldContain("public partial class WoWDb2Context : DbContext");
+        context.SourceText.ShouldContain("public WoWDb2Context(DbContextOptions<WoWDb2Context> options)");
+        context.SourceText.ShouldContain("public DbSet<Map> Map { get; set; } = null!;");
+        context.SourceText.ShouldContain("protected override void OnModelCreating(ModelBuilder modelBuilder)");
+        context.SourceText.ShouldContain("base.OnModelCreating(modelBuilder);");
+        context.SourceText.ShouldContain("partial void OnModelCreatingPartial(ModelBuilder modelBuilder);");
+    }
+
+    [Fact]
+    public void Generator_emits_ef_core_onmodelcreating_with_table_and_column_mappings()
+    {
+        var env = "WOW_VERSION=1.0.0.1\n";
+
+        var mapDbd = """
+COLUMNS
+int ID
+string Directory
+
+BUILD 1.0.0.1
+$id$ID<32>
+Directory<32>
+""";
+
+        var results = RunGenerator(
+            additionalFiles:
+            [
+                (".env", env),
+                ("Map.dbd", mapDbd),
+            ]);
+
+        var context = results.Single(s => s.HintName.EndsWith("WoWDb2Context.g.cs", StringComparison.Ordinal));
+        
+        context.SourceText.ShouldContain("modelBuilder.Entity<Map>(entity =>");
+        context.SourceText.ShouldContain("entity.HasKey(e => e.Id);");
+    }
+
+    [Fact]
+    public void Generator_emits_ef_core_relationship_configuration()
+    {
+        var env = "WOW_VERSION=1.0.0.1\n";
+
+        var mapDbd = """
+COLUMNS
+int ID
+
+BUILD 1.0.0.1
+$id$ID<32>
+""";
+
+        var sourceDbd = """
+COLUMNS
+int ID
+int<Map::ID> MapID
+
+BUILD 1.0.0.1
+$id$ID<32>
+MapID<u16>
+""";
+
+        var results = RunGenerator(
+            additionalFiles:
+            [
+                (".env", env),
+                ("Map.dbd", mapDbd),
+                ("MapChallengeMode.dbd", sourceDbd),
+            ]);
+
+        var context = results.Single(s => s.HintName.EndsWith("WoWDb2Context.g.cs", StringComparison.Ordinal));
+        
+        context.SourceText.ShouldContain("entity.HasOne(e => e.Map)");
+        context.SourceText.ShouldContain(".WithMany()");
+        context.SourceText.ShouldContain(".HasForeignKey(e => e.MapID);");
+    }
+
+    [Fact]
+    public void Generated_context_compiles_with_ef_core()
+    {
+        var env = "WOW_VERSION=1.0.0.1\n";
+
+        var mapDbd = """
+COLUMNS
+int ID
+string Directory
+
+BUILD 1.0.0.1
+$id$ID<32>
+Directory<32>
+""";
+
+        var parseOptions = new CSharpParseOptions(LanguageVersion.Preview);
+
+        // Create base compilation with necessary types
+        var baseCompilation = CSharpCompilation.Create(
+            assemblyName: "GeneratorCompilationTest",
+            syntaxTrees: 
+            [
+                CSharpSyntaxTree.ParseText("""
+                    namespace MimironSQL.Db2 
+                    { 
+                        public abstract class Db2Entity 
+                        { 
+                            public int Id { get; set; }
+                        } 
+                    }
+                    """, parseOptions)
+            ],
+            references: GetReferences(),
+            options: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+
+        ImmutableArray<AdditionalText> additionalTexts =
+        [
+            new InMemoryAdditionalText(".env", SourceText.From(env, Encoding.UTF8)),
+            new InMemoryAdditionalText("Map.dbd", SourceText.From(mapDbd, Encoding.UTF8)),
+        ];
+
+        var generator = new MimironSQL.DbContextGenerator.DbContextGenerator();
+        GeneratorDriver driver = CSharpGeneratorDriver.Create(
+            generators: [generator.AsSourceGenerator()],
+            additionalTexts: additionalTexts,
+            parseOptions: parseOptions,
+            optionsProvider: new TestAnalyzerConfigOptionsProvider(ImmutableDictionary<string, string>.Empty));
+
+        driver = driver.RunGeneratorsAndUpdateCompilation(baseCompilation, out var outputCompilation, out var diagnostics);
+
+        var errors = outputCompilation.GetDiagnostics().Where(d => d.Severity == DiagnosticSeverity.Error).ToArray();
+        errors.ShouldBeEmpty($"Generated code should compile without errors. Errors:\n{string.Join("\n", errors.Select(e => e.GetMessage()))}");
+    }
+
     private static ImmutableArray<(string HintName, string SourceText)> RunGenerator((string Path, string Content)[] additionalFiles)
     {
         var parseOptions = new CSharpParseOptions(LanguageVersion.Preview);
@@ -156,7 +309,28 @@ Map<32>
             MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
             MetadataReference.CreateFromFile(typeof(Enumerable).Assembly.Location),
             MetadataReference.CreateFromFile(typeof(System.ComponentModel.DataAnnotations.Schema.ForeignKeyAttribute).Assembly.Location),
+            MetadataReference.CreateFromFile(typeof(System.Runtime.CompilerServices.RuntimeHelpers).Assembly.Location),
+            MetadataReference.CreateFromFile(typeof(System.Linq.Expressions.Expression).Assembly.Location),
         };
+
+        // Add EF Core reference
+        try
+        {
+            var efCoreAssemblyPath = typeof(Microsoft.EntityFrameworkCore.DbContext).Assembly.Location;
+            references.Add(MetadataReference.CreateFromFile(efCoreAssemblyPath));
+        }
+        catch
+        {
+            // EF Core not available in test context
+        }
+
+        // Add System.Runtime for attributes
+        var systemRuntimeAssembly = AppDomain.CurrentDomain.GetAssemblies()
+            .FirstOrDefault(a => a.GetName().Name == "System.Runtime");
+        if (systemRuntimeAssembly is not null)
+        {
+            references.Add(MetadataReference.CreateFromFile(systemRuntimeAssembly.Location));
+        }
 
         return [.. references];
     }

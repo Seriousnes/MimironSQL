@@ -1,8 +1,10 @@
 using System.Text;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Internal;
 using Microsoft.Extensions.DependencyInjection;
 using MimironSQL.Db2;
+using MimironSQL.EntityFrameworkCore.Infrastructure;
 using MimironSQL.EntityFrameworkCore.Storage;
 using MimironSQL.Formats;
 using MimironSQL.Formats.Wdc5;
@@ -53,6 +55,7 @@ public class MimironDb2OptionsExtension : IDbContextOptionsExtension
 
     public void ApplyServices(IServiceCollection services)
     {
+        services.AddSingleton<ISingletonOptionsInitializer, MimironDb2SingletonOptionsInitializer>();
         services.AddSingleton<IModelCacheKeyFactory, MimironDb2ModelCacheKeyFactory>();
         services.AddSingleton<IModelCustomizer, MimironDb2ModelCustomizer>();
         if (ProviderType == MimironDb2ProviderType.FileSystem && !string.IsNullOrWhiteSpace(Db2Path))

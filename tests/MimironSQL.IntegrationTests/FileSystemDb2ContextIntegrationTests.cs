@@ -119,6 +119,7 @@ public sealed class FileSystemDb2ContextIntegrationTests
         var context = CreateContext();
 
         var directories = context.MapChallengeMode
+            .Include(x => x.Map)
             .Where(x => x.Map != null)
             .Select(x => x.Map!.Directory)
             .Take(50)
@@ -139,6 +140,7 @@ public sealed class FileSystemDb2ContextIntegrationTests
             .ToHashSet();
 
         var results = context.MapChallengeMode
+            .Include(x => x.Map)
             .Where(x => x.Map != null)
             .Where(x => x.Map!.Directory.Contains("a"))
             .Take(50)
@@ -156,6 +158,7 @@ public sealed class FileSystemDb2ContextIntegrationTests
         // This shape intentionally forces the non-pruned navigation projection path:
         // Select uses a navigation member, but a Where appears after Select.
         var results = context.MapChallengeMode
+            .Include(x => x.Map)
             .Select(x => new
             {
                 MapId = x.Map!.Id,
@@ -192,6 +195,7 @@ public sealed class FileSystemDb2ContextIntegrationTests
         var suffix = directory[^1].ToString();
 
         var startsWithResults = context.MapChallengeMode
+            .Include(x => x.Map)
             .Where(x => x.Map != null)
             .Where(x => x.Map!.Id == mapId)
             .Where(x => x.Map!.Directory.StartsWith(prefix))
@@ -200,6 +204,7 @@ public sealed class FileSystemDb2ContextIntegrationTests
         startsWithResults.Count.ShouldBeGreaterThan(0);
 
         var endsWithResults = context.MapChallengeMode
+            .Include(x => x.Map)
             .Where(x => x.Map != null)
             .Where(x => x.Map!.Id == mapId)
             .Where(x => x.Map!.Directory.EndsWith(suffix))
@@ -208,6 +213,7 @@ public sealed class FileSystemDb2ContextIntegrationTests
         endsWithResults.Count.ShouldBeGreaterThan(0);
 
         var equalsResults = context.MapChallengeMode
+            .Include(x => x.Map)
             .Where(x => x.Map != null)
             .Where(x => x.Map!.Id == mapId)
             .Where(x => x.Map!.Directory == directory)
@@ -222,6 +228,7 @@ public sealed class FileSystemDb2ContextIntegrationTests
         var context = CreateContext();
 
         var directory = context.MapChallengeMode
+            .Include(x => x.Map)
             .Where(x => x.Map != null)
             .Select(x => x.Map!.Directory)
             .First(x => !string.IsNullOrWhiteSpace(x));
@@ -232,6 +239,7 @@ public sealed class FileSystemDb2ContextIntegrationTests
         var suffix = directory[^1].ToString();
 
         var results = context.MapChallengeMode
+            .Include(x => x.Map)
             .Where(x => x.Map!.Directory.StartsWith(prefix) && x.Map!.Directory.EndsWith(suffix))
             .Take(25)
             .ToList();
@@ -245,11 +253,13 @@ public sealed class FileSystemDb2ContextIntegrationTests
         var context = CreateContext();
 
         var mapId = context.MapChallengeMode
+            .Include(x => x.Map)
             .Where(x => x.Map != null)
             .Select(x => x.Map!.Id)
             .First(x => x > 0);
 
         var results = context.MapChallengeMode
+            .Include(x => x.Map)
             .Where(x => x.Map!.Id >= mapId && x.Map!.Id <= mapId)
             .Take(25)
             .ToList();
@@ -264,6 +274,7 @@ public sealed class FileSystemDb2ContextIntegrationTests
         var context = CreateContext();
 
         var seed = context.MapChallengeMode
+            .Include(x => x.Map)
             .Where(x => x.Map != null)
             .Select(x => new { x.Map!.Id, x.Map.Directory })
             .First(x => x.Id > 0 && !string.IsNullOrWhiteSpace(x.Directory));
@@ -271,6 +282,7 @@ public sealed class FileSystemDb2ContextIntegrationTests
         var prefix = seed.Directory[..1];
 
         var results = context.MapChallengeMode
+            .Include(x => x.Map)
             .Where(x => x.Map!.Id == seed.Id && x.Map!.Directory.StartsWith(prefix))
             .Take(25)
             .ToList();
@@ -285,11 +297,13 @@ public sealed class FileSystemDb2ContextIntegrationTests
         var context = CreateContext();
 
         var mapId = context.MapChallengeMode
+            .Include(x => x.Map)
             .Where(x => x.Map != null)
             .Select(x => x.Map!.Id)
             .First(x => x > 0);
 
         var results = context.MapChallengeMode
+            .Include(x => x.Map)
             .Where(x => x.Map != null && x.Map!.Id == mapId)
             .Take(25)
             .ToList();
@@ -304,11 +318,13 @@ public sealed class FileSystemDb2ContextIntegrationTests
         var context = CreateContext();
 
         var mapId = context.MapChallengeMode
+            .Include(x => x.Map)
             .Where(x => x.Map != null)
             .Select(x => x.Map!.Id)
             .First(x => x > 0);
 
         var results = context.MapChallengeMode
+            .Include(x => x.Map)
             .Where(x => x.Map!.Id == mapId && x.Map != null)
             .Take(25)
             .ToList();
@@ -323,6 +339,7 @@ public sealed class FileSystemDb2ContextIntegrationTests
         var context = CreateContext();
 
         var results = context.Map
+            .Include(x => x.MapChallengeModes)
             .Where(x => x.MapChallengeModes.Any(m => m.MapID > 0))
             .Take(25)
             .ToList();

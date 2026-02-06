@@ -1,4 +1,6 @@
 using System.Linq.Expressions;
+using Microsoft.EntityFrameworkCore;
+using System.Reflection;
 
 namespace MimironSQL.Db2.Query;
 
@@ -22,7 +24,9 @@ internal sealed record Db2SelectOperation(LambdaExpression Selector) : Db2QueryO
 
 internal sealed record Db2TakeOperation(int Count) : Db2QueryOperation;
 
-internal sealed record Db2IncludeOperation(LambdaExpression Navigation) : Db2QueryOperation;
+internal sealed record Db2SkipOperation(int Count) : Db2QueryOperation;
+
+internal sealed record Db2IncludeOperation(IReadOnlyList<MemberInfo> Members) : Db2QueryOperation;
 
 internal sealed record Db2QueryPipeline(
     Expression OriginalExpression,
@@ -115,6 +119,16 @@ internal sealed record Db2QueryPipeline(
                             continue;
                         }
 
+                    case nameof(Queryable.Skip):
+                        {
+                            if (m.Arguments[1] is not ConstantExpression c || c.Value is not int count)
+                                throw new NotSupportedException("Queryable.Skip requires a constant integer count for this provider.");
+
+                            opsReversed.Add(new Db2SkipOperation(count));
+                            current = m.Arguments[0];
+                            continue;
+                        }
+
                     default:
                         throw new NotSupportedException($"Unsupported Queryable operator: {m.Method.Name}.");
                 }
@@ -123,7 +137,31 @@ internal sealed record Db2QueryPipeline(
             if (m.Method.DeclaringType == typeof(Db2QueryableExtensions) && name == nameof(Db2QueryableExtensions.Include))
             {
                 var navigation = UnquoteLambda(m.Arguments[1]);
-                opsReversed.Add(new Db2IncludeOperation(navigation));
+
+                var members = ParseMemberChain(navigation);
+                opsReversed.Add(new Db2IncludeOperation(members));
+                current = m.Arguments[0];
+                continue;
+            }
+
+            if (m.Method.DeclaringType == typeof(EntityFrameworkQueryableExtensions) &&
+                name is nameof(EntityFrameworkQueryableExtensions.Include) or nameof(EntityFrameworkQueryableExtensions.ThenInclude))
+            {
+                var (source, members) = ExtractEfIncludeChain(m);
+                opsReversed.Add(new Db2IncludeOperation(members));
+                current = source;
+                continue;
+            }
+
+            if (m.Method.DeclaringType == typeof(EntityFrameworkQueryableExtensions) &&
+                name is nameof(EntityFrameworkQueryableExtensions.AsNoTracking) or
+                       nameof(EntityFrameworkQueryableExtensions.AsNoTrackingWithIdentityResolution) or
+                       nameof(EntityFrameworkQueryableExtensions.AsTracking) or
+                       nameof(EntityFrameworkQueryableExtensions.IgnoreAutoIncludes) or
+                       nameof(EntityFrameworkQueryableExtensions.IgnoreQueryFilters) or
+                       nameof(EntityFrameworkQueryableExtensions.TagWith) or
+                       nameof(EntityFrameworkQueryableExtensions.TagWithCallSite))
+            {
                 current = m.Arguments[0];
                 continue;
             }
@@ -140,6 +178,62 @@ internal sealed record Db2QueryPipeline(
             FinalOperator: finalOperator,
             FinalElementType: finalElementType,
             FinalPredicate: finalPredicate);
+    }
+
+    private static MemberInfo[] ParseMemberChain(LambdaExpression navigation)
+    {
+        ArgumentNullException.ThrowIfNull(navigation);
+
+        if (navigation.Parameters is not { Count: 1 })
+            throw new NotSupportedException("Include navigation must be a lambda with a single parameter.");
+
+        if (navigation.ReturnType.IsValueType)
+            throw new NotSupportedException("Include only supports reference-type navigations.");
+
+        var rootParam = navigation.Parameters[0];
+
+        var body = navigation.Body;
+        if (body is UnaryExpression { NodeType: ExpressionType.Convert or ExpressionType.ConvertChecked })
+            throw new NotSupportedException("Include does not support casts; use direct member access.");
+
+        var membersReversed = new List<MemberInfo>();
+        var current = body;
+
+        while (current is MemberExpression { Member: PropertyInfo or FieldInfo } member)
+        {
+            membersReversed.Add(member.Member);
+            current = member.Expression;
+        }
+
+        if (current != rootParam)
+            throw new NotSupportedException("Include only supports member access chains rooted at the lambda parameter.");
+
+        membersReversed.Reverse();
+        return [.. membersReversed];
+    }
+
+    private static (Expression Source, MemberInfo[] Members) ExtractEfIncludeChain(MethodCallExpression call)
+    {
+        if (call.Method.DeclaringType != typeof(EntityFrameworkQueryableExtensions))
+            throw new InvalidOperationException("Expected EF Core Include/ThenInclude method call.");
+
+        if (call.Method.Name == nameof(EntityFrameworkQueryableExtensions.Include))
+        {
+            var navigation = UnquoteLambda(call.Arguments[1]);
+            var members = ParseMemberChain(navigation);
+            return (call.Arguments[0], members);
+        }
+
+        if (call.Method.Name == nameof(EntityFrameworkQueryableExtensions.ThenInclude))
+        {
+            var (source, previousMembers) = ExtractEfIncludeChain((MethodCallExpression)call.Arguments[0]);
+            var navigation = UnquoteLambda(call.Arguments[1]);
+            var members = ParseMemberChain(navigation);
+
+            return (source, [.. previousMembers, .. members]);
+        }
+
+        throw new InvalidOperationException($"Unexpected EF include method: {call.Method.Name}");
     }
 
     private static LambdaExpression UnquoteLambda(Expression expression)

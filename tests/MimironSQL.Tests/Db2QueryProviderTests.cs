@@ -210,6 +210,7 @@ public sealed class Db2QueryProviderTests
         var (children, _, _) = CreateParentChildTables();
 
         var results = children
+            .Include(c => c.Parent)
             .Where(c => c.Parent!.Level > 3)
             .Select(c => c.Parent!.Name)
             .ToArray();
@@ -223,6 +224,7 @@ public sealed class Db2QueryProviderTests
         var (children, _, _) = CreateParentChildTables();
 
         var results = children
+            .Include(c => c.Parent)
             .Where(c => c.ParentId != 0)
             .Select(c => c.Parent!.Name)
             .Select(name => name.Length)
@@ -251,10 +253,10 @@ public sealed class Db2QueryProviderTests
     {
         var member = typeof(EntityWithNullableEnumKeys).GetProperty(nameof(EntityWithNullableEnumKeys.Keys))!;
 
-        var providerType = typeof(Db2QueryProvider<EntityWithNullableEnumKeys, RowHandle>);
-        var method = providerType.GetMethod("CreateIntEnumerableGetter", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!;
+        var executorType = typeof(Db2IncludeChainExecutor);
+        var method = executorType.GetMethod("GetOrCreateIntEnumerableGetter", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!;
 
-        var getter = (Func<EntityWithNullableEnumKeys, IEnumerable<int>?>)method.Invoke(null, [member])!;
+        var getter = (Func<object, IEnumerable<int>?>)method.Invoke(null, [typeof(EntityWithNullableEnumKeys), member])!;
 
         var entity = new EntityWithNullableEnumKeys
         {
@@ -269,10 +271,10 @@ public sealed class Db2QueryProviderTests
     {
         var member = typeof(EntityWithStringKeys).GetProperty(nameof(EntityWithStringKeys.Keys))!;
 
-        var providerType = typeof(Db2QueryProvider<EntityWithStringKeys, RowHandle>);
-        var method = providerType.GetMethod("CreateIntEnumerableGetter", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!;
+        var executorType = typeof(Db2IncludeChainExecutor);
+        var method = executorType.GetMethod("GetOrCreateIntEnumerableGetter", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!;
 
-        var ex = Should.Throw<TargetInvocationException>(() => method.Invoke(null, [member]));
+        var ex = Should.Throw<TargetInvocationException>(() => method.Invoke(null, [typeof(EntityWithStringKeys), member]));
         ex.InnerException.ShouldBeOfType<NotSupportedException>();
     }
 
@@ -299,7 +301,7 @@ public sealed class Db2QueryProviderTests
                 .Include(c => c.ParentId == 0 ? c.Parent : null)
                 .ToArray());
 
-        ex.Message.ShouldContain("simple member access");
+        ex.Message.ShouldContain("member access");
     }
 
     [Fact]
@@ -312,7 +314,7 @@ public sealed class Db2QueryProviderTests
                 .Include(c => c.Parent!.Name)
                 .ToArray());
 
-        ex.Message.ShouldContain("direct member access");
+        ex.Message.ShouldContain("navigation member access chains");
     }
 
     [Fact]
@@ -438,6 +440,7 @@ public sealed class Db2QueryProviderTests
         var (children, _, _) = CreateParentChildTables();
 
         var result = children
+            .Include(c => c.Parent)
             .Where(c => c.Parent != null && c.Parent.Level > 3)
             .Select(c => c.Parent!.Name)
             .ToArray();

@@ -25,9 +25,14 @@ public static class MimironDb2ServiceCollectionExtensions
         services.AddSingleton<IDbdProvider>(_ =>
             new FileSystemDbdProvider(new FileSystemDbdProviderOptions(dbdPath)));
 
-        services.AddSingleton<IDb2Format>(_ => Wdc5Format.Instance);
-        services.AddSingleton<IMimironDb2Store, MimironDb2Store>();
+        AddCoreServices(services);
 
         return services;
+    }
+
+    internal static void AddCoreServices(IServiceCollection services)
+    {
+        services.AddSingleton<IDb2Format>(_ => Wdc5Format.Instance);
+        services.AddSingleton<IMimironDb2Store, MimironDb2Store>();
     }
 }

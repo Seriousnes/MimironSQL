@@ -62,9 +62,14 @@ public class MimironDb2OptionsExtension : IDbContextOptionsExtension
             services.AddSingleton<IDbdProvider>(_ =>
                 new FileSystemDbdProvider(new FileSystemDbdProviderOptions(dbdPath)));
         }
+        else if (ProviderType == MimironDb2ProviderType.Casc)
+        {
+            throw new NotSupportedException(
+                "CASC provider is not yet supported in the EF Core provider. " +
+                "Use AddMimironDb2FileSystem or register CASC providers manually.");
+        }
 
-        services.AddSingleton<IDb2Format>(_ => Wdc5Format.Instance);
-        services.AddSingleton<IMimironDb2Store, MimironDb2Store>();
+        MimironDb2ServiceCollectionExtensions.AddCoreServices(services);
     }
 
     public void Validate(IDbContextOptions options)

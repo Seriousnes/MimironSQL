@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using MimironSQL.Db2.Schema;
 using MimironSQL.Formats;
 using MimironSQL.Providers;
@@ -10,8 +11,7 @@ public sealed class MimironDb2Store : IMimironDb2Store
     private readonly IDbdProvider _dbdProvider;
     private readonly IDb2Format _format;
     private readonly SchemaMapper _schemaMapper;
-    private readonly Dictionary<string, (IDb2File File, Db2TableSchema Schema)> _cache = new(StringComparer.OrdinalIgnoreCase);
-    private readonly Lock _cacheLock = new();
+    private readonly ConcurrentDictionary<string, Lazy<(IDb2File File, Db2TableSchema Schema)>> _cache = new(StringComparer.OrdinalIgnoreCase);
 
     public MimironDb2Store(IDb2StreamProvider db2StreamProvider, IDbdProvider dbdProvider, IDb2Format format)
     {
@@ -47,25 +47,30 @@ public sealed class MimironDb2Store : IMimironDb2Store
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(tableName);
 
-        lock (_cacheLock)
+        var lazy = _cache.GetOrAdd(tableName, key => new Lazy<(IDb2File File, Db2TableSchema Schema)>(() =>
         {
-            if (_cache.TryGetValue(tableName, out var cached))
-                return cached;
-
-            using var stream = _db2StreamProvider.OpenDb2Stream(tableName);
+            using var stream = _db2StreamProvider.OpenDb2Stream(key);
             var file = _format.OpenFile(stream);
             var layout = _format.GetLayout(file);
-            var schema = _schemaMapper.GetSchema(tableName, layout);
-            
-            var entry = (file, schema);
-            _cache[tableName] = entry;
-            return entry;
-        }
+            var schema = _schemaMapper.GetSchema(key, layout);
+            return (file, schema);
+        }));
+
+        return lazy.Value;
     }
 
     public (IDb2File<TRow> File, Db2TableSchema Schema) OpenTableWithSchema<TRow>(string tableName) where TRow : struct
     {
         var (file, schema) = OpenTableWithSchema(tableName);
-        return ((IDb2File<TRow>)file, schema);
+        
+        if (file is IDb2File<TRow> typedFile)
+            return (typedFile, schema);
+
+        var requestedType = typeof(TRow);
+        var actualType = file.RowType;
+
+        throw new InvalidOperationException(
+            $"Requested row type '{requestedType.FullName}' for table '{tableName}', " +
+            $"but underlying DB2 file uses row type '{actualType?.FullName ?? "unknown"}'.");
     }
 }

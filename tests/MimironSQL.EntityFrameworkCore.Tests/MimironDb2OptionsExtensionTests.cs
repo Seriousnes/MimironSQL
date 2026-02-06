@@ -277,6 +277,16 @@ public class MimironDb2OptionsExtensionTests
     }
 
     [Fact]
+    public void ApplyServices_WithCascProvider_ShouldThrow()
+    {
+        var extension = new MimironDb2OptionsExtension().WithCasc("/test/casc", null);
+        var services = new Microsoft.Extensions.DependencyInjection.ServiceCollection();
+
+        var exception = Should.Throw<NotSupportedException>(() => extension.ApplyServices(services));
+        exception.Message.ShouldContain("CASC provider is not yet supported");
+    }
+
+    [Fact]
     public void MimironDb2DbContextOptionsBuilder_WithNullOptionsBuilder_ShouldThrow()
     {
         DbContextOptionsBuilder optionsBuilder = null!;

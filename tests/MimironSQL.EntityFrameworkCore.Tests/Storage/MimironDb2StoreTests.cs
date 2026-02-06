@@ -113,7 +113,7 @@ public class MimironDb2StoreTests
     {
         var tableName = "TestTable";
         var stream = new MemoryStream();
-        var file = Substitute.For<IDb2File<TestRow>>();
+        var file = Substitute.For<IDb2File<RowHandle>>();
         var dbdFile = TestHelpers.CreateMockDbdFile();
         var layout = new Db2FileLayout(0x12345678, 5);
 
@@ -126,10 +126,11 @@ public class MimironDb2StoreTests
         var format = Substitute.For<IDb2Format>();
         format.OpenFile(stream).Returns(file);
         format.GetLayout(file).Returns(layout);
+        file.RowType.Returns(typeof(RowHandle));
 
         var store = new MimironDb2Store(db2StreamProvider, dbdProvider, format);
 
-        var result = store.OpenTable<TestRow>(tableName);
+        var result = store.OpenTable<RowHandle>(tableName);
 
         result.ShouldBe(file);
     }
@@ -195,7 +196,7 @@ public class MimironDb2StoreTests
     {
         var tableName = "TestTable";
         var stream = new MemoryStream();
-        var file = Substitute.For<IDb2File<TestRow>>();
+        var file = Substitute.For<IDb2File<RowHandle>>();
         var dbdFile = TestHelpers.CreateMockDbdFile();
         var layout = new Db2FileLayout(0x12345678, 5);
 
@@ -208,10 +209,11 @@ public class MimironDb2StoreTests
         var format = Substitute.For<IDb2Format>();
         format.OpenFile(stream).Returns(file);
         format.GetLayout(file).Returns(layout);
+        file.RowType.Returns(typeof(RowHandle));
 
         var store = new MimironDb2Store(db2StreamProvider, dbdProvider, format);
 
-        var (resultFile, resultSchema) = store.OpenTableWithSchema<TestRow>(tableName);
+        var (resultFile, resultSchema) = store.OpenTableWithSchema<RowHandle>(tableName);
 
         resultFile.ShouldBe(file);
         resultSchema.ShouldNotBeNull();
@@ -281,6 +283,60 @@ public class MimironDb2StoreTests
         schema1.ShouldBe(schema3);
         
         db2StreamProvider.Received(1).OpenDb2Stream(Arg.Any<string>());
+    }
+
+    [Fact]
+    public void OpenTable_Generic_WithMismatchedRowType_ShouldThrow()
+    {
+        var tableName = "TestTable";
+        var stream = new MemoryStream();
+        var file = Substitute.For<IDb2File<RowHandle>>();
+        var dbdFile = TestHelpers.CreateMockDbdFile();
+        var layout = new Db2FileLayout(0x12345678, 5);
+
+        var db2StreamProvider = Substitute.For<IDb2StreamProvider>();
+        db2StreamProvider.OpenDb2Stream(tableName).Returns(stream);
+
+        var dbdProvider = Substitute.For<IDbdProvider>();
+        dbdProvider.Open(tableName).Returns(dbdFile);
+
+        var format = Substitute.For<IDb2Format>();
+        format.OpenFile(stream).Returns(file);
+        format.GetLayout(file).Returns(layout);
+        file.RowType.Returns(typeof(RowHandle));
+
+        var store = new MimironDb2Store(db2StreamProvider, dbdProvider, format);
+
+        var exception = Should.Throw<InvalidOperationException>(() => store.OpenTable<TestRow>(tableName));
+        exception.Message.ShouldContain("TestRow");
+        exception.Message.ShouldContain("RowHandle");
+    }
+
+    [Fact]
+    public void OpenTableWithSchema_Generic_WithMismatchedRowType_ShouldThrow()
+    {
+        var tableName = "TestTable";
+        var stream = new MemoryStream();
+        var file = Substitute.For<IDb2File<RowHandle>>();
+        var dbdFile = TestHelpers.CreateMockDbdFile();
+        var layout = new Db2FileLayout(0x12345678, 5);
+
+        var db2StreamProvider = Substitute.For<IDb2StreamProvider>();
+        db2StreamProvider.OpenDb2Stream(tableName).Returns(stream);
+
+        var dbdProvider = Substitute.For<IDbdProvider>();
+        dbdProvider.Open(tableName).Returns(dbdFile);
+
+        var format = Substitute.For<IDb2Format>();
+        format.OpenFile(stream).Returns(file);
+        format.GetLayout(file).Returns(layout);
+        file.RowType.Returns(typeof(RowHandle));
+
+        var store = new MimironDb2Store(db2StreamProvider, dbdProvider, format);
+
+        var exception = Should.Throw<InvalidOperationException>(() => store.OpenTableWithSchema<TestRow>(tableName));
+        exception.Message.ShouldContain("TestRow");
+        exception.Message.ShouldContain("RowHandle");
     }
 
     public struct TestRow

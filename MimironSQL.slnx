@@ -2,6 +2,12 @@
   <Project Path="src/MimironSQL.Contracts/MimironSQL.Contracts.csproj" />
   <Project Path="src/MimironSQL.DbContextGenerator/MimironSQL.DbContextGenerator.csproj" />
   <Project Path="src/MimironSQL.Dbd/MimironSQL.Dbd.csproj" />
+  <Folder Name="/src/">
+    <Project Path="src/MimironSQL.EntityFrameworkCore/MimironSQL.EntityFrameworkCore.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/MimironSQL.EntityFrameworkCore.Tests/MimironSQL.EntityFrameworkCore.Tests.csproj" />
+  </Folder>
   <Project Path="src/MimironSQL.Benchmarks/MimironSQL.Benchmarks.csproj" />
   <Project Path="src/MimironSQL.Formats.Wdc5/MimironSQL.Formats.Wdc5.csproj" />
   <Project Path="src/MimironSQL.Providers.CASC/MimironSQL.Providers.CASC.csproj" />

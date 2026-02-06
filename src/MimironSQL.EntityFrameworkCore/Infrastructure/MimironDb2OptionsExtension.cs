@@ -55,9 +55,14 @@ public class MimironDb2OptionsExtension : IDbContextOptionsExtension
 
     public void ApplyServices(IServiceCollection services)
     {
+        // Add EF Core InMemory services as a base
+        services.AddEntityFrameworkInMemoryDatabase();
+        
+        // Override with our custom services
         services.AddSingleton<ISingletonOptionsInitializer, MimironDb2SingletonOptionsInitializer>();
         services.AddSingleton<IModelCacheKeyFactory, MimironDb2ModelCacheKeyFactory>();
         services.AddSingleton<IModelCustomizer, MimironDb2ModelCustomizer>();
+        
         if (ProviderType == MimironDb2ProviderType.FileSystem && !string.IsNullOrWhiteSpace(Db2Path))
         {
             services.AddSingleton<IDb2StreamProvider>(_ =>

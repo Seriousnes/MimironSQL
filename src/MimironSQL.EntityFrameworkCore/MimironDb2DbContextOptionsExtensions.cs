@@ -31,16 +31,7 @@ public static class MimironDb2DbContextOptionsExtensions
         Action<MimironDb2DbContextOptionsBuilder>? configureOptions = null)
         where TContext : DbContext
     {
-        ArgumentNullException.ThrowIfNull(optionsBuilder);
-        ArgumentException.ThrowIfNullOrWhiteSpace(db2DirectoryPath);
-
-        var extension = GetOrCreateExtension(optionsBuilder);
-        extension = extension.WithFileSystem(db2DirectoryPath, dbdDefinitionsPath);
-
-        ((IDbContextOptionsBuilderInfrastructure)optionsBuilder).AddOrUpdateExtension(extension);
-
-        configureOptions?.Invoke(new MimironDb2DbContextOptionsBuilder(optionsBuilder));
-
+        UseMimironDb2FileSystem((DbContextOptionsBuilder)optionsBuilder, db2DirectoryPath, dbdDefinitionsPath, configureOptions);
         return optionsBuilder;
     }
 
@@ -70,16 +61,7 @@ public static class MimironDb2DbContextOptionsExtensions
         Action<MimironDb2DbContextOptionsBuilder>? configureOptions = null)
         where TContext : DbContext
     {
-        ArgumentNullException.ThrowIfNull(optionsBuilder);
-        ArgumentException.ThrowIfNullOrWhiteSpace(cascRootPath);
-
-        var extension = GetOrCreateExtension(optionsBuilder);
-        extension = extension.WithCasc(cascRootPath, dbdDefinitionsPath);
-
-        ((IDbContextOptionsBuilderInfrastructure)optionsBuilder).AddOrUpdateExtension(extension);
-
-        configureOptions?.Invoke(new MimironDb2DbContextOptionsBuilder(optionsBuilder));
-
+        UseMimironDb2Casc((DbContextOptionsBuilder)optionsBuilder, cascRootPath, dbdDefinitionsPath, configureOptions);
         return optionsBuilder;
     }
 

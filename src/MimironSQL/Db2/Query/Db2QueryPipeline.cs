@@ -24,6 +24,8 @@ internal sealed record Db2TakeOperation(int Count) : Db2QueryOperation;
 
 internal sealed record Db2IncludeOperation(LambdaExpression Navigation) : Db2QueryOperation;
 
+internal sealed record Db2ThenIncludeOperation(LambdaExpression Navigation) : Db2QueryOperation;
+
 internal sealed record Db2QueryPipeline(
     Expression OriginalExpression,
     Expression ExpressionWithoutFinalOperator,
@@ -124,6 +126,15 @@ internal sealed record Db2QueryPipeline(
             {
                 var navigation = UnquoteLambda(m.Arguments[1]);
                 opsReversed.Add(new Db2IncludeOperation(navigation));
+                current = m.Arguments[0];
+                continue;
+            }
+
+            if (m.Method.DeclaringType == typeof(Db2QueryableExtensions) && 
+                (name == nameof(Db2QueryableExtensions.ThenIncludeReference) || name == nameof(Db2QueryableExtensions.ThenIncludeCollection)))
+            {
+                var navigation = UnquoteLambda(m.Arguments[1]);
+                opsReversed.Add(new Db2ThenIncludeOperation(navigation));
                 current = m.Arguments[0];
                 continue;
             }

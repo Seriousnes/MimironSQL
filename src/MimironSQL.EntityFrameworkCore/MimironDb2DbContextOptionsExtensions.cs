@@ -24,11 +24,51 @@ public static class MimironDb2DbContextOptionsExtensions
         return optionsBuilder;
     }
 
+    public static DbContextOptionsBuilder<TContext> UseMimironDb2FileSystem<TContext>(
+        this DbContextOptionsBuilder<TContext> optionsBuilder,
+        string db2DirectoryPath,
+        string? dbdDefinitionsPath = null,
+        Action<MimironDb2DbContextOptionsBuilder>? configureOptions = null)
+        where TContext : DbContext
+    {
+        ArgumentNullException.ThrowIfNull(optionsBuilder);
+        ArgumentException.ThrowIfNullOrWhiteSpace(db2DirectoryPath);
+
+        var extension = GetOrCreateExtension(optionsBuilder);
+        extension = extension.WithFileSystem(db2DirectoryPath, dbdDefinitionsPath);
+
+        ((IDbContextOptionsBuilderInfrastructure)optionsBuilder).AddOrUpdateExtension(extension);
+
+        configureOptions?.Invoke(new MimironDb2DbContextOptionsBuilder(optionsBuilder));
+
+        return optionsBuilder;
+    }
+
     public static DbContextOptionsBuilder UseMimironDb2Casc(
         this DbContextOptionsBuilder optionsBuilder,
         string cascRootPath,
         string? dbdDefinitionsPath = null,
         Action<MimironDb2DbContextOptionsBuilder>? configureOptions = null)
+    {
+        ArgumentNullException.ThrowIfNull(optionsBuilder);
+        ArgumentException.ThrowIfNullOrWhiteSpace(cascRootPath);
+
+        var extension = GetOrCreateExtension(optionsBuilder);
+        extension = extension.WithCasc(cascRootPath, dbdDefinitionsPath);
+
+        ((IDbContextOptionsBuilderInfrastructure)optionsBuilder).AddOrUpdateExtension(extension);
+
+        configureOptions?.Invoke(new MimironDb2DbContextOptionsBuilder(optionsBuilder));
+
+        return optionsBuilder;
+    }
+
+    public static DbContextOptionsBuilder<TContext> UseMimironDb2Casc<TContext>(
+        this DbContextOptionsBuilder<TContext> optionsBuilder,
+        string cascRootPath,
+        string? dbdDefinitionsPath = null,
+        Action<MimironDb2DbContextOptionsBuilder>? configureOptions = null)
+        where TContext : DbContext
     {
         ArgumentNullException.ThrowIfNull(optionsBuilder);
         ArgumentException.ThrowIfNullOrWhiteSpace(cascRootPath);

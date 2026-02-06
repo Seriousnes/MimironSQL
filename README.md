@@ -13,7 +13,7 @@ MimironSQL is a high-performance, **Entity Framework Core-like** query provider 
 
 ## Important Limitations
 
-⚠️ **MimironSQL is read-only**. The following operations are **NOT supported**:
+⚠️  **MimironSQL is read-only**. The following operations are **NOT supported**:
 - `SaveChanges()` - DB2 files cannot be modified
 - Database migrations - Schema is defined by WoWDBDefs
 - Raw SQL queries - Only LINQ is supported
@@ -95,7 +95,9 @@ public class WowDb2Context : Db2Context
     
     protected override void OnModelCreating(Db2ModelBuilder modelBuilder)
     {
-        // Configure relationships (optional - many are auto-detected from schema)
+        // Configure relationships (optional)
+        // Many relationships are auto-detected from the DB2 schema (foreign key columns),
+        // but you can override or add custom relationships here.
         modelBuilder
             .Entity<MapChallengeMode>()
             .HasOne(mc => mc.Map)

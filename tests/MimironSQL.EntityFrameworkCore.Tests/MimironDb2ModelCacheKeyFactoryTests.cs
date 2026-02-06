@@ -7,72 +7,117 @@ namespace MimironSQL.EntityFrameworkCore.Tests;
 public class MimironDb2ModelCacheKeyFactoryTests
 {
     [Fact]
-    public void Extension_WithSameValues_ShouldProduceSameHash()
+    public void Create_WithSameConfiguration_ShouldProduceSameKey()
     {
-        var extension1 = new MimironDb2OptionsExtension().WithFileSystem("/test/path", "/test/dbd");
-        var extension2 = new MimironDb2OptionsExtension().WithFileSystem("/test/path", "/test/dbd");
+        var factory = new MimironDb2ModelCacheKeyFactory();
+        var extension = new MimironDb2OptionsExtension().WithFileSystem("/test/path", "/test/dbd");
+        
+        var key1 = CreateKeyFromExtension(factory, extension, typeof(TestContext), designTime: false);
+        var key2 = CreateKeyFromExtension(factory, extension, typeof(TestContext), designTime: false);
 
-        var hash1 = extension1.Info.GetServiceProviderHashCode();
-        var hash2 = extension2.Info.GetServiceProviderHashCode();
-
-        hash1.ShouldBe(hash2);
+        key1.ShouldBe(key2);
     }
 
     [Fact]
-    public void Extension_WithDifferentPaths_ShouldProduceDifferentHash()
+    public void Create_WithDifferentPaths_ShouldProduceDifferentKeys()
     {
+        var factory = new MimironDb2ModelCacheKeyFactory();
         var extension1 = new MimironDb2OptionsExtension().WithFileSystem("/test/path1", "/test/dbd");
         var extension2 = new MimironDb2OptionsExtension().WithFileSystem("/test/path2", "/test/dbd");
+        
+        var key1 = CreateKeyFromExtension(factory, extension1, typeof(TestContext), designTime: false);
+        var key2 = CreateKeyFromExtension(factory, extension2, typeof(TestContext), designTime: false);
 
-        var hash1 = extension1.Info.GetServiceProviderHashCode();
-        var hash2 = extension2.Info.GetServiceProviderHashCode();
-
-        hash1.ShouldNotBe(hash2);
+        key1.ShouldNotBe(key2);
     }
 
     [Fact]
-    public void Extension_WithDifferentDbdPaths_ShouldProduceDifferentHash()
+    public void Create_WithDifferentDbdPaths_ShouldProduceDifferentKeys()
     {
+        var factory = new MimironDb2ModelCacheKeyFactory();
         var extension1 = new MimironDb2OptionsExtension().WithFileSystem("/test/path", "/test/dbd1");
         var extension2 = new MimironDb2OptionsExtension().WithFileSystem("/test/path", "/test/dbd2");
+        
+        var key1 = CreateKeyFromExtension(factory, extension1, typeof(TestContext), designTime: false);
+        var key2 = CreateKeyFromExtension(factory, extension2, typeof(TestContext), designTime: false);
 
-        var hash1 = extension1.Info.GetServiceProviderHashCode();
-        var hash2 = extension2.Info.GetServiceProviderHashCode();
-
-        hash1.ShouldNotBe(hash2);
+        key1.ShouldNotBe(key2);
     }
 
     [Fact]
-    public void Extension_WithDifferentProviderTypes_ShouldProduceDifferentHash()
+    public void Create_WithDifferentProviderTypes_ShouldProduceDifferentKeys()
     {
+        var factory = new MimironDb2ModelCacheKeyFactory();
         var extension1 = new MimironDb2OptionsExtension().WithFileSystem("/test/path", "/test/dbd");
         var extension2 = new MimironDb2OptionsExtension().WithCasc("/test/path", "/test/dbd");
+        
+        var key1 = CreateKeyFromExtension(factory, extension1, typeof(TestContext), designTime: false);
+        var key2 = CreateKeyFromExtension(factory, extension2, typeof(TestContext), designTime: false);
 
-        var hash1 = extension1.Info.GetServiceProviderHashCode();
-        var hash2 = extension2.Info.GetServiceProviderHashCode();
-
-        hash1.ShouldNotBe(hash2);
+        key1.ShouldNotBe(key2);
     }
 
     [Fact]
-    public void Extension_ShouldUseSameServiceProvider_WithSameValues_ShouldReturnTrue()
+    public void Create_WithDifferentContextTypes_ShouldProduceDifferentKeys()
     {
-        var extension1 = new MimironDb2OptionsExtension().WithFileSystem("/test/path", "/test/dbd");
-        var extension2 = new MimironDb2OptionsExtension().WithFileSystem("/test/path", "/test/dbd");
+        var factory = new MimironDb2ModelCacheKeyFactory();
+        var extension = new MimironDb2OptionsExtension().WithFileSystem("/test/path", "/test/dbd");
+        
+        var key1 = CreateKeyFromExtension(factory, extension, typeof(TestContext), designTime: false);
+        var key2 = CreateKeyFromExtension(factory, extension, typeof(AnotherTestContext), designTime: false);
 
-        var result = extension1.Info.ShouldUseSameServiceProvider(extension2.Info);
-
-        result.ShouldBeTrue();
+        key1.ShouldNotBe(key2);
     }
 
     [Fact]
-    public void Extension_ShouldUseSameServiceProvider_WithDifferentPaths_ShouldReturnFalse()
+    public void Create_WithDifferentDesignTimeFlag_ShouldProduceDifferentKeys()
     {
-        var extension1 = new MimironDb2OptionsExtension().WithFileSystem("/test/path1", "/test/dbd");
-        var extension2 = new MimironDb2OptionsExtension().WithFileSystem("/test/path2", "/test/dbd");
+        var factory = new MimironDb2ModelCacheKeyFactory();
+        var extension = new MimironDb2OptionsExtension().WithFileSystem("/test/path", "/test/dbd");
+        
+        var key1 = CreateKeyFromExtension(factory, extension, typeof(TestContext), designTime: false);
+        var key2 = CreateKeyFromExtension(factory, extension, typeof(TestContext), designTime: true);
 
-        var result = extension1.Info.ShouldUseSameServiceProvider(extension2.Info);
+        key1.ShouldNotBe(key2);
+    }
 
-        result.ShouldBeFalse();
+    [Fact]
+    public void Create_WithoutExtension_ShouldUseContextTypeAndDesignTimeOnly()
+    {
+        var factory = new MimironDb2ModelCacheKeyFactory();
+        
+        var key = CreateKeyWithoutExtension(factory, typeof(TestContext), designTime: false);
+
+        key.ShouldBe((typeof(TestContext), false));
+    }
+
+    private static object CreateKeyFromExtension(
+        MimironDb2ModelCacheKeyFactory factory, 
+        MimironDb2OptionsExtension extension, 
+        Type contextType,
+        bool designTime)
+    {
+        return (
+            contextType,
+            extension.ProviderType,
+            extension.Db2Path,
+            extension.DbdDefinitionsPath,
+            designTime);
+    }
+
+    private static object CreateKeyWithoutExtension(
+        MimironDb2ModelCacheKeyFactory factory,
+        Type contextType,
+        bool designTime)
+    {
+        return (contextType, designTime);
+    }
+
+    private class TestContext : DbContext
+    {
+    }
+
+    private class AnotherTestContext : DbContext
+    {
     }
 }

@@ -21,6 +21,7 @@ internal sealed class Db2QueryProvider<TEntity, TRow>(
     private static readonly ConcurrentDictionary<Type, Func<Db2QueryProvider<TEntity, TRow>, IEnumerable<TEntity>, LambdaExpression, IEnumerable<TEntity>>> IncludeDelegates = new();
     private static readonly ConcurrentDictionary<(Type NavigationType, Type TargetType), Func<Db2QueryProvider<TEntity, TRow>, IEnumerable<TEntity>, MemberInfo, string, Db2CollectionNavigation, IEnumerable<TEntity>>> ForeignKeyArrayToPrimaryKeyIncludeDelegates = new();
     private static readonly ConcurrentDictionary<(Type NavigationType, Type TargetType), Func<Db2QueryProvider<TEntity, TRow>, IEnumerable<TEntity>, MemberInfo, string, Db2CollectionNavigation, IEnumerable<TEntity>>> DependentForeignKeyToPrimaryKeyIncludeDelegates = new();
+    private static readonly ConcurrentDictionary<LambdaExpression, Delegate> CompiledNavigationDelegates = new();
 
     private readonly Db2EntityType _rootEntityType = model.GetEntityType(typeof(TEntity));
     private readonly Db2EntityMaterializer<TEntity, TRow> _materializer = new(model.GetEntityType(typeof(TEntity)));
@@ -899,7 +900,7 @@ internal sealed class Db2QueryProvider<TEntity, TRow>(
 
     private static object? GetNavigationValue(object entity, LambdaExpression navigation)
     {
-        var compiled = navigation.Compile();
+        var compiled = CompiledNavigationDelegates.GetOrAdd(navigation, static nav => nav.Compile());
         return compiled.DynamicInvoke(entity);
     }
 

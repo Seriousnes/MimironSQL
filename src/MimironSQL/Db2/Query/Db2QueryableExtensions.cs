@@ -81,6 +81,6 @@ public static class Db2QueryableExtensions
         public IQueryProvider Provider => queryable.Provider;
 
         public IEnumerator<TEntity> GetEnumerator() => queryable.GetEnumerator();
-        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => queryable.GetEnumerator();
     }
 }

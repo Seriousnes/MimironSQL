@@ -2,6 +2,11 @@ using System.Text;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.DependencyInjection;
+using MimironSQL.Db2;
+using MimironSQL.EntityFrameworkCore.Storage;
+using MimironSQL.Formats;
+using MimironSQL.Formats.Wdc5;
+using MimironSQL.Providers;
 
 namespace MimironSQL.EntityFrameworkCore;
 
@@ -48,6 +53,8 @@ public class MimironDb2OptionsExtension : IDbContextOptionsExtension
 
     public void ApplyServices(IServiceCollection services)
     {
+        services.AddSingleton<IDb2Format>(_ => Wdc5Format.Instance);
+        services.AddSingleton<IMimironDb2Store, MimironDb2Store>();
     }
 
     public void Validate(IDbContextOptions options)

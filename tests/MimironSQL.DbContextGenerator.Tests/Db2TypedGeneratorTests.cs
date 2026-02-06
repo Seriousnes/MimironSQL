@@ -110,6 +110,105 @@ Map<32>
         foo.SourceText.ShouldContain("public Map? MapEntity { get; set; }");
     }
 
+    [Fact]
+    public void Generator_emits_ef_core_dbcontext_with_dbset_properties()
+    {
+        var env = "WOW_VERSION=1.0.0.1\n";
+
+        var mapDbd = """
+COLUMNS
+int ID
+string Directory
+
+BUILD 1.0.0.1
+$id$ID<32>
+Directory<32>
+""";
+
+        var results = RunGenerator(
+            additionalFiles:
+            [
+                (".env", env),
+                ("Map.dbd", mapDbd),
+            ]);
+
+        var context = results.Single(s => s.HintName.EndsWith("WoWDb2Context.g.cs", StringComparison.Ordinal));
+        
+        context.SourceText.ShouldContain("using Microsoft.EntityFrameworkCore;");
+        context.SourceText.ShouldContain("public partial class WoWDb2Context : DbContext");
+        context.SourceText.ShouldContain("public WoWDb2Context(DbContextOptions<WoWDb2Context> options)");
+        context.SourceText.ShouldContain("public DbSet<Map> Map { get; set; } = null!;");
+        context.SourceText.ShouldContain("protected override void OnModelCreating(ModelBuilder modelBuilder)");
+        context.SourceText.ShouldContain("base.OnModelCreating(modelBuilder);");
+        context.SourceText.ShouldContain("partial void OnModelCreatingPartial(ModelBuilder modelBuilder);");
+    }
+
+    [Fact]
+    public void Generator_emits_ef_core_onmodelcreating_with_table_and_column_mappings()
+    {
+        var env = "WOW_VERSION=1.0.0.1\n";
+
+        var mapDbd = """
+COLUMNS
+int ID
+string Directory
+
+BUILD 1.0.0.1
+$id$ID<32>
+Directory<32>
+""";
+
+        var results = RunGenerator(
+            additionalFiles:
+            [
+                (".env", env),
+                ("Map.dbd", mapDbd),
+            ]);
+
+        var context = results.Single(s => s.HintName.EndsWith("WoWDb2Context.g.cs", StringComparison.Ordinal));
+        
+        context.SourceText.ShouldContain("modelBuilder.Entity<Map>(entity =>");
+        context.SourceText.ShouldContain("entity.HasKey(e => e.Id);");
+    }
+
+    [Fact]
+    public void Generator_emits_ef_core_relationship_configuration()
+    {
+        var env = "WOW_VERSION=1.0.0.1\n";
+
+        var mapDbd = """
+COLUMNS
+int ID
+
+BUILD 1.0.0.1
+$id$ID<32>
+""";
+
+        var sourceDbd = """
+COLUMNS
+int ID
+int<Map::ID> MapID
+
+BUILD 1.0.0.1
+$id$ID<32>
+MapID<u16>
+""";
+
+        var results = RunGenerator(
+            additionalFiles:
+            [
+                (".env", env),
+                ("Map.dbd", mapDbd),
+                ("MapChallengeMode.dbd", sourceDbd),
+            ]);
+
+        var context = results.Single(s => s.HintName.EndsWith("WoWDb2Context.g.cs", StringComparison.Ordinal));
+        
+        context.SourceText.ShouldContain("entity.HasOne(e => e.Map)");
+        context.SourceText.ShouldContain(".WithMany()");
+        context.SourceText.ShouldContain(".HasForeignKey(e => e.MapID);");
+    }
+
     private static ImmutableArray<(string HintName, string SourceText)> RunGenerator((string Path, string Content)[] additionalFiles)
     {
         var parseOptions = new CSharpParseOptions(LanguageVersion.Preview);
@@ -157,6 +256,13 @@ Map<32>
             MetadataReference.CreateFromFile(typeof(Enumerable).Assembly.Location),
             MetadataReference.CreateFromFile(typeof(System.ComponentModel.DataAnnotations.Schema.ForeignKeyAttribute).Assembly.Location),
         };
+
+        var efCoreAssembly = AppDomain.CurrentDomain.GetAssemblies()
+            .FirstOrDefault(a => a.GetName().Name == "Microsoft.EntityFrameworkCore");
+        if (efCoreAssembly is not null)
+        {
+            references.Add(MetadataReference.CreateFromFile(efCoreAssembly.Location));
+        }
 
         return [.. references];
     }

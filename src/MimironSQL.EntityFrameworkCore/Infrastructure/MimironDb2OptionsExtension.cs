@@ -2,6 +2,11 @@ using System.Text;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.DependencyInjection;
+using MimironSQL.Db2;
+using MimironSQL.EntityFrameworkCore.Storage;
+using MimironSQL.Formats;
+using MimironSQL.Formats.Wdc5;
+using MimironSQL.Providers;
 
 namespace MimironSQL.EntityFrameworkCore;
 
@@ -48,6 +53,23 @@ public class MimironDb2OptionsExtension : IDbContextOptionsExtension
 
     public void ApplyServices(IServiceCollection services)
     {
+        if (ProviderType == MimironDb2ProviderType.FileSystem && !string.IsNullOrWhiteSpace(Db2Path))
+        {
+            services.AddSingleton<IDb2StreamProvider>(_ =>
+                new FileSystemDb2StreamProvider(new FileSystemDb2StreamProviderOptions(Db2Path)));
+
+            var dbdPath = DbdDefinitionsPath ?? Path.Combine(Db2Path, "definitions");
+            services.AddSingleton<IDbdProvider>(_ =>
+                new FileSystemDbdProvider(new FileSystemDbdProviderOptions(dbdPath)));
+        }
+        else if (ProviderType == MimironDb2ProviderType.Casc)
+        {
+            throw new NotSupportedException(
+                "CASC provider is not yet supported in the EF Core provider. " +
+                "Use AddMimironDb2FileSystem or register CASC providers manually.");
+        }
+
+        MimironDb2ServiceCollectionExtensions.AddCoreServices(services);
     }
 
     public void Validate(IDbContextOptions options)

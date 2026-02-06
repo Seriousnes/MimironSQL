@@ -24,6 +24,17 @@ public static class MimironDb2DbContextOptionsExtensions
         return optionsBuilder;
     }
 
+    public static DbContextOptionsBuilder<TContext> UseMimironDb2FileSystem<TContext>(
+        this DbContextOptionsBuilder<TContext> optionsBuilder,
+        string db2DirectoryPath,
+        string? dbdDefinitionsPath = null,
+        Action<MimironDb2DbContextOptionsBuilder>? configureOptions = null)
+        where TContext : DbContext
+    {
+        UseMimironDb2FileSystem((DbContextOptionsBuilder)optionsBuilder, db2DirectoryPath, dbdDefinitionsPath, configureOptions);
+        return optionsBuilder;
+    }
+
     public static DbContextOptionsBuilder UseMimironDb2Casc(
         this DbContextOptionsBuilder optionsBuilder,
         string cascRootPath,
@@ -40,6 +51,17 @@ public static class MimironDb2DbContextOptionsExtensions
 
         configureOptions?.Invoke(new MimironDb2DbContextOptionsBuilder(optionsBuilder));
 
+        return optionsBuilder;
+    }
+
+    public static DbContextOptionsBuilder<TContext> UseMimironDb2Casc<TContext>(
+        this DbContextOptionsBuilder<TContext> optionsBuilder,
+        string cascRootPath,
+        string? dbdDefinitionsPath = null,
+        Action<MimironDb2DbContextOptionsBuilder>? configureOptions = null)
+        where TContext : DbContext
+    {
+        UseMimironDb2Casc((DbContextOptionsBuilder)optionsBuilder, cascRootPath, dbdDefinitionsPath, configureOptions);
         return optionsBuilder;
     }
 

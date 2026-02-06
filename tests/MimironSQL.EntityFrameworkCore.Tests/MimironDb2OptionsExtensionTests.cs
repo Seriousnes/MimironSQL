@@ -337,4 +337,108 @@ public class MimironDb2OptionsExtensionTests
 
         result.ShouldBeSameAs(optionsBuilder);
     }
+
+    [Fact]
+    public void UseMimironDb2FileSystem_Generic_ShouldReturnSameBuilderForChaining()
+    {
+        var optionsBuilder = new DbContextOptionsBuilder<DbContext>();
+
+        var result = optionsBuilder.UseMimironDb2FileSystem("/test/path");
+
+        result.ShouldBeSameAs(optionsBuilder);
+    }
+
+    [Fact]
+    public void UseMimironDb2FileSystem_Generic_ShouldConfigureOptionsExtension()
+    {
+        var optionsBuilder = new DbContextOptionsBuilder<DbContext>();
+
+        optionsBuilder.UseMimironDb2FileSystem("/test/path");
+
+        var extension = optionsBuilder.Options.FindExtension<MimironDb2OptionsExtension>();
+        extension.ShouldNotBeNull();
+        extension.ProviderType.ShouldBe(MimironDb2ProviderType.FileSystem);
+        extension.Db2Path.ShouldBe("/test/path");
+    }
+
+    [Fact]
+    public void UseMimironDb2FileSystem_Generic_WithDbdPath_ShouldConfigureExtension()
+    {
+        var optionsBuilder = new DbContextOptionsBuilder<DbContext>();
+
+        optionsBuilder.UseMimironDb2FileSystem("/test/path", "/test/dbd");
+
+        var extension = optionsBuilder.Options.FindExtension<MimironDb2OptionsExtension>();
+        extension.ShouldNotBeNull();
+        extension.ProviderType.ShouldBe(MimironDb2ProviderType.FileSystem);
+        extension.Db2Path.ShouldBe("/test/path");
+        extension.DbdDefinitionsPath.ShouldBe("/test/dbd");
+    }
+
+    [Fact]
+    public void UseMimironDb2FileSystem_Generic_WithConfigureOptions_ShouldInvokeCallback()
+    {
+        var optionsBuilder = new DbContextOptionsBuilder<DbContext>();
+        var callbackInvoked = false;
+
+        optionsBuilder.UseMimironDb2FileSystem("/test/path", configureOptions: builder =>
+        {
+            builder.ShouldNotBeNull();
+            callbackInvoked = true;
+        });
+
+        callbackInvoked.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void UseMimironDb2Casc_Generic_ShouldReturnSameBuilderForChaining()
+    {
+        var optionsBuilder = new DbContextOptionsBuilder<DbContext>();
+
+        var result = optionsBuilder.UseMimironDb2Casc("/test/casc");
+
+        result.ShouldBeSameAs(optionsBuilder);
+    }
+
+    [Fact]
+    public void UseMimironDb2Casc_Generic_ShouldConfigureOptionsExtension()
+    {
+        var optionsBuilder = new DbContextOptionsBuilder<DbContext>();
+
+        optionsBuilder.UseMimironDb2Casc("/test/casc");
+
+        var extension = optionsBuilder.Options.FindExtension<MimironDb2OptionsExtension>();
+        extension.ShouldNotBeNull();
+        extension.ProviderType.ShouldBe(MimironDb2ProviderType.Casc);
+        extension.Db2Path.ShouldBe("/test/casc");
+    }
+
+    [Fact]
+    public void UseMimironDb2Casc_Generic_WithDbdPath_ShouldConfigureExtension()
+    {
+        var optionsBuilder = new DbContextOptionsBuilder<DbContext>();
+
+        optionsBuilder.UseMimironDb2Casc("/test/casc", "/test/dbd");
+
+        var extension = optionsBuilder.Options.FindExtension<MimironDb2OptionsExtension>();
+        extension.ShouldNotBeNull();
+        extension.ProviderType.ShouldBe(MimironDb2ProviderType.Casc);
+        extension.Db2Path.ShouldBe("/test/casc");
+        extension.DbdDefinitionsPath.ShouldBe("/test/dbd");
+    }
+
+    [Fact]
+    public void UseMimironDb2Casc_Generic_WithConfigureOptions_ShouldInvokeCallback()
+    {
+        var optionsBuilder = new DbContextOptionsBuilder<DbContext>();
+        var callbackInvoked = false;
+
+        optionsBuilder.UseMimironDb2Casc("/test/casc", configureOptions: builder =>
+        {
+            builder.ShouldNotBeNull();
+            callbackInvoked = true;
+        });
+
+        callbackInvoked.ShouldBeTrue();
+    }
 }

@@ -38,7 +38,7 @@ public sealed class Db2QueryableAsyncExtensionsTests
     public async Task ToListAsync_honors_cancellation_token()
     {
         var (table, _) = CreateParentTable();
-        var cts = new CancellationTokenSource();
+        using var cts = new CancellationTokenSource();
         cts.Cancel();
 
         await Should.ThrowAsync<OperationCanceledException>(async () =>
@@ -61,7 +61,7 @@ public sealed class Db2QueryableAsyncExtensionsTests
     public async Task ToArrayAsync_honors_cancellation_token()
     {
         var (table, _) = CreateParentTable();
-        var cts = new CancellationTokenSource();
+        using var cts = new CancellationTokenSource();
         cts.Cancel();
 
         await Should.ThrowAsync<OperationCanceledException>(async () =>
@@ -113,7 +113,7 @@ public sealed class Db2QueryableAsyncExtensionsTests
     public async Task FirstAsync_honors_cancellation_token()
     {
         var (table, _) = CreateParentTable();
-        var cts = new CancellationTokenSource();
+        using var cts = new CancellationTokenSource();
         cts.Cancel();
 
         await Should.ThrowAsync<OperationCanceledException>(async () =>
@@ -167,7 +167,7 @@ public sealed class Db2QueryableAsyncExtensionsTests
     public async Task FirstOrDefaultAsync_honors_cancellation_token()
     {
         var (table, _) = CreateParentTable();
-        var cts = new CancellationTokenSource();
+        using var cts = new CancellationTokenSource();
         cts.Cancel();
 
         await Should.ThrowAsync<OperationCanceledException>(async () =>
@@ -228,7 +228,7 @@ public sealed class Db2QueryableAsyncExtensionsTests
     public async Task SingleAsync_honors_cancellation_token()
     {
         var (table, _) = CreateParentTable();
-        var cts = new CancellationTokenSource();
+        using var cts = new CancellationTokenSource();
         cts.Cancel();
 
         await Should.ThrowAsync<OperationCanceledException>(async () =>
@@ -291,7 +291,7 @@ public sealed class Db2QueryableAsyncExtensionsTests
     public async Task SingleOrDefaultAsync_honors_cancellation_token()
     {
         var (table, _) = CreateParentTable();
-        var cts = new CancellationTokenSource();
+        using var cts = new CancellationTokenSource();
         cts.Cancel();
 
         await Should.ThrowAsync<OperationCanceledException>(async () =>
@@ -342,7 +342,7 @@ public sealed class Db2QueryableAsyncExtensionsTests
     public async Task AnyAsync_honors_cancellation_token()
     {
         var (table, _) = CreateParentTable();
-        var cts = new CancellationTokenSource();
+        using var cts = new CancellationTokenSource();
         cts.Cancel();
 
         await Should.ThrowAsync<OperationCanceledException>(async () =>
@@ -373,7 +373,7 @@ public sealed class Db2QueryableAsyncExtensionsTests
     public async Task AllAsync_honors_cancellation_token()
     {
         var (table, _) = CreateParentTable();
-        var cts = new CancellationTokenSource();
+        using var cts = new CancellationTokenSource();
         cts.Cancel();
 
         await Should.ThrowAsync<OperationCanceledException>(async () =>
@@ -414,7 +414,7 @@ public sealed class Db2QueryableAsyncExtensionsTests
     public async Task CountAsync_honors_cancellation_token()
     {
         var (table, _) = CreateParentTable();
-        var cts = new CancellationTokenSource();
+        using var cts = new CancellationTokenSource();
         cts.Cancel();
 
         await Should.ThrowAsync<OperationCanceledException>(async () =>
@@ -455,12 +455,12 @@ public sealed class Db2QueryableAsyncExtensionsTests
     public async Task AsAsyncEnumerable_honors_cancellation_token()
     {
         var (table, _) = CreateParentTable();
-        var cts = new CancellationTokenSource();
+        using var cts = new CancellationTokenSource();
         var count = 0;
 
         await Should.ThrowAsync<OperationCanceledException>(async () =>
         {
-            await foreach (var entity in table.AsAsyncEnumerable(cts.Token))
+            await foreach (var _ in table.AsAsyncEnumerable(cts.Token))
             {
                 count++;
                 if (count == 2)

@@ -293,4 +293,38 @@ public class MimironDb2OptionsExtensionTests
 
         builder.ShouldNotBeNull();
     }
+
+    [Fact]
+    public void MultipleProviderConfigurations_LastOneWins()
+    {
+        var optionsBuilder = new DbContextOptionsBuilder();
+
+        optionsBuilder.UseMimironDb2FileSystem("/filesystem/path");
+        optionsBuilder.UseMimironDb2Casc("/casc/path");
+
+        var extension = optionsBuilder.Options.FindExtension<MimironDb2OptionsExtension>();
+        extension.ShouldNotBeNull();
+        extension.ProviderType.ShouldBe(MimironDb2ProviderType.Casc);
+        extension.Db2Path.ShouldBe("/casc/path");
+    }
+
+    [Fact]
+    public void UseMimironDb2FileSystem_ShouldReturnOptionsBuilderForChaining()
+    {
+        var optionsBuilder = new DbContextOptionsBuilder();
+
+        var result = optionsBuilder.UseMimironDb2FileSystem("/test/path");
+
+        result.ShouldBeSameAs(optionsBuilder);
+    }
+
+    [Fact]
+    public void UseMimironDb2Casc_ShouldReturnOptionsBuilderForChaining()
+    {
+        var optionsBuilder = new DbContextOptionsBuilder();
+
+        var result = optionsBuilder.UseMimironDb2Casc("/test/path");
+
+        result.ShouldBeSameAs(optionsBuilder);
+    }
 }

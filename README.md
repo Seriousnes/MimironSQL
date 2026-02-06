@@ -259,12 +259,11 @@ Abstract base class for creating DB2 contexts.
 
 **Constructor:**
 ```csharp
-protected Db2Context(IDbdProvider dbdProvider, IDb2StreamProvider db2StreamProvider)
+protected Db2Context(IDbdProvider dbdProvider, IDb2StreamProvider db2StreamProvider, IDb2Format format)
 ```
 
 **Methods:**
-- `void RegisterFormat(params IDb2Format[] formats)` - Register DB2 format handlers
-- `void RegisterFormat(Action<Db2FormatRegistry> registerFormats)` - Register formats using a callback
+- `void EnsureModelCreated()` - Initialize the context model (must be called before querying)
 - `protected Db2Table<T> Table<T>(string? tableName = null)` - Access a table by entity type
 - `protected virtual void OnModelCreating(Db2ModelBuilder modelBuilder)` - Configure entity relationships
 

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RunSettings>
+  <DataCollectionRunSettings>
+    <DataCollectors>
+      <DataCollector friendlyName="XPlat Code Coverage">
+        <Configuration>
+          <Format>cobertura</Format>
+          <IncludeTestAssembly>false</IncludeTestAssembly>
+          <Exclude>[Salsa20]*,[MimironSQL.Providers.CASC]*,[MimironSQL.DbContextGenerator]*,[*Tests*]*</Exclude>
+          <ExcludeByFile>**/obj/**,**\obj\**,**/bin/**,**\bin\**,**/*.g.cs,**\*.g.cs,**/*.g.i.cs,**\*.g.i.cs,**/*.generated.cs,**\*.generated.cs,**/*Generated*.cs,**\*Generated*.cs,**/*AssemblyAttributes.cs,**\*AssemblyAttributes.cs,**/*GlobalUsings.g.cs,**\*GlobalUsings.g.cs,**/*.Designer.cs,**\*.Designer.cs</ExcludeByFile>
+        </Configuration>
+      </DataCollector>
+    </DataCollectors>
+  </DataCollectionRunSettings>
+</RunSettings>

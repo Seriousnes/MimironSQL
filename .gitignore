@@ -9,7 +9,6 @@
 *.user
 *.userosscache
 *.sln.docstates
-*.env
 *.env.local
 
 # User-local test configuration
@@ -70,6 +69,9 @@ Generated\ Files/
 [Tt]est[Rr]esult*/
 [Bb]uild[Ll]og.*
 *.trx
+
+# VSTest / coverlet default results directory name (plural)
+**/TestResults/
 
 # NUnit
 *.VisualState.xml
@@ -431,3 +433,9 @@ FodyWeavers.xsd
 *.msix
 *.msm
 *.msp
+/coverage
+/coverage-ci
+/coverage-ci-details
+
+# Legacy / accidental reportgenerator output folders (prefer writing under /coverage/)
+/coverage-merged-*/

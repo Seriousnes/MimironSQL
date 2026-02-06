@@ -10,9 +10,55 @@ permissions:
   contents: read
 
 jobs:
-  test:
-    name: Test
+  discover-tests:
+    name: Discover Tests
     runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.discover.outputs.matrix }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Discover test projects
+        id: discover
+        shell: bash
+        run: |
+          python - <<'PY' > matrix.json
+          import json
+          import pathlib
+
+          tests_root = pathlib.Path('tests')
+          if not tests_root.exists():
+              raise SystemExit("Expected 'tests/' directory to exist")
+
+          projects = []
+          for csproj in sorted(tests_root.rglob('*.csproj')):
+              posix = csproj.as_posix()
+              if '/obj/' in posix or '/bin/' in posix:
+                  continue
+
+              projects.append({
+                  'name': csproj.stem,
+                  'path': posix,
+              })
+
+          if not projects:
+              raise SystemExit("No test projects found under 'tests/'")
+
+          matrix = { 'include': projects }
+          print(json.dumps(matrix))
+          PY
+
+          echo "matrix=$(cat matrix.json)" >> "$GITHUB_OUTPUT"
+
+  test:
+    name: Test (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    needs: discover-tests
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.discover-tests.outputs.matrix) }}
 
     steps:
       - name: Checkout
@@ -27,4 +73,66 @@ jobs:
         run: dotnet restore MimironSQL.slnx
 
       - name: Test
-        run: dotnet test MimironSQL.slnx --configuration Release --no-restore
+        run: |
+          dotnet test "${{ matrix.path }}" --configuration Release --no-restore --collect:"XPlat Code Coverage" --settings tests/coverlet.runsettings --results-directory "TestResults/${{ matrix.name }}"
+
+      - name: Upload raw coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: raw-coverage-${{ matrix.name }}
+          path: |
+            TestResults/${{ matrix.name }}/**/coverage.cobertura.xml
+          if-no-files-found: error
+          retention-days: 1
+
+  coverage:
+    name: Coverage
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Download raw coverage artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: raw-coverage-*
+          path: raw-coverage
+          merge-multiple: true
+
+      - name: Install reportgenerator
+        run: |
+          dotnet tool install --global dotnet-reportgenerator-globaltool
+          echo "$HOME/.dotnet/tools" >> $GITHUB_PATH
+
+      - name: Merge coverage
+        run: |
+          reportgenerator \
+            "-reports:raw-coverage/**/coverage.cobertura.xml" \
+            "-targetdir:coverage" \
+            "-reporttypes:Cobertura;TextSummary"
+
+      - name: Enforce 90% line coverage
+        run: |
+          python - << 'PY'
+          import xml.etree.ElementTree as ET
+          import pathlib
+
+          cobertura = pathlib.Path('coverage') / 'Cobertura.xml'
+          root = ET.parse(cobertura).getroot()
+          line_rate = float(root.attrib.get('line-rate', '0'))
+          percent = line_rate * 100.0
+          print(f"Total line coverage: {percent:.2f}%")
+          if percent < 90.0:
+              raise SystemExit(f"Line coverage gate failed: {percent:.2f}% < 90%")
+          PY
+
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: |
+            coverage/**

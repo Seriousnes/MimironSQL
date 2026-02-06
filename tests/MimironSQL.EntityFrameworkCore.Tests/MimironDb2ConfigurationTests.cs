@@ -124,4 +124,40 @@ public class MimironDb2ConfigurationTests
 
         result.ShouldBeSameAs(optionsBuilder);
     }
+
+    [Fact]
+    public void UseMimironDb2FileSystem_WithNullOptionsBuilder_ThrowsArgumentNullException()
+    {
+        DbContextOptionsBuilder? optionsBuilder = null;
+
+        Should.Throw<ArgumentNullException>(() =>
+            optionsBuilder!.UseMimironDb2FileSystem("/test/path"));
+    }
+
+    [Fact]
+    public void UseMimironDb2FileSystem_WithNullPath_ThrowsArgumentException()
+    {
+        var optionsBuilder = new DbContextOptionsBuilder();
+
+        Should.Throw<ArgumentException>(() =>
+            optionsBuilder.UseMimironDb2FileSystem(null!));
+    }
+
+    [Fact]
+    public void UseMimironDb2Casc_WithNullOptionsBuilder_ThrowsArgumentNullException()
+    {
+        DbContextOptionsBuilder? optionsBuilder = null;
+
+        Should.Throw<ArgumentNullException>(() =>
+            optionsBuilder!.UseMimironDb2Casc("/test/path"));
+    }
+
+    [Fact]
+    public void UseMimironDb2Casc_WithNullPath_ThrowsArgumentException()
+    {
+        var optionsBuilder = new DbContextOptionsBuilder();
+
+        Should.Throw<ArgumentException>(() =>
+            optionsBuilder.UseMimironDb2Casc(null!));
+    }
 }

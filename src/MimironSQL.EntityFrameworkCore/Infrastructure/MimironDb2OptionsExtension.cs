@@ -1,3 +1,4 @@
+using System.Text;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.DependencyInjection;
@@ -78,7 +79,7 @@ public class MimironDb2OptionsExtension : IDbContextOptionsExtension
             {
                 if (_logFragment == null)
                 {
-                    var builder = new System.Text.StringBuilder();
+                    var builder = new StringBuilder();
                     builder.Append("MimironDb2:");
                     builder.Append(Extension.ProviderType);
                     if (!string.IsNullOrWhiteSpace(Extension.Db2Path))

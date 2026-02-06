@@ -91,6 +91,16 @@ public sealed class Db2QueryableAsyncExtensionsTests
     }
 
     [Fact]
+    public async Task FirstAsync_with_predicate_overload_works()
+    {
+        var (table, _) = CreateParentTable();
+
+        var result = await table.FirstAsync(x => x.Id == 2);
+
+        result.Id.ShouldBe(2);
+    }
+
+    [Fact]
     public async Task FirstAsync_throws_when_no_element()
     {
         var (table, _) = CreateParentTable();
@@ -130,6 +140,17 @@ public sealed class Db2QueryableAsyncExtensionsTests
 
         result.ShouldNotBeNull();
         result.Id.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task FirstOrDefaultAsync_with_predicate_overload_works()
+    {
+        var (table, _) = CreateParentTable();
+
+        var result = await table.FirstOrDefaultAsync(x => x.Level > 3);
+
+        result.ShouldNotBeNull();
+        result.Level.ShouldBe(5);
     }
 
     [Fact]
@@ -173,6 +194,16 @@ public sealed class Db2QueryableAsyncExtensionsTests
 
         result.ShouldNotBeNull();
         result.Id.ShouldBe(3);
+    }
+
+    [Fact]
+    public async Task SingleAsync_with_predicate_overload_works()
+    {
+        var (table, _) = CreateParentTable();
+
+        var result = await table.SingleAsync(x => x.Id == 2);
+
+        result.Id.ShouldBe(2);
     }
 
     [Fact]
@@ -227,6 +258,17 @@ public sealed class Db2QueryableAsyncExtensionsTests
     }
 
     [Fact]
+    public async Task SingleOrDefaultAsync_with_predicate_overload_works()
+    {
+        var (table, _) = CreateParentTable();
+
+        var result = await table.SingleOrDefaultAsync(x => x.Id == 1);
+
+        result.ShouldNotBeNull();
+        result.Id.ShouldBe(1);
+    }
+
+    [Fact]
     public async Task SingleOrDefaultAsync_returns_null_when_no_element()
     {
         var (table, _) = CreateParentTable();
@@ -272,6 +314,16 @@ public sealed class Db2QueryableAsyncExtensionsTests
         var (table, _) = CreateParentTable();
 
         var result = await table.AnyAsync(x => x.Level > 0);
+
+        result.ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task AnyAsync_with_predicate_overload_works()
+    {
+        var (table, _) = CreateParentTable();
+
+        var result = await table.AnyAsync(x => x.Id == 3);
 
         result.ShouldBeTrue();
     }
@@ -344,6 +396,16 @@ public sealed class Db2QueryableAsyncExtensionsTests
         var (table, _) = CreateParentTable();
 
         var result = await table.Where(x => x.Level > 0).CountAsync();
+
+        result.ShouldBe(2);
+    }
+
+    [Fact]
+    public async Task CountAsync_with_predicate_overload_works()
+    {
+        var (table, _) = CreateParentTable();
+
+        var result = await table.CountAsync(x => x.Level > 0);
 
         result.ShouldBe(2);
     }

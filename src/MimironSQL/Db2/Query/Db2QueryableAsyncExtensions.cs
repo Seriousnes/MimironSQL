@@ -44,7 +44,7 @@ public static class Db2QueryableAsyncExtensions
         ArgumentNullException.ThrowIfNull(predicate);
         cancellationToken.ThrowIfCancellationRequested();
 
-        return Task.FromResult(source.First(predicate));
+        return Task.FromResult(source.Where(predicate).First());
     }
 
     public static Task<TSource?> FirstOrDefaultAsync<TSource>(
@@ -66,7 +66,7 @@ public static class Db2QueryableAsyncExtensions
         ArgumentNullException.ThrowIfNull(predicate);
         cancellationToken.ThrowIfCancellationRequested();
 
-        return Task.FromResult(source.FirstOrDefault(predicate));
+        return Task.FromResult(source.Where(predicate).FirstOrDefault());
     }
 
     public static Task<TSource> SingleAsync<TSource>(
@@ -88,7 +88,7 @@ public static class Db2QueryableAsyncExtensions
         ArgumentNullException.ThrowIfNull(predicate);
         cancellationToken.ThrowIfCancellationRequested();
 
-        return Task.FromResult(source.Single(predicate));
+        return Task.FromResult(source.Where(predicate).Single());
     }
 
     public static Task<TSource?> SingleOrDefaultAsync<TSource>(
@@ -110,7 +110,7 @@ public static class Db2QueryableAsyncExtensions
         ArgumentNullException.ThrowIfNull(predicate);
         cancellationToken.ThrowIfCancellationRequested();
 
-        return Task.FromResult(source.SingleOrDefault(predicate));
+        return Task.FromResult(source.Where(predicate).SingleOrDefault());
     }
 
     public static Task<bool> AnyAsync<TSource>(
@@ -132,7 +132,7 @@ public static class Db2QueryableAsyncExtensions
         ArgumentNullException.ThrowIfNull(predicate);
         cancellationToken.ThrowIfCancellationRequested();
 
-        return Task.FromResult(source.Any(predicate));
+        return Task.FromResult(source.Where(predicate).Any());
     }
 
     public static Task<bool> AllAsync<TSource>(
@@ -166,7 +166,7 @@ public static class Db2QueryableAsyncExtensions
         ArgumentNullException.ThrowIfNull(predicate);
         cancellationToken.ThrowIfCancellationRequested();
 
-        return Task.FromResult(source.Count(predicate));
+        return Task.FromResult(source.Where(predicate).Count());
     }
 
     public static async IAsyncEnumerable<TSource> AsAsyncEnumerable<TSource>(

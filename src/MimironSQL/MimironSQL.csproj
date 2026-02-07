@@ -24,9 +24,5 @@
 		<ProjectReference Include="..\MimironSQL.Providers.FileSystem\MimironSQL.Providers.FileSystem.csproj" />
 		<ProjectReference Include="..\MimironSQL.Dbd\MimironSQL.Dbd.csproj" />
 	</ItemGroup>
-
-	<ItemGroup>
-	  <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.2" />
-	</ItemGroup>
 	
 </Project>

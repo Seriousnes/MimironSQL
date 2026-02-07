@@ -1,5 +1,4 @@
 using System.Linq.Expressions;
-using Microsoft.EntityFrameworkCore;
 using System.Reflection;
 
 namespace MimironSQL.Db2.Query;
@@ -36,6 +35,8 @@ internal sealed record Db2QueryPipeline(
     Type FinalElementType,
     LambdaExpression? FinalPredicate)
 {
+    private const string EfQueryableExtensionsFullName = "Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions";
+
     public static Db2QueryPipeline Parse(Expression expression)
     {
         ArgumentNullException.ThrowIfNull(expression);
@@ -144,8 +145,8 @@ internal sealed record Db2QueryPipeline(
                 continue;
             }
 
-            if (m.Method.DeclaringType == typeof(EntityFrameworkQueryableExtensions) &&
-                name is nameof(EntityFrameworkQueryableExtensions.Include) or nameof(EntityFrameworkQueryableExtensions.ThenInclude))
+            if (m.Method.DeclaringType?.FullName == EfQueryableExtensionsFullName &&
+                name is "Include" or "ThenInclude")
             {
                 var (source, members) = ExtractEfIncludeChain(m);
                 opsReversed.Add(new Db2IncludeOperation(members));
@@ -153,14 +154,14 @@ internal sealed record Db2QueryPipeline(
                 continue;
             }
 
-            if (m.Method.DeclaringType == typeof(EntityFrameworkQueryableExtensions) &&
-                name is nameof(EntityFrameworkQueryableExtensions.AsNoTracking) or
-                       nameof(EntityFrameworkQueryableExtensions.AsNoTrackingWithIdentityResolution) or
-                       nameof(EntityFrameworkQueryableExtensions.AsTracking) or
-                       nameof(EntityFrameworkQueryableExtensions.IgnoreAutoIncludes) or
-                       nameof(EntityFrameworkQueryableExtensions.IgnoreQueryFilters) or
-                       nameof(EntityFrameworkQueryableExtensions.TagWith) or
-                       nameof(EntityFrameworkQueryableExtensions.TagWithCallSite))
+            if (m.Method.DeclaringType?.FullName == EfQueryableExtensionsFullName &&
+                name is "AsNoTracking" or
+                       "AsNoTrackingWithIdentityResolution" or
+                       "AsTracking" or
+                       "IgnoreAutoIncludes" or
+                       "IgnoreQueryFilters" or
+                       "TagWith" or
+                       "TagWithCallSite")
             {
                 current = m.Arguments[0];
                 continue;
@@ -214,17 +215,17 @@ internal sealed record Db2QueryPipeline(
 
     private static (Expression Source, MemberInfo[] Members) ExtractEfIncludeChain(MethodCallExpression call)
     {
-        if (call.Method.DeclaringType != typeof(EntityFrameworkQueryableExtensions))
+        if (call.Method.DeclaringType?.FullName != EfQueryableExtensionsFullName)
             throw new InvalidOperationException("Expected EF Core Include/ThenInclude method call.");
 
-        if (call.Method.Name == nameof(EntityFrameworkQueryableExtensions.Include))
+        if (call.Method.Name == "Include")
         {
             var navigation = UnquoteLambda(call.Arguments[1]);
             var members = ParseMemberChain(navigation);
             return (call.Arguments[0], members);
         }
 
-        if (call.Method.Name == nameof(EntityFrameworkQueryableExtensions.ThenInclude))
+        if (call.Method.Name == "ThenInclude")
         {
             var (source, previousMembers) = ExtractEfIncludeChain((MethodCallExpression)call.Arguments[0]);
             var navigation = UnquoteLambda(call.Arguments[1]);

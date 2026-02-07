@@ -13,7 +13,7 @@ internal interface IDb2Table
     string TableName { get; }
 }
 
-public abstract class Db2Table<T> : IQueryable<T>, IDb2Table
+internal abstract class Db2Table<T> : IQueryable<T>, IDb2Table
 {
     internal string TableName { get; }
     public Db2TableSchema Schema { get; }

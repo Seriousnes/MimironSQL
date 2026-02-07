@@ -1,42 +1,30 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using MimironSQL.Providers;
 
 namespace MimironSQL.EntityFrameworkCore;
 
 public static class MimironDb2DbContextOptionsExtensions
 {
-    public static DbContextOptionsBuilder UseMimironDb2FileSystem(
+    public static DbContextOptionsBuilder UseMimironDb2(
         this DbContextOptionsBuilder optionsBuilder,
-        string db2DirectoryPath,
-        string? dbdDefinitionsPath = null,
+        IDb2StreamProvider db2Provider,
+        IDbdProvider dbdProvider,
+        ITactKeyProvider tactKeyProvider,
         Action<MimironDb2DbContextOptionsBuilder>? configureOptions = null)
     {
         ArgumentNullException.ThrowIfNull(optionsBuilder);
-        ArgumentException.ThrowIfNullOrWhiteSpace(db2DirectoryPath);
+        ArgumentNullException.ThrowIfNull(db2Provider);
+        ArgumentNullException.ThrowIfNull(dbdProvider);
+        ArgumentNullException.ThrowIfNull(tactKeyProvider);
 
         var extension = GetOrCreateExtension(optionsBuilder);
-        extension = extension.WithFileSystem(db2DirectoryPath, dbdDefinitionsPath);
+        extension = extension.WithProviders(db2Provider, dbdProvider, tactKeyProvider);
 
         ((IDbContextOptionsBuilderInfrastructure)optionsBuilder).AddOrUpdateExtension(extension);
 
-        configureOptions?.Invoke(new MimironDb2DbContextOptionsBuilder(optionsBuilder));
-
-        return optionsBuilder;
-    }
-
-    public static DbContextOptionsBuilder UseMimironDb2Casc(
-        this DbContextOptionsBuilder optionsBuilder,
-        string cascRootPath,
-        string? dbdDefinitionsPath = null,
-        Action<MimironDb2DbContextOptionsBuilder>? configureOptions = null)
-    {
-        ArgumentNullException.ThrowIfNull(optionsBuilder);
-        ArgumentException.ThrowIfNullOrWhiteSpace(cascRootPath);
-
-        var extension = GetOrCreateExtension(optionsBuilder);
-        extension = extension.WithCasc(cascRootPath, dbdDefinitionsPath);
-
-        ((IDbContextOptionsBuilderInfrastructure)optionsBuilder).AddOrUpdateExtension(extension);
+        // Provider default: read-only query provider, so default to no tracking.
+        optionsBuilder.UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking);
 
         configureOptions?.Invoke(new MimironDb2DbContextOptionsBuilder(optionsBuilder));
 

@@ -3,7 +3,7 @@ using System.Runtime.CompilerServices;
 
 namespace MimironSQL.Db2.Query;
 
-public static class Db2QueryableAsyncExtensions
+internal static class Db2QueryableAsyncExtensions
 {
     public static Task<List<TSource>> ToListAsync<TSource>(
         this IQueryable<TSource> source,

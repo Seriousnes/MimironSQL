@@ -1,6 +1,9 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using NSubstitute;
 using Shouldly;
+using MimironSQL.Providers;
+using System.Runtime.CompilerServices;
 
 namespace MimironSQL.EntityFrameworkCore.Tests;
 
@@ -10,7 +13,10 @@ public class MimironDb2ModelCacheKeyFactoryTests
     public void Create_WithSameConfiguration_ShouldProduceSameKey()
     {
         var factory = new MimironDb2ModelCacheKeyFactory();
-        var extension = new MimironDb2OptionsExtension().WithFileSystem("/test/path", "/test/dbd");
+        var extension = new MimironDb2OptionsExtension().WithProviders(
+            Substitute.For<IDb2StreamProvider>(),
+            Substitute.For<IDbdProvider>(),
+            Substitute.For<ITactKeyProvider>());
         
         var key1 = CreateKeyFromExtension(factory, extension, typeof(TestContext), designTime: false);
         var key2 = CreateKeyFromExtension(factory, extension, typeof(TestContext), designTime: false);
@@ -19,11 +25,21 @@ public class MimironDb2ModelCacheKeyFactoryTests
     }
 
     [Fact]
-    public void Create_WithDifferentPaths_ShouldProduceDifferentKeys()
+    public void Create_WithDifferentDb2Providers_ShouldProduceDifferentKeys()
     {
         var factory = new MimironDb2ModelCacheKeyFactory();
-        var extension1 = new MimironDb2OptionsExtension().WithFileSystem("/test/path1", "/test/dbd");
-        var extension2 = new MimironDb2OptionsExtension().WithFileSystem("/test/path2", "/test/dbd");
+        var sharedDbd = Substitute.For<IDbdProvider>();
+        var sharedTact = Substitute.For<ITactKeyProvider>();
+
+        var extension1 = new MimironDb2OptionsExtension().WithProviders(
+            Substitute.For<IDb2StreamProvider>(),
+            sharedDbd,
+            sharedTact);
+
+        var extension2 = new MimironDb2OptionsExtension().WithProviders(
+            Substitute.For<IDb2StreamProvider>(),
+            sharedDbd,
+            sharedTact);
         
         var key1 = CreateKeyFromExtension(factory, extension1, typeof(TestContext), designTime: false);
         var key2 = CreateKeyFromExtension(factory, extension2, typeof(TestContext), designTime: false);
@@ -32,11 +48,21 @@ public class MimironDb2ModelCacheKeyFactoryTests
     }
 
     [Fact]
-    public void Create_WithDifferentDbdPaths_ShouldProduceDifferentKeys()
+    public void Create_WithDifferentDbdProviders_ShouldProduceDifferentKeys()
     {
         var factory = new MimironDb2ModelCacheKeyFactory();
-        var extension1 = new MimironDb2OptionsExtension().WithFileSystem("/test/path", "/test/dbd1");
-        var extension2 = new MimironDb2OptionsExtension().WithFileSystem("/test/path", "/test/dbd2");
+        var sharedDb2 = Substitute.For<IDb2StreamProvider>();
+        var sharedTact = Substitute.For<ITactKeyProvider>();
+
+        var extension1 = new MimironDb2OptionsExtension().WithProviders(
+            sharedDb2,
+            Substitute.For<IDbdProvider>(),
+            sharedTact);
+
+        var extension2 = new MimironDb2OptionsExtension().WithProviders(
+            sharedDb2,
+            Substitute.For<IDbdProvider>(),
+            sharedTact);
         
         var key1 = CreateKeyFromExtension(factory, extension1, typeof(TestContext), designTime: false);
         var key2 = CreateKeyFromExtension(factory, extension2, typeof(TestContext), designTime: false);
@@ -45,11 +71,21 @@ public class MimironDb2ModelCacheKeyFactoryTests
     }
 
     [Fact]
-    public void Create_WithDifferentProviderTypes_ShouldProduceDifferentKeys()
+    public void Create_WithDifferentTactKeyProviders_ShouldProduceDifferentKeys()
     {
         var factory = new MimironDb2ModelCacheKeyFactory();
-        var extension1 = new MimironDb2OptionsExtension().WithFileSystem("/test/path", "/test/dbd");
-        var extension2 = new MimironDb2OptionsExtension().WithCasc("/test/path", "/test/dbd");
+        var sharedDb2 = Substitute.For<IDb2StreamProvider>();
+        var sharedDbd = Substitute.For<IDbdProvider>();
+
+        var extension1 = new MimironDb2OptionsExtension().WithProviders(
+            sharedDb2,
+            sharedDbd,
+            Substitute.For<ITactKeyProvider>());
+
+        var extension2 = new MimironDb2OptionsExtension().WithProviders(
+            sharedDb2,
+            sharedDbd,
+            Substitute.For<ITactKeyProvider>());
         
         var key1 = CreateKeyFromExtension(factory, extension1, typeof(TestContext), designTime: false);
         var key2 = CreateKeyFromExtension(factory, extension2, typeof(TestContext), designTime: false);
@@ -61,7 +97,10 @@ public class MimironDb2ModelCacheKeyFactoryTests
     public void Create_WithDifferentContextTypes_ShouldProduceDifferentKeys()
     {
         var factory = new MimironDb2ModelCacheKeyFactory();
-        var extension = new MimironDb2OptionsExtension().WithFileSystem("/test/path", "/test/dbd");
+        var extension = new MimironDb2OptionsExtension().WithProviders(
+            Substitute.For<IDb2StreamProvider>(),
+            Substitute.For<IDbdProvider>(),
+            Substitute.For<ITactKeyProvider>());
         
         var key1 = CreateKeyFromExtension(factory, extension, typeof(TestContext), designTime: false);
         var key2 = CreateKeyFromExtension(factory, extension, typeof(AnotherTestContext), designTime: false);
@@ -73,7 +112,10 @@ public class MimironDb2ModelCacheKeyFactoryTests
     public void Create_WithDifferentDesignTimeFlag_ShouldProduceDifferentKeys()
     {
         var factory = new MimironDb2ModelCacheKeyFactory();
-        var extension = new MimironDb2OptionsExtension().WithFileSystem("/test/path", "/test/dbd");
+        var extension = new MimironDb2OptionsExtension().WithProviders(
+            Substitute.For<IDb2StreamProvider>(),
+            Substitute.For<IDbdProvider>(),
+            Substitute.For<ITactKeyProvider>());
         
         var key1 = CreateKeyFromExtension(factory, extension, typeof(TestContext), designTime: false);
         var key2 = CreateKeyFromExtension(factory, extension, typeof(TestContext), designTime: true);
@@ -99,9 +141,9 @@ public class MimironDb2ModelCacheKeyFactoryTests
     {
         return (
             contextType,
-            extension.ProviderType,
-            extension.Db2Path,
-            extension.DbdDefinitionsPath,
+            extension.Db2StreamProvider is null ? 0 : RuntimeHelpers.GetHashCode(extension.Db2StreamProvider),
+            extension.DbdProvider is null ? 0 : RuntimeHelpers.GetHashCode(extension.DbdProvider),
+            extension.TactKeyProvider is null ? 0 : RuntimeHelpers.GetHashCode(extension.TactKeyProvider),
             designTime);
     }
 

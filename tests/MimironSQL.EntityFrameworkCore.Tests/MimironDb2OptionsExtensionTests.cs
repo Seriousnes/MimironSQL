@@ -1,42 +1,57 @@
 using Microsoft.EntityFrameworkCore;
+using NSubstitute;
 using Shouldly;
+using MimironSQL.Providers;
 
 namespace MimironSQL.EntityFrameworkCore.Tests;
 
 public class MimironDb2OptionsExtensionTests
 {
     [Fact]
-    public void UseMimironDb2FileSystem_ShouldConfigureOptionsExtension()
+    public void UseMimironDb2_ShouldDefaultToNoTracking()
     {
         var optionsBuilder = new DbContextOptionsBuilder();
 
-        optionsBuilder.UseMimironDb2FileSystem("/test/path");
+        var db2Provider = Substitute.For<IDb2StreamProvider>();
+        var dbdProvider = Substitute.For<IDbdProvider>();
+        var tactKeyProvider = Substitute.For<ITactKeyProvider>();
 
-        var extension = optionsBuilder.Options.FindExtension<MimironDb2OptionsExtension>();
-        extension.ShouldNotBeNull();
-        extension.ProviderType.ShouldBe(MimironDb2ProviderType.FileSystem);
-        extension.Db2Path.ShouldBe("/test/path");
+        optionsBuilder.UseMimironDb2(db2Provider, dbdProvider, tactKeyProvider);
+
+        optionsBuilder.Options.FindExtension<CoreOptionsExtension>()
+            ?.QueryTrackingBehavior
+            .ShouldBe(QueryTrackingBehavior.NoTracking);
     }
 
     [Fact]
-    public void UseMimironDb2FileSystem_WithDbdPath_ShouldConfigureExtension()
+    public void UseMimironDb2_ShouldConfigureOptionsExtension()
     {
         var optionsBuilder = new DbContextOptionsBuilder();
 
-        optionsBuilder.UseMimironDb2FileSystem("/test/path", "/test/dbd");
+        var db2Provider = Substitute.For<IDb2StreamProvider>();
+        var dbdProvider = Substitute.For<IDbdProvider>();
+        var tactKeyProvider = Substitute.For<ITactKeyProvider>();
+
+        optionsBuilder.UseMimironDb2(db2Provider, dbdProvider, tactKeyProvider);
 
         var extension = optionsBuilder.Options.FindExtension<MimironDb2OptionsExtension>();
         extension.ShouldNotBeNull();
-        extension.DbdDefinitionsPath.ShouldBe("/test/dbd");
+        extension.Db2StreamProvider.ShouldBeSameAs(db2Provider);
+        extension.DbdProvider.ShouldBeSameAs(dbdProvider);
+        extension.TactKeyProvider.ShouldBeSameAs(tactKeyProvider);
     }
 
     [Fact]
-    public void UseMimironDb2FileSystem_WithConfigureOptions_ShouldInvokeCallback()
+    public void UseMimironDb2_WithConfigureOptions_ShouldInvokeCallback()
     {
         var optionsBuilder = new DbContextOptionsBuilder();
         var callbackInvoked = false;
 
-        optionsBuilder.UseMimironDb2FileSystem("/test/path", configureOptions: builder =>
+        var db2Provider = Substitute.For<IDb2StreamProvider>();
+        var dbdProvider = Substitute.For<IDbdProvider>();
+        var tactKeyProvider = Substitute.For<ITactKeyProvider>();
+
+        optionsBuilder.UseMimironDb2(db2Provider, dbdProvider, tactKeyProvider, configureOptions: builder =>
         {
             builder.ShouldNotBeNull();
             callbackInvoked = true;
@@ -46,107 +61,68 @@ public class MimironDb2OptionsExtensionTests
     }
 
     [Fact]
-    public void UseMimironDb2FileSystem_WithNullOptionsBuilder_ShouldThrow()
+    public void UseMimironDb2_WithNullOptionsBuilder_ShouldThrow()
     {
         DbContextOptionsBuilder optionsBuilder = null!;
 
-        Should.Throw<ArgumentNullException>(() => optionsBuilder.UseMimironDb2FileSystem("/test/path"));
+        var db2Provider = Substitute.For<IDb2StreamProvider>();
+        var dbdProvider = Substitute.For<IDbdProvider>();
+        var tactKeyProvider = Substitute.For<ITactKeyProvider>();
+
+        Should.Throw<ArgumentNullException>(() => optionsBuilder.UseMimironDb2(db2Provider, dbdProvider, tactKeyProvider));
     }
 
     [Fact]
-    public void UseMimironDb2FileSystem_WithNullPath_ShouldThrow()
+    public void UseMimironDb2_WithNullDb2Provider_ShouldThrow()
     {
         var optionsBuilder = new DbContextOptionsBuilder();
 
-        Should.Throw<ArgumentException>(() => optionsBuilder.UseMimironDb2FileSystem(null!));
+        var dbdProvider = Substitute.For<IDbdProvider>();
+        var tactKeyProvider = Substitute.For<ITactKeyProvider>();
+
+        Should.Throw<ArgumentNullException>(() => optionsBuilder.UseMimironDb2(null!, dbdProvider, tactKeyProvider));
     }
 
     [Fact]
-    public void UseMimironDb2FileSystem_WithEmptyPath_ShouldThrow()
+    public void UseMimironDb2_WithNullDbdProvider_ShouldThrow()
     {
         var optionsBuilder = new DbContextOptionsBuilder();
 
-        Should.Throw<ArgumentException>(() => optionsBuilder.UseMimironDb2FileSystem(""));
+        var db2Provider = Substitute.For<IDb2StreamProvider>();
+        var tactKeyProvider = Substitute.For<ITactKeyProvider>();
+
+        Should.Throw<ArgumentNullException>(() => optionsBuilder.UseMimironDb2(db2Provider, null!, tactKeyProvider));
     }
 
     [Fact]
-    public void UseMimironDb2Casc_ShouldConfigureOptionsExtension()
+    public void UseMimironDb2_WithNullTactKeyProvider_ShouldThrow()
     {
         var optionsBuilder = new DbContextOptionsBuilder();
 
-        optionsBuilder.UseMimironDb2Casc("/test/casc");
+        var db2Provider = Substitute.For<IDb2StreamProvider>();
+        var dbdProvider = Substitute.For<IDbdProvider>();
 
-        var extension = optionsBuilder.Options.FindExtension<MimironDb2OptionsExtension>();
-        extension.ShouldNotBeNull();
-        extension.ProviderType.ShouldBe(MimironDb2ProviderType.Casc);
-        extension.Db2Path.ShouldBe("/test/casc");
+        Should.Throw<ArgumentNullException>(() => optionsBuilder.UseMimironDb2(db2Provider, dbdProvider, null!));
     }
 
     [Fact]
-    public void UseMimironDb2Casc_WithDbdPath_ShouldConfigureExtension()
-    {
-        var optionsBuilder = new DbContextOptionsBuilder();
-
-        optionsBuilder.UseMimironDb2Casc("/test/casc", "/test/dbd");
-
-        var extension = optionsBuilder.Options.FindExtension<MimironDb2OptionsExtension>();
-        extension.ShouldNotBeNull();
-        extension.DbdDefinitionsPath.ShouldBe("/test/dbd");
-    }
-
-    [Fact]
-    public void UseMimironDb2Casc_WithConfigureOptions_ShouldInvokeCallback()
-    {
-        var optionsBuilder = new DbContextOptionsBuilder();
-        var callbackInvoked = false;
-
-        optionsBuilder.UseMimironDb2Casc("/test/casc", configureOptions: builder =>
-        {
-            builder.ShouldNotBeNull();
-            callbackInvoked = true;
-        });
-
-        callbackInvoked.ShouldBeTrue();
-    }
-
-    [Fact]
-    public void UseMimironDb2Casc_WithNullOptionsBuilder_ShouldThrow()
-    {
-        DbContextOptionsBuilder optionsBuilder = null!;
-
-        Should.Throw<ArgumentNullException>(() => optionsBuilder.UseMimironDb2Casc("/test/casc"));
-    }
-
-    [Fact]
-    public void UseMimironDb2Casc_WithNullPath_ShouldThrow()
-    {
-        var optionsBuilder = new DbContextOptionsBuilder();
-
-        Should.Throw<ArgumentException>(() => optionsBuilder.UseMimironDb2Casc(null!));
-    }
-
-    [Fact]
-    public void UseMimironDb2Casc_WithEmptyPath_ShouldThrow()
-    {
-        var optionsBuilder = new DbContextOptionsBuilder();
-
-        Should.Throw<ArgumentException>(() => optionsBuilder.UseMimironDb2Casc(""));
-    }
-
-    [Fact]
-    public void Validate_WithoutPath_ShouldThrow()
+    public void Validate_WithoutProviders_ShouldThrow()
     {
         var extension = new MimironDb2OptionsExtension();
         var options = new DbContextOptions<DbContext>();
 
         Should.Throw<InvalidOperationException>(() => extension.Validate(options))
-            .Message.ShouldContain("DB2 path must be configured");
+            .Message.ShouldContain("providers must be configured");
     }
 
     [Fact]
-    public void Validate_WithPath_ShouldNotThrow()
+    public void Validate_WithProviders_ShouldNotThrow()
     {
-        var extension = new MimironDb2OptionsExtension().WithFileSystem("/test/path", null);
+        var db2Provider = Substitute.For<IDb2StreamProvider>();
+        var dbdProvider = Substitute.For<IDbdProvider>();
+        var tactKeyProvider = Substitute.For<ITactKeyProvider>();
+
+        var extension = new MimironDb2OptionsExtension().WithProviders(db2Provider, dbdProvider, tactKeyProvider);
         var options = new DbContextOptions<DbContext>();
 
         Should.NotThrow(() => extension.Validate(options));
@@ -155,7 +131,11 @@ public class MimironDb2OptionsExtensionTests
     [Fact]
     public void Info_ShouldReturnExtensionInfo()
     {
-        var extension = new MimironDb2OptionsExtension().WithFileSystem("/test/path", null);
+        var db2Provider = Substitute.For<IDb2StreamProvider>();
+        var dbdProvider = Substitute.For<IDbdProvider>();
+        var tactKeyProvider = Substitute.For<ITactKeyProvider>();
+
+        var extension = new MimironDb2OptionsExtension().WithProviders(db2Provider, dbdProvider, tactKeyProvider);
 
         var info = extension.Info;
 
@@ -166,13 +146,18 @@ public class MimironDb2OptionsExtensionTests
     [Fact]
     public void Info_LogFragment_ShouldContainProviderType()
     {
-        var extension = new MimironDb2OptionsExtension().WithFileSystem("/test/path", null);
+        var db2Provider = Substitute.For<IDb2StreamProvider>();
+        var dbdProvider = Substitute.For<IDbdProvider>();
+        var tactKeyProvider = Substitute.For<ITactKeyProvider>();
+
+        var extension = new MimironDb2OptionsExtension().WithProviders(db2Provider, dbdProvider, tactKeyProvider);
 
         var logFragment = extension.Info.LogFragment;
 
-        logFragment.ShouldContain("MimironDb2:");
-        logFragment.ShouldContain("FileSystem");
-        logFragment.ShouldContain("/test/path");
+        logFragment.ShouldContain("MimironDb2");
+        logFragment.ShouldContain("Db2=");
+        logFragment.ShouldContain("Dbd=");
+        logFragment.ShouldContain("TactKeys=");
     }
 
     [Fact]
@@ -182,15 +167,21 @@ public class MimironDb2OptionsExtensionTests
 
         var logFragment = extension.Info.LogFragment;
 
-        logFragment.ShouldContain("MimironDb2:");
-        logFragment.ShouldNotContain("=");
+        logFragment.ShouldContain("MimironDb2");
+        logFragment.ShouldNotContain("Db2=");
+        logFragment.ShouldNotContain("Dbd=");
+        logFragment.ShouldNotContain("TactKeys=");
     }
 
     [Fact]
     public void Info_GetServiceProviderHashCode_ShouldBeConsistent()
     {
-        var extension1 = new MimironDb2OptionsExtension().WithFileSystem("/test/path", "/test/dbd");
-        var extension2 = new MimironDb2OptionsExtension().WithFileSystem("/test/path", "/test/dbd");
+        var db2Provider = Substitute.For<IDb2StreamProvider>();
+        var dbdProvider = Substitute.For<IDbdProvider>();
+        var tactKeyProvider = Substitute.For<ITactKeyProvider>();
+
+        var extension1 = new MimironDb2OptionsExtension().WithProviders(db2Provider, dbdProvider, tactKeyProvider);
+        var extension2 = new MimironDb2OptionsExtension().WithProviders(db2Provider, dbdProvider, tactKeyProvider);
 
         var hash1 = extension1.Info.GetServiceProviderHashCode();
         var hash2 = extension2.Info.GetServiceProviderHashCode();
@@ -201,8 +192,12 @@ public class MimironDb2OptionsExtensionTests
     [Fact]
     public void Info_ShouldUseSameServiceProvider_WithSameConfig_ShouldReturnTrue()
     {
-        var extension1 = new MimironDb2OptionsExtension().WithFileSystem("/test/path", "/test/dbd");
-        var extension2 = new MimironDb2OptionsExtension().WithFileSystem("/test/path", "/test/dbd");
+        var db2Provider = Substitute.For<IDb2StreamProvider>();
+        var dbdProvider = Substitute.For<IDbdProvider>();
+        var tactKeyProvider = Substitute.For<ITactKeyProvider>();
+
+        var extension1 = new MimironDb2OptionsExtension().WithProviders(db2Provider, dbdProvider, tactKeyProvider);
+        var extension2 = new MimironDb2OptionsExtension().WithProviders(db2Provider, dbdProvider, tactKeyProvider);
 
         var result = extension1.Info.ShouldUseSameServiceProvider(extension2.Info);
 
@@ -210,10 +205,17 @@ public class MimironDb2OptionsExtensionTests
     }
 
     [Fact]
-    public void Info_ShouldUseSameServiceProvider_WithDifferentPath_ShouldReturnFalse()
+    public void Info_ShouldUseSameServiceProvider_WithDifferentProviderInstances_ShouldReturnFalse()
     {
-        var extension1 = new MimironDb2OptionsExtension().WithFileSystem("/test/path1", null);
-        var extension2 = new MimironDb2OptionsExtension().WithFileSystem("/test/path2", null);
+        var extension1 = new MimironDb2OptionsExtension().WithProviders(
+            Substitute.For<IDb2StreamProvider>(),
+            Substitute.For<IDbdProvider>(),
+            Substitute.For<ITactKeyProvider>());
+
+        var extension2 = new MimironDb2OptionsExtension().WithProviders(
+            Substitute.For<IDb2StreamProvider>(),
+            Substitute.For<IDbdProvider>(),
+            Substitute.For<ITactKeyProvider>());
 
         var result = extension1.Info.ShouldUseSameServiceProvider(extension2.Info);
 
@@ -221,50 +223,19 @@ public class MimironDb2OptionsExtensionTests
     }
 
     [Fact]
-    public void Info_ShouldUseSameServiceProvider_WithDifferentProviderType_ShouldReturnFalse()
+    public void Info_PopulateDebugInfo_ShouldAddProviderTypes()
     {
-        var extension1 = new MimironDb2OptionsExtension().WithFileSystem("/test/path", null);
-        var extension2 = new MimironDb2OptionsExtension().WithCasc("/test/path", null);
-
-        var result = extension1.Info.ShouldUseSameServiceProvider(extension2.Info);
-
-        result.ShouldBeFalse();
-    }
-
-    [Fact]
-    public void Info_PopulateDebugInfo_ShouldAddProviderType()
-    {
-        var extension = new MimironDb2OptionsExtension().WithFileSystem("/test/path", null);
+        var extension = new MimironDb2OptionsExtension().WithProviders(
+            Substitute.For<IDb2StreamProvider>(),
+            Substitute.For<IDbdProvider>(),
+            Substitute.For<ITactKeyProvider>());
         var debugInfo = new Dictionary<string, string>();
 
         extension.Info.PopulateDebugInfo(debugInfo);
 
-        debugInfo.ShouldContainKey("MimironDb2:ProviderType");
-        debugInfo["MimironDb2:ProviderType"].ShouldBe("FileSystem");
-    }
-
-    [Fact]
-    public void Info_PopulateDebugInfo_WithPath_ShouldAddPath()
-    {
-        var extension = new MimironDb2OptionsExtension().WithFileSystem("/test/path", null);
-        var debugInfo = new Dictionary<string, string>();
-
-        extension.Info.PopulateDebugInfo(debugInfo);
-
-        debugInfo.ShouldContainKey("MimironDb2:Path");
-        debugInfo["MimironDb2:Path"].ShouldBe("/test/path");
-    }
-
-    [Fact]
-    public void Info_PopulateDebugInfo_WithDbdPath_ShouldAddDbdPath()
-    {
-        var extension = new MimironDb2OptionsExtension().WithFileSystem("/test/path", "/test/dbd");
-        var debugInfo = new Dictionary<string, string>();
-
-        extension.Info.PopulateDebugInfo(debugInfo);
-
-        debugInfo.ShouldContainKey("MimironDb2:DbdDefinitionsPath");
-        debugInfo["MimironDb2:DbdDefinitionsPath"].ShouldBe("/test/dbd");
+        debugInfo.ShouldContainKey("MimironDb2:Db2StreamProvider");
+        debugInfo.ShouldContainKey("MimironDb2:DbdProvider");
+        debugInfo.ShouldContainKey("MimironDb2:TactKeyProvider");
     }
 
     [Fact]
@@ -274,16 +245,6 @@ public class MimironDb2OptionsExtensionTests
         var services = new Microsoft.Extensions.DependencyInjection.ServiceCollection();
 
         Should.NotThrow(() => extension.ApplyServices(services));
-    }
-
-    [Fact]
-    public void ApplyServices_WithCascProvider_ShouldThrow()
-    {
-        var extension = new MimironDb2OptionsExtension().WithCasc("/test/casc", null);
-        var services = new Microsoft.Extensions.DependencyInjection.ServiceCollection();
-
-        var exception = Should.Throw<NotSupportedException>(() => extension.ApplyServices(services));
-        exception.Message.ShouldContain("CASC provider is not yet supported");
     }
 
     [Fact]
@@ -309,31 +270,34 @@ public class MimironDb2OptionsExtensionTests
     {
         var optionsBuilder = new DbContextOptionsBuilder();
 
-        optionsBuilder.UseMimironDb2FileSystem("/filesystem/path");
-        optionsBuilder.UseMimironDb2Casc("/casc/path");
+        var firstDb2 = Substitute.For<IDb2StreamProvider>();
+        var firstDbd = Substitute.For<IDbdProvider>();
+        var firstTact = Substitute.For<ITactKeyProvider>();
+
+        var secondDb2 = Substitute.For<IDb2StreamProvider>();
+        var secondDbd = Substitute.For<IDbdProvider>();
+        var secondTact = Substitute.For<ITactKeyProvider>();
+
+        optionsBuilder.UseMimironDb2(firstDb2, firstDbd, firstTact);
+        optionsBuilder.UseMimironDb2(secondDb2, secondDbd, secondTact);
 
         var extension = optionsBuilder.Options.FindExtension<MimironDb2OptionsExtension>();
         extension.ShouldNotBeNull();
-        extension.ProviderType.ShouldBe(MimironDb2ProviderType.Casc);
-        extension.Db2Path.ShouldBe("/casc/path");
+        extension.Db2StreamProvider.ShouldBeSameAs(secondDb2);
+        extension.DbdProvider.ShouldBeSameAs(secondDbd);
+        extension.TactKeyProvider.ShouldBeSameAs(secondTact);
     }
 
     [Fact]
-    public void UseMimironDb2FileSystem_ShouldReturnOptionsBuilderForChaining()
+    public void UseMimironDb2_ShouldReturnOptionsBuilderForChaining()
     {
         var optionsBuilder = new DbContextOptionsBuilder();
 
-        var result = optionsBuilder.UseMimironDb2FileSystem("/test/path");
+        var db2Provider = Substitute.For<IDb2StreamProvider>();
+        var dbdProvider = Substitute.For<IDbdProvider>();
+        var tactKeyProvider = Substitute.For<ITactKeyProvider>();
 
-        result.ShouldBeSameAs(optionsBuilder);
-    }
-
-    [Fact]
-    public void UseMimironDb2Casc_ShouldReturnOptionsBuilderForChaining()
-    {
-        var optionsBuilder = new DbContextOptionsBuilder();
-
-        var result = optionsBuilder.UseMimironDb2Casc("/test/path");
+        var result = optionsBuilder.UseMimironDb2(db2Provider, dbdProvider, tactKeyProvider);
 
         result.ShouldBeSameAs(optionsBuilder);
     }

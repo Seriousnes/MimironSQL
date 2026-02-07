@@ -4,11 +4,11 @@ using System.Reflection;
 
 namespace MimironSQL.Db2.Query;
 
-public interface IIncludableQueryable<out TEntity, out TProperty> : IQueryable<TEntity>
+internal interface IIncludableQueryable<out TEntity, out TProperty> : IQueryable<TEntity>
 {
 }
 
-public static class Db2QueryableExtensions
+internal static class Db2QueryableExtensions
 {
     private static readonly MethodInfo IncludeMethodInfo =
         typeof(Db2QueryableExtensions).GetMethod(nameof(Include), BindingFlags.Public | BindingFlags.Static)

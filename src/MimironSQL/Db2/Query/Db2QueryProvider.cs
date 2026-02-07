@@ -238,6 +238,9 @@ internal sealed class Db2QueryProvider<TEntity, TRow>(
                 case Db2TakeOperation take:
                     current = ApplyTake(current, currentElementType, take.Count);
                     break;
+                case Db2SkipOperation skip:
+                    current = ApplySkip(current, currentElementType, skip.Count);
+                    break;
                 default:
                     throw new NotSupportedException($"Unsupported query operation: {op.GetType().Name}.");
             }
@@ -312,6 +315,9 @@ internal sealed class Db2QueryProvider<TEntity, TRow>(
                 case Db2TakeOperation take:
                     current = ApplyTake(current, currentElementType, take.Count);
                     break;
+                case Db2SkipOperation skip:
+                    current = ApplySkip(current, currentElementType, skip.Count);
+                    break;
                 default:
                     return false;
             }
@@ -378,6 +384,9 @@ internal sealed class Db2QueryProvider<TEntity, TRow>(
                     return false;
                 case Db2TakeOperation take:
                     current = ApplyTake(current, currentElementType, take.Count);
+                    break;
+                case Db2SkipOperation skip:
+                    current = ApplySkip(current, currentElementType, skip.Count);
                     break;
                 default:
                     return false;
@@ -662,11 +671,15 @@ internal sealed class Db2QueryProvider<TEntity, TRow>(
         return EnumerableDispatch.GetTake(sourceElementType)(source, count);
     }
 
+    private static IEnumerable ApplySkip(IEnumerable source, Type sourceElementType, int count)
+        => EnumerableDispatch.GetSkip(sourceElementType)(source, count);
+
     private static class EnumerableDispatch
     {
         private static readonly ConcurrentDictionary<Type, Func<IEnumerable, Delegate, IEnumerable>> WhereDelegates = new();
         private static readonly ConcurrentDictionary<(Type Source, Type Result), Func<IEnumerable, Delegate, IEnumerable>> SelectDelegates = new();
         private static readonly ConcurrentDictionary<Type, Func<IEnumerable, int, IEnumerable>> TakeDelegates = new();
+        private static readonly ConcurrentDictionary<Type, Func<IEnumerable, int, IEnumerable>> SkipDelegates = new();
         private static readonly ConcurrentDictionary<Type, Func<IEnumerable, bool>> AnyDelegates = new();
         private static readonly ConcurrentDictionary<Type, Func<IEnumerable, int>> CountDelegates = new();
         private static readonly ConcurrentDictionary<Type, Func<IEnumerable, Delegate, bool>> AllDelegates = new();
@@ -696,6 +709,16 @@ internal sealed class Db2QueryProvider<TEntity, TRow>(
             {
                 var m = typeof(EnumerableDispatch)
                     .GetMethod(nameof(TakeImpl), BindingFlags.Static | BindingFlags.NonPublic)!
+                    .MakeGenericMethod(elementType);
+
+                return m.CreateDelegate<Func<IEnumerable, int, IEnumerable>>();
+            });
+
+        public static Func<IEnumerable, int, IEnumerable> GetSkip(Type elementType)
+            => SkipDelegates.GetOrAdd(elementType, static elementType =>
+            {
+                var m = typeof(EnumerableDispatch)
+                    .GetMethod(nameof(SkipImpl), BindingFlags.Static | BindingFlags.NonPublic)!
                     .MakeGenericMethod(elementType);
 
                 return m.CreateDelegate<Func<IEnumerable, int, IEnumerable>>();
@@ -757,6 +780,9 @@ internal sealed class Db2QueryProvider<TEntity, TRow>(
 
         private static IEnumerable TakeImpl<T>(IEnumerable source, int count)
             => Enumerable.Take((IEnumerable<T>)source, count);
+
+        private static IEnumerable SkipImpl<T>(IEnumerable source, int count)
+            => Enumerable.Skip((IEnumerable<T>)source, count);
 
         private static bool AnyImpl<T>(IEnumerable source)
             => Enumerable.Any((IEnumerable<T>)source);

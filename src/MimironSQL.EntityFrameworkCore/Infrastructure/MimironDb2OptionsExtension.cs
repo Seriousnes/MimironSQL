@@ -1,11 +1,8 @@
+using System.Runtime.CompilerServices;
 using System.Text;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.DependencyInjection;
-using MimironSQL.Db2;
-using MimironSQL.EntityFrameworkCore.Storage;
-using MimironSQL.Formats;
-using MimironSQL.Formats.Wdc5;
 using MimironSQL.Providers;
 
 namespace MimironSQL.EntityFrameworkCore;
@@ -20,32 +17,30 @@ public class MimironDb2OptionsExtension : IDbContextOptionsExtension
 
     protected MimironDb2OptionsExtension(MimironDb2OptionsExtension copyFrom)
     {
-        ProviderType = copyFrom.ProviderType;
-        Db2Path = copyFrom.Db2Path;
-        DbdDefinitionsPath = copyFrom.DbdDefinitionsPath;
+        Db2StreamProvider = copyFrom.Db2StreamProvider;
+        DbdProvider = copyFrom.DbdProvider;
+        TactKeyProvider = copyFrom.TactKeyProvider;
     }
 
     public virtual DbContextOptionsExtensionInfo Info => _info ??= new ExtensionInfo(this);
 
-    public MimironDb2ProviderType ProviderType { get; private set; }
-    public string? Db2Path { get; private set; }
-    public string? DbdDefinitionsPath { get; private set; }
+    public IDb2StreamProvider? Db2StreamProvider { get; private set; }
+    public IDbdProvider? DbdProvider { get; private set; }
+    public ITactKeyProvider? TactKeyProvider { get; private set; }
 
-    public MimironDb2OptionsExtension WithFileSystem(string db2DirectoryPath, string? dbdDefinitionsPath)
+    public MimironDb2OptionsExtension WithProviders(
+        IDb2StreamProvider db2StreamProvider,
+        IDbdProvider dbdProvider,
+        ITactKeyProvider tactKeyProvider)
     {
-        var clone = Clone();
-        clone.ProviderType = MimironDb2ProviderType.FileSystem;
-        clone.Db2Path = db2DirectoryPath;
-        clone.DbdDefinitionsPath = dbdDefinitionsPath;
-        return clone;
-    }
+        ArgumentNullException.ThrowIfNull(db2StreamProvider);
+        ArgumentNullException.ThrowIfNull(dbdProvider);
+        ArgumentNullException.ThrowIfNull(tactKeyProvider);
 
-    public MimironDb2OptionsExtension WithCasc(string cascRootPath, string? dbdDefinitionsPath)
-    {
         var clone = Clone();
-        clone.ProviderType = MimironDb2ProviderType.Casc;
-        clone.Db2Path = cascRootPath;
-        clone.DbdDefinitionsPath = dbdDefinitionsPath;
+        clone.Db2StreamProvider = db2StreamProvider;
+        clone.DbdProvider = dbdProvider;
+        clone.TactKeyProvider = tactKeyProvider;
         return clone;
     }
 
@@ -55,32 +50,23 @@ public class MimironDb2OptionsExtension : IDbContextOptionsExtension
     {
         services.AddSingleton<IModelCacheKeyFactory, MimironDb2ModelCacheKeyFactory>();
         services.AddSingleton<IModelCustomizer, MimironDb2ModelCustomizer>();
-        if (ProviderType == MimironDb2ProviderType.FileSystem && !string.IsNullOrWhiteSpace(Db2Path))
-        {
-            services.AddSingleton<IDb2StreamProvider>(_ =>
-                new FileSystemDb2StreamProvider(new FileSystemDb2StreamProviderOptions(Db2Path)));
+        if (Db2StreamProvider is not null)
+            services.AddSingleton(Db2StreamProvider);
 
-            var dbdPath = DbdDefinitionsPath ?? Path.Combine(Db2Path, "definitions");
-            services.AddSingleton<IDbdProvider>(_ =>
-                new FileSystemDbdProvider(new FileSystemDbdProviderOptions(dbdPath)));
-        }
-        else if (ProviderType == MimironDb2ProviderType.Casc)
-        {
-            throw new NotSupportedException(
-                "CASC provider is not yet supported in the EF Core provider. " +
-                "Use AddMimironDb2FileSystem or register CASC providers manually.");
-        }
+        if (DbdProvider is not null)
+            services.AddSingleton(DbdProvider);
+
+        if (TactKeyProvider is not null)
+            services.AddSingleton(TactKeyProvider);
 
         MimironDb2ServiceCollectionExtensions.AddCoreServices(services);
     }
 
     public void Validate(IDbContextOptions options)
     {
-        if (string.IsNullOrWhiteSpace(Db2Path))
-        {
+        if (Db2StreamProvider is null || DbdProvider is null || TactKeyProvider is null)
             throw new InvalidOperationException(
-                $"DB2 path must be configured. Call {nameof(MimironDb2DbContextOptionsExtensions.UseMimironDb2FileSystem)} or {nameof(MimironDb2DbContextOptionsExtensions.UseMimironDb2Casc)} to configure the provider.");
-        }
+                $"MimironDb2 providers must be configured. Call {nameof(MimironDb2DbContextOptionsExtensions.UseMimironDb2)} to configure the provider.");
     }
 
     private sealed class ExtensionInfo : DbContextOptionsExtensionInfo
@@ -104,13 +90,26 @@ public class MimironDb2OptionsExtension : IDbContextOptionsExtension
                 if (_logFragment == null)
                 {
                     var builder = new StringBuilder();
-                    builder.Append("MimironDb2:");
-                    builder.Append(Extension.ProviderType);
-                    if (!string.IsNullOrWhiteSpace(Extension.Db2Path))
+                    builder.Append("MimironDb2");
+
+                    if (Extension.Db2StreamProvider is not null)
                     {
-                        builder.Append('=');
-                        builder.Append(Extension.Db2Path);
+                        builder.Append(":Db2=");
+                        builder.Append(Extension.Db2StreamProvider.GetType().Name);
                     }
+
+                    if (Extension.DbdProvider is not null)
+                    {
+                        builder.Append(":Dbd=");
+                        builder.Append(Extension.DbdProvider.GetType().Name);
+                    }
+
+                    if (Extension.TactKeyProvider is not null)
+                    {
+                        builder.Append(":TactKeys=");
+                        builder.Append(Extension.TactKeyProvider.GetType().Name);
+                    }
+
                     _logFragment = builder.ToString();
                 }
                 return _logFragment;
@@ -120,35 +119,28 @@ public class MimironDb2OptionsExtension : IDbContextOptionsExtension
         public override int GetServiceProviderHashCode()
         {
             var hashCode = new HashCode();
-            hashCode.Add(Extension.ProviderType);
-            hashCode.Add(Extension.Db2Path);
-            hashCode.Add(Extension.DbdDefinitionsPath);
+            hashCode.Add(Extension.Db2StreamProvider is null ? 0 : RuntimeHelpers.GetHashCode(Extension.Db2StreamProvider));
+            hashCode.Add(Extension.DbdProvider is null ? 0 : RuntimeHelpers.GetHashCode(Extension.DbdProvider));
+            hashCode.Add(Extension.TactKeyProvider is null ? 0 : RuntimeHelpers.GetHashCode(Extension.TactKeyProvider));
             return hashCode.ToHashCode();
         }
 
         public override bool ShouldUseSameServiceProvider(DbContextOptionsExtensionInfo other)
             => other is ExtensionInfo otherInfo
-                && Extension.ProviderType == otherInfo.Extension.ProviderType
-                && Extension.Db2Path == otherInfo.Extension.Db2Path
-                && Extension.DbdDefinitionsPath == otherInfo.Extension.DbdDefinitionsPath;
+                && ReferenceEquals(Extension.Db2StreamProvider, otherInfo.Extension.Db2StreamProvider)
+                && ReferenceEquals(Extension.DbdProvider, otherInfo.Extension.DbdProvider)
+                && ReferenceEquals(Extension.TactKeyProvider, otherInfo.Extension.TactKeyProvider);
 
         public override void PopulateDebugInfo(IDictionary<string, string> debugInfo)
         {
-            debugInfo["MimironDb2:ProviderType"] = Extension.ProviderType.ToString();
-            if (!string.IsNullOrWhiteSpace(Extension.Db2Path))
-            {
-                debugInfo["MimironDb2:Path"] = Extension.Db2Path;
-            }
-            if (!string.IsNullOrWhiteSpace(Extension.DbdDefinitionsPath))
-            {
-                debugInfo["MimironDb2:DbdDefinitionsPath"] = Extension.DbdDefinitionsPath;
-            }
+            if (Extension.Db2StreamProvider is not null)
+                debugInfo["MimironDb2:Db2StreamProvider"] = Extension.Db2StreamProvider.GetType().FullName ?? Extension.Db2StreamProvider.GetType().Name;
+
+            if (Extension.DbdProvider is not null)
+                debugInfo["MimironDb2:DbdProvider"] = Extension.DbdProvider.GetType().FullName ?? Extension.DbdProvider.GetType().Name;
+
+            if (Extension.TactKeyProvider is not null)
+                debugInfo["MimironDb2:TactKeyProvider"] = Extension.TactKeyProvider.GetType().FullName ?? Extension.TactKeyProvider.GetType().Name;
         }
     }
-}
-
-public enum MimironDb2ProviderType
-{
-    FileSystem,
-    Casc
 }

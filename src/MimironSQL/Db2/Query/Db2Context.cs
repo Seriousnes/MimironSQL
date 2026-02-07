@@ -8,7 +8,7 @@ using System.Reflection;
 
 namespace MimironSQL.Db2.Query;
 
-public abstract class Db2Context
+internal abstract class Db2Context
 {
     private static readonly Type Db2TableOpenGenericType = typeof(Db2Table<>);
     private static readonly ConcurrentDictionary<Type, Func<Db2Context, string, IDb2Table>> OpenTableDelegates = new();

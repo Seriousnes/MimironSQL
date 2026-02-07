@@ -365,7 +365,7 @@ public sealed class Db2ModelBuilder
         }
     }
 
-    internal Db2Model Build(Func<string, Db2TableSchema> schemaResolver)
+    public Db2Model Build(Func<string, Db2TableSchema> schemaResolver)
     {
         ArgumentNullException.ThrowIfNull(schemaResolver);
 

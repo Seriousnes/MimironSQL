@@ -22,6 +22,8 @@ internal sealed record Db2SelectOperation(LambdaExpression Selector) : Db2QueryO
 
 internal sealed record Db2TakeOperation(int Count) : Db2QueryOperation;
 
+internal sealed record Db2SkipOperation(int Count) : Db2QueryOperation;
+
 internal sealed record Db2IncludeOperation(LambdaExpression Navigation) : Db2QueryOperation;
 
 internal sealed record Db2ThenIncludeOperation(LambdaExpression Navigation) : Db2QueryOperation;
@@ -117,6 +119,19 @@ internal sealed record Db2QueryPipeline(
                             continue;
                         }
 
+                    case nameof(Queryable.Skip):
+                        {
+                            if (m.Arguments[1] is not ConstantExpression c || c.Value is not int count)
+                                throw new NotSupportedException("Queryable.Skip requires a constant integer count for this provider.");
+
+                            if (count < 0)
+                                count = 0;
+
+                            opsReversed.Add(new Db2SkipOperation(count));
+                            current = m.Arguments[0];
+                            continue;
+                        }
+
                     default:
                         throw new NotSupportedException($"Unsupported Queryable operator: {m.Method.Name}.");
                 }
@@ -130,8 +145,24 @@ internal sealed record Db2QueryPipeline(
                 continue;
             }
 
+            if (IsEfCoreEntityFrameworkQueryableExtensions(m.Method.DeclaringType) && name == "Include")
+            {
+                var navigation = UnquoteLambda(m.Arguments[1]);
+                opsReversed.Add(new Db2IncludeOperation(navigation));
+                current = m.Arguments[0];
+                continue;
+            }
+
             if (m.Method.DeclaringType == typeof(Db2QueryableExtensions) && 
                 (name == nameof(Db2QueryableExtensions.ThenIncludeReference) || name == nameof(Db2QueryableExtensions.ThenIncludeCollection)))
+            {
+                var navigation = UnquoteLambda(m.Arguments[1]);
+                opsReversed.Add(new Db2ThenIncludeOperation(navigation));
+                current = m.Arguments[0];
+                continue;
+            }
+
+            if (IsEfCoreEntityFrameworkQueryableExtensions(m.Method.DeclaringType) && name == "ThenInclude")
             {
                 var navigation = UnquoteLambda(m.Arguments[1]);
                 opsReversed.Add(new Db2ThenIncludeOperation(navigation));
@@ -152,6 +183,9 @@ internal sealed record Db2QueryPipeline(
             FinalElementType: finalElementType,
             FinalPredicate: finalPredicate);
     }
+
+    private static bool IsEfCoreEntityFrameworkQueryableExtensions(Type? type)
+        => type?.FullName == "Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions";
 
     private static LambdaExpression UnquoteLambda(Expression expression)
     {

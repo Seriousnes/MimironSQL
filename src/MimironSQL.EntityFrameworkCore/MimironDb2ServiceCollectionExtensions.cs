@@ -21,6 +21,7 @@ public static class MimironDb2ServiceCollectionExtensions
         new EntityFrameworkServicesBuilder(services).TryAddCoreServices();
 
         services.Replace(ServiceDescriptor.Scoped<IStateManager, MimironDb2StateManager>());
+        services.Replace(ServiceDescriptor.Scoped<ILazyLoader, MimironDb2LazyLoader>());
 
         // EF Core's internal diagnostics logger requires a concrete provider-specific implementation.
         services.TryAddSingleton<LoggingDefinitions, MimironDb2LoggingDefinitions>();

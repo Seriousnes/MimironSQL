@@ -72,7 +72,8 @@ internal sealed class MimironDb2QueryCompiler(
             => _store.OpenTableWithSchema<TRow>(name);
 
         var model = _db2ModelProvider.GetDb2Model();
-        var provider = new Db2QueryProvider<TEntity, TRow>(file, model, TableResolver);
+        IDb2EntityFactory entityFactory = new EfLazyLoadingProxyDb2EntityFactory(_context, new ReflectionDb2EntityFactory());
+        var provider = new Db2QueryProvider<TEntity, TRow>(file, model, TableResolver, entityFactory);
 
         var db2EntityType = model.GetEntityType(typeof(TEntity)).WithSchema(tableName, schema);
         var rootQueryable = CreateTableQueryable<TEntity, TRow>(tableName, schema, db2EntityType, provider, file);

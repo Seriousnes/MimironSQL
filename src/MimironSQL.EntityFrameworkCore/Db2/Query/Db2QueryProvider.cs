@@ -14,13 +14,15 @@ namespace MimironSQL.Db2.Query;
 internal sealed class Db2QueryProvider<TEntity, TRow>(
     IDb2File<TRow> file,
     Db2Model model,
-    Func<string, (IDb2File<TRow> File, Db2TableSchema Schema)> tableResolver) : IQueryProvider
+    Func<string, (IDb2File<TRow> File, Db2TableSchema Schema)> tableResolver,
+    IDb2EntityFactory entityFactory) : IQueryProvider
     where TRow : struct, IRowHandle
 {
     private static readonly ConcurrentDictionary<Type, Func<Db2QueryProvider<TEntity, TRow>, Expression, IEnumerable>> ExecuteEnumerableDelegates = new();
 
     private readonly Db2EntityType _rootEntityType = model.GetEntityType(typeof(TEntity));
-    private readonly Db2EntityMaterializer<TEntity, TRow> _materializer = new(model.GetEntityType(typeof(TEntity)));
+    private readonly IDb2EntityFactory _entityFactory = entityFactory ?? throw new ArgumentNullException(nameof(entityFactory));
+    private readonly Db2EntityMaterializer<TEntity, TRow> _materializer = new(model.GetEntityType(typeof(TEntity)), entityFactory);
     private readonly Db2Model _model = model;
     private readonly Func<string, (IDb2File<TRow> File, Db2TableSchema Schema)> _tableResolver = tableResolver;
 
@@ -97,6 +99,8 @@ internal sealed class Db2QueryProvider<TEntity, TRow>(
     {
         var pipeline = Db2QueryPipeline.Parse(expression);
 
+        var ignoreAutoIncludes = pipeline.IgnoreAutoIncludes;
+
         var ops = pipeline.Operations.ToList();
 
         var selectIndex = ops.FindIndex(op => op is Db2SelectOperation);
@@ -147,6 +151,11 @@ internal sealed class Db2QueryProvider<TEntity, TRow>(
         }
 
         var includeOps = postOps.OfType<Db2IncludeOperation>().ToList();
+
+        if (!ignoreAutoIncludes)
+        {
+            includeOps = ExpandIncludesWithAutoIncludes(includeOps);
+        }
 
         var includedRootMembers = includeOps
             .Where(static op => op.Members.Count != 0)
@@ -205,7 +214,7 @@ internal sealed class Db2QueryProvider<TEntity, TRow>(
         // Apply includes first so navigations can be used in predicates/projections.
         for (var i = 0; i < includeOps.Count; i++)
         {
-            current = Db2IncludeChainExecutor.Apply((IEnumerable<TEntity>)current, _model, _tableResolver, includeOps[i].Members);
+            current = Db2IncludeChainExecutor.Apply((IEnumerable<TEntity>)current, _model, _tableResolver, includeOps[i].Members, _entityFactory);
         }
 
         for (var opIndex = 0; opIndex < postOps.Count; opIndex++)
@@ -235,6 +244,108 @@ internal sealed class Db2QueryProvider<TEntity, TRow>(
         }
 
         return (IEnumerable<TElement>)current;
+    }
+
+    private List<Db2IncludeOperation> ExpandIncludesWithAutoIncludes(List<Db2IncludeOperation> explicitIncludes)
+    {
+        var chains = explicitIncludes
+            .Where(static i => i.Members.Count != 0)
+            .Select(static i => i.Members.ToArray())
+            .ToList();
+
+        foreach (var member in _model.GetAutoIncludeNavigations(typeof(TEntity)))
+        {
+            if (chains.Any(c => c.Length == 1 && c[0] == member))
+                continue;
+
+            chains.Add([member]);
+        }
+
+        var expanded = ExpandAutoIncludeChains(typeof(TEntity), chains);
+
+        var results = new List<Db2IncludeOperation>(expanded.Count);
+        for (var i = 0; i < expanded.Count; i++)
+            results.Add(new Db2IncludeOperation(expanded[i]));
+
+        return results;
+    }
+
+    private List<MemberInfo[]> ExpandAutoIncludeChains(Type rootType, List<MemberInfo[]> startingChains)
+    {
+        // EF semantics: auto-includes apply transitively on included entities.
+        // Prevent infinite recursion by de-duping chains and skipping cycles.
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var queue = new Queue<MemberInfo[]>(startingChains);
+        var results = new List<MemberInfo[]>(startingChains.Count);
+
+        while (queue.TryDequeue(out var chain))
+        {
+            var key = BuildChainKey(chain);
+            if (!seen.Add(key))
+                continue;
+
+            results.Add(chain);
+
+            if (!TryGetLeafType(rootType, chain, out var leafType))
+                continue;
+
+            var nextMembers = _model.GetAutoIncludeNavigations(leafType);
+            if (nextMembers.Count == 0)
+                continue;
+
+            for (var i = 0; i < nextMembers.Count; i++)
+            {
+                var next = nextMembers[i];
+                if (chain.Contains(next))
+                    continue;
+
+                var appended = new MemberInfo[chain.Length + 1];
+                Array.Copy(chain, appended, chain.Length);
+                appended[^1] = next;
+                queue.Enqueue(appended);
+            }
+        }
+
+        return results;
+    }
+
+    private bool TryGetLeafType(Type rootType, MemberInfo[] chain, out Type leafType)
+    {
+        leafType = rootType;
+
+        for (var i = 0; i < chain.Length; i++)
+        {
+            var member = chain[i];
+
+            if (_model.TryGetReferenceNavigation(leafType, member, out var referenceNav))
+            {
+                leafType = referenceNav.TargetClrType;
+                continue;
+            }
+
+            if (_model.TryGetCollectionNavigation(leafType, member, out var collectionNav))
+            {
+                leafType = collectionNav.TargetClrType;
+                continue;
+            }
+
+            return false;
+        }
+
+        return true;
+    }
+
+    private static string BuildChainKey(MemberInfo[] chain)
+    {
+        if (chain.Length == 1)
+        {
+            var m0 = chain[0];
+            return (m0.DeclaringType?.FullName ?? "<null>") + "." + m0.Name;
+        }
+
+        return string.Join(
+            "->",
+            chain.Select(static m => (m.DeclaringType?.FullName ?? "<null>") + "." + m.Name));
     }
 
     private bool TryExecuteEnumerablePruned<TProjected>(

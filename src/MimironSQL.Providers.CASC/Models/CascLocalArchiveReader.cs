@@ -218,8 +218,16 @@ internal sealed class CascLocalArchiveReader
         if (!File.Exists(shmemPath))
             return null;
 
-        using var fs = File.OpenRead(shmemPath);
-        var shmem = CascShmemFile.Read(fs);
+        CascShmemFile shmem;
+        try
+        {
+            using var fs = new FileStream(shmemPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            shmem = CascShmemFile.Read(fs);
+        }
+        catch (IOException)
+        {
+            return null;
+        }
 
         if (shmem.IdxVersions.Count != 16)
             return null;

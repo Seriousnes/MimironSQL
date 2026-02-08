@@ -65,7 +65,7 @@ FirstRewardQuestID<32>[6]
 
         var mapChallengeMode = results.Single(s => s.HintName.EndsWith("MapChallengeMode.g.cs", StringComparison.Ordinal));
         mapChallengeMode.SourceText.ShouldContain("public int MapID { get; set; }");
-        mapChallengeMode.SourceText.ShouldContain("public Map? Map { get; set; }");
+        mapChallengeMode.SourceText.ShouldContain("public virtual Map? Map { get; set; }");
         mapChallengeMode.SourceText.ShouldNotContain("MapIDKey");
 
         mapChallengeMode.SourceText.ShouldNotContain("[ForeignKey(");
@@ -113,7 +113,7 @@ Map<32>
 
         var foo = results.Single(s => s.HintName.EndsWith("Foo.g.cs", StringComparison.Ordinal));
         foo.SourceText.ShouldContain("public int Map { get; set; }");
-        foo.SourceText.ShouldContain("public Map? MapEntity { get; set; }");
+        foo.SourceText.ShouldContain("public virtual Map? MapEntity { get; set; }");
     }
 
     private static ImmutableArray<(string HintName, string SourceText)> RunGenerator((string Path, string Content)[] additionalFiles)

@@ -23,8 +23,8 @@ public static class MimironDb2DbContextOptionsExtensions
 
         ((IDbContextOptionsBuilderInfrastructure)optionsBuilder).AddOrUpdateExtension(extension);
 
-        // Provider default: read-only query provider, so default to no tracking.
-        optionsBuilder.UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking);
+        // Provider default: tracking enabled for EF-like behaviors (e.g., lazy loading).
+        optionsBuilder.UseQueryTrackingBehavior(QueryTrackingBehavior.TrackAll);
 
         configureOptions?.Invoke(new MimironDb2DbContextOptionsBuilder(optionsBuilder));
 

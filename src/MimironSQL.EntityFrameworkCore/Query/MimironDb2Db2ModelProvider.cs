@@ -109,6 +109,9 @@ internal sealed class MimironDb2Db2ModelProvider(
             if (navigation.PropertyInfo is null)
                 continue;
 
+            if (navigation.IsEagerLoaded)
+                builder.SetAutoInclude(entityType.ClrType, navigation.PropertyInfo);
+
             var fk = navigation.ForeignKey;
 
             // v1: only handle simple 1-column FK -> 1-column PK

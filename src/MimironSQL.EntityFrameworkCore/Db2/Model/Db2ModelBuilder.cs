@@ -138,6 +138,15 @@ internal sealed class Db2ModelBuilder
         return created;
     }
 
+    internal void SetAutoInclude(Type sourceClrType, MemberInfo navigationMember)
+    {
+        ArgumentNullException.ThrowIfNull(sourceClrType);
+        ArgumentNullException.ThrowIfNull(navigationMember);
+
+        var metadata = Entity(sourceClrType);
+        metadata.AutoIncludeNavigations.Add(navigationMember);
+    }
+
     internal void ApplySchemaNavigationConventions(Func<string, Db2TableSchema> schemaResolver)
     {
         ArgumentNullException.ThrowIfNull(schemaResolver);
@@ -362,6 +371,7 @@ internal sealed class Db2ModelBuilder
 
         var navigations = new Dictionary<(Type SourceClrType, MemberInfo NavigationMember), Db2ReferenceNavigation>();
         var collectionNavigations = new Dictionary<(Type SourceClrType, MemberInfo NavigationMember), Db2CollectionNavigation>();
+        var autoIncludes = new Dictionary<Type, IReadOnlyList<MemberInfo>>(_entityTypes.Count);
 
         foreach (var (clrType, m) in _entityTypes)
         {
@@ -385,6 +395,9 @@ internal sealed class Db2ModelBuilder
                 pkMember,
                 pkFieldSchema,
                 new Dictionary<string, string>(m.ColumnNameMappings, StringComparer.Ordinal)));
+
+            if (m.AutoIncludeNavigations.Count != 0)
+                autoIncludes[clrType] = m.AutoIncludeNavigations.OrderBy(static m => m.Name, StringComparer.Ordinal).ToArray();
 
             foreach (var nav in m.Navigations)
             {
@@ -497,7 +510,7 @@ internal sealed class Db2ModelBuilder
             }
         }
 
-        return new Db2Model(built, navigations, collectionNavigations);
+        return new Db2Model(built, navigations, collectionNavigations, autoIncludes);
     }
 
     private static bool IsIntKeyEnumerableType(Type type)

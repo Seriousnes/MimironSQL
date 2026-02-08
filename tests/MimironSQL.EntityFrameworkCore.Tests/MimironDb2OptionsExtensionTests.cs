@@ -9,7 +9,7 @@ namespace MimironSQL.EntityFrameworkCore.Tests;
 public class MimironDb2OptionsExtensionTests
 {
     [Fact]
-    public void UseMimironDb2_ShouldDefaultToNoTracking()
+    public void UseMimironDb2_ShouldDefaultToTracking()
     {
         var optionsBuilder = new DbContextOptionsBuilder();
 
@@ -21,7 +21,7 @@ public class MimironDb2OptionsExtensionTests
 
         optionsBuilder.Options.FindExtension<CoreOptionsExtension>()
             ?.QueryTrackingBehavior
-            .ShouldBe(QueryTrackingBehavior.NoTracking);
+            .ShouldBe(QueryTrackingBehavior.TrackAll);
     }
 
     [Fact]

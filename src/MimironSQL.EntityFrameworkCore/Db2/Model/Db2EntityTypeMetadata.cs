@@ -19,4 +19,6 @@ internal sealed class Db2EntityTypeMetadata(Type clrType)
     public List<Db2NavigationMetadata> Navigations { get; } = [];
 
     public List<Db2CollectionNavigationMetadata> CollectionNavigations { get; } = [];
+
+    public HashSet<MemberInfo> AutoIncludeNavigations { get; } = [];
 }

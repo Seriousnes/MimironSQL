@@ -13,11 +13,12 @@ internal sealed class Db2EntityMaterializer<TEntity, TRow>
     private readonly Func<TEntity> _factory;
     private readonly IReadOnlyList<Binding> _bindings;
 
-    public Db2EntityMaterializer(Db2EntityType entityType)
+    public Db2EntityMaterializer(Db2EntityType entityType, IDb2EntityFactory? entityFactory = null)
     {
         ArgumentNullException.ThrowIfNull(entityType);
 
-        _factory = CreateFactory();
+        entityFactory ??= new ReflectionDb2EntityFactory();
+        _factory = entityFactory.Create<TEntity>;
         _bindings = CreateBindings(entityType);
     }
 
@@ -28,13 +29,6 @@ internal sealed class Db2EntityMaterializer<TEntity, TRow>
             b.Apply(entity, file, handle);
 
         return entity;
-    }
-
-    private static Func<TEntity> CreateFactory()
-    {
-        var ctor = typeof(TEntity).GetConstructor(Type.EmptyTypes) ?? throw new NotSupportedException($"Entity type {typeof(TEntity).FullName} must have a public parameterless constructor for reflection-based materialization.");
-        var body = Expression.New(ctor);
-        return Expression.Lambda<Func<TEntity>>(body).Compile();
     }
 
     private static IReadOnlyList<Binding> CreateBindings(Db2EntityType entityType)

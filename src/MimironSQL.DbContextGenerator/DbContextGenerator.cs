@@ -339,7 +339,7 @@ public sealed class DbContextGenerator : IIncrementalGenerator
                 if (nav.IsCollection)
                     continue;
 
-                sb.AppendLine($"    public {target.ClassName}? {nav.PropertyName} {{ get; set; }}" );
+                sb.AppendLine($"    public virtual {target.ClassName}? {nav.PropertyName} {{ get; set; }}" );
 
                 sb.AppendLine();
             }

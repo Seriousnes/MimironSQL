@@ -495,7 +495,7 @@ public sealed class Db2QueryProviderTests
                 _ => throw new InvalidOperationException($"Unknown table: {tableName}"),
             };
 
-        var provider = new Db2QueryProvider<Parent, RowHandle>(parentsFile, model, TableResolver);
+        var provider = new Db2QueryProvider<Parent, RowHandle>(parentsFile, model, TableResolver, new ReflectionDb2EntityFactory());
 
         var entityType = model.GetEntityType(typeof(Parent));
         var schema = SchemaResolver(nameof(Parent));
@@ -526,7 +526,7 @@ public sealed class Db2QueryProviderTests
                 _ => throw new InvalidOperationException($"Unknown table: {tableName}"),
             };
 
-        var provider = new Db2QueryProvider<ChildWithReadOnlyParent, RowHandle>(file, model, TableResolver);
+        var provider = new Db2QueryProvider<ChildWithReadOnlyParent, RowHandle>(file, model, TableResolver, new ReflectionDb2EntityFactory());
 
         var entityType = model.GetEntityType(typeof(ChildWithReadOnlyParent));
         var schema = SchemaResolver(nameof(ChildWithReadOnlyParent));
@@ -557,7 +557,7 @@ public sealed class Db2QueryProviderTests
                 _ => throw new InvalidOperationException($"Unknown table: {tableName}"),
             };
 
-        var provider = new Db2QueryProvider<ChildWithUnconfiguredParent, RowHandle>(file, model, TableResolver);
+        var provider = new Db2QueryProvider<ChildWithUnconfiguredParent, RowHandle>(file, model, TableResolver, new ReflectionDb2EntityFactory());
 
         var entityType = model.GetEntityType(typeof(ChildWithUnconfiguredParent));
         var schema = SchemaResolver(nameof(ChildWithUnconfiguredParent));
@@ -611,8 +611,8 @@ public sealed class Db2QueryProviderTests
                 _ => throw new InvalidOperationException($"Unknown table: {tableName}"),
             };
 
-        var parentsProvider = new Db2QueryProvider<Parent, RowHandle>(parentsFile, model, TableResolver);
-        var childrenProvider = new Db2QueryProvider<Child, RowHandle>(childrenFile, model, TableResolver);
+        var parentsProvider = new Db2QueryProvider<Parent, RowHandle>(parentsFile, model, TableResolver, new ReflectionDb2EntityFactory());
+        var childrenProvider = new Db2QueryProvider<Child, RowHandle>(childrenFile, model, TableResolver, new ReflectionDb2EntityFactory());
 
         var parentEntityType = model.GetEntityType(typeof(Parent));
         var childEntityType = model.GetEntityType(typeof(Child));
@@ -663,8 +663,8 @@ public sealed class Db2QueryProviderTests
                 _ => throw new InvalidOperationException($"Unknown table: {tableName}"),
             };
 
-        var parentProvider = new Db2QueryProvider<ParentWithChildIds, RowHandle>(parentFile, model, TableResolver);
-        var childProvider = new Db2QueryProvider<Child, RowHandle>(childFile, model, TableResolver);
+        var parentProvider = new Db2QueryProvider<ParentWithChildIds, RowHandle>(parentFile, model, TableResolver, new ReflectionDb2EntityFactory());
+        var childProvider = new Db2QueryProvider<Child, RowHandle>(childFile, model, TableResolver, new ReflectionDb2EntityFactory());
 
         var parentEntityType = model.GetEntityType(typeof(ParentWithChildIds));
         var childEntityType = model.GetEntityType(typeof(Child));
@@ -811,8 +811,8 @@ public sealed class Db2QueryProviderTests
                 _ => throw new InvalidOperationException($"Unknown table: {tableName}"),
             };
 
-        var parentsProvider = new Db2QueryProvider<ParentWithChildrenArray, RowHandle>(parentsFile, model, TableResolver);
-        var childrenProvider = new Db2QueryProvider<ChildForArrayNav, RowHandle>(childrenFile, model, TableResolver);
+        var parentsProvider = new Db2QueryProvider<ParentWithChildrenArray, RowHandle>(parentsFile, model, TableResolver, new ReflectionDb2EntityFactory());
+        var childrenProvider = new Db2QueryProvider<ChildForArrayNav, RowHandle>(childrenFile, model, TableResolver, new ReflectionDb2EntityFactory());
 
         var parentEntityType = model.GetEntityType(typeof(ParentWithChildrenArray));
         var childEntityType = model.GetEntityType(typeof(ChildForArrayNav));
@@ -863,8 +863,8 @@ public sealed class Db2QueryProviderTests
                 _ => throw new InvalidOperationException($"Unknown table: {tableName}"),
             };
 
-        var parentProvider = new Db2QueryProvider<ParentWithChildIdsArray, RowHandle>(parentFile, model, TableResolver);
-        var childProvider = new Db2QueryProvider<ChildForArrayNav, RowHandle>(childFile, model, TableResolver);
+        var parentProvider = new Db2QueryProvider<ParentWithChildIdsArray, RowHandle>(parentFile, model, TableResolver, new ReflectionDb2EntityFactory());
+        var childProvider = new Db2QueryProvider<ChildForArrayNav, RowHandle>(childFile, model, TableResolver, new ReflectionDb2EntityFactory());
 
         var parentEntityType = model.GetEntityType(typeof(ParentWithChildIdsArray));
         var childEntityType = model.GetEntityType(typeof(ChildForArrayNav));

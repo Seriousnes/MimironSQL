@@ -33,7 +33,8 @@ internal sealed record Db2QueryPipeline(
     IReadOnlyList<Db2QueryOperation> Operations,
     Db2FinalOperator FinalOperator,
     Type FinalElementType,
-    LambdaExpression? FinalPredicate)
+    LambdaExpression? FinalPredicate,
+    bool IgnoreAutoIncludes)
 {
     private const string EfQueryableExtensionsFullName = "Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions";
 
@@ -47,6 +48,7 @@ internal sealed record Db2QueryPipeline(
         LambdaExpression? finalPredicate = null;
 
         var expressionWithoutFinal = expression;
+        var ignoreAutoIncludes = false;
         if (expression is MethodCallExpression { Method.DeclaringType: { } declaring } m0 && declaring == typeof(Queryable))
         {
             if (m0.Method.Name is nameof(Queryable.First) or nameof(Queryable.FirstOrDefault) or nameof(Queryable.Any) or nameof(Queryable.All) or nameof(Queryable.Count) or nameof(Queryable.Single) or nameof(Queryable.SingleOrDefault))
@@ -153,6 +155,9 @@ internal sealed record Db2QueryPipeline(
                        "TagWith" or
                        "TagWithCallSite")
             {
+                if (name == "IgnoreAutoIncludes")
+                    ignoreAutoIncludes = true;
+
                 current = m.Arguments[0];
                 continue;
             }
@@ -168,7 +173,8 @@ internal sealed record Db2QueryPipeline(
             Operations: opsReversed,
             FinalOperator: finalOperator,
             FinalElementType: finalElementType,
-            FinalPredicate: finalPredicate);
+            FinalPredicate: finalPredicate,
+            IgnoreAutoIncludes: ignoreAutoIncludes);
     }
 
     private static MemberInfo[] ParseMemberChain(LambdaExpression navigation)

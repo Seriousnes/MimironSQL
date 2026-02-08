@@ -24,13 +24,15 @@ internal static class Db2IncludeChainExecutor
         IEnumerable<TEntity> source,
         Db2Model model,
         Func<string, (IDb2File<TRow> File, Db2TableSchema Schema)> tableResolver,
-        IReadOnlyList<MemberInfo> members)
+        IReadOnlyList<MemberInfo> members,
+        IDb2EntityFactory entityFactory)
         where TRow : struct, IRowHandle
     {
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(model);
         ArgumentNullException.ThrowIfNull(tableResolver);
         ArgumentNullException.ThrowIfNull(members);
+        ArgumentNullException.ThrowIfNull(entityFactory);
 
         if (members.Count == 0)
             return source;
@@ -57,7 +59,7 @@ internal static class Db2IncludeChainExecutor
 
             if (model.TryGetReferenceNavigation(currentType, navMember, out var referenceNav))
             {
-                ApplyReferenceInclude<TRow>(currentEntities, currentType, navMember, referenceNav, model, tableResolver);
+                ApplyReferenceInclude<TRow>(currentEntities, currentType, navMember, referenceNav, model, tableResolver, entityFactory);
                 currentEntities = CollectNextEntities(currentEntities, currentType, navMember);
                 currentType = referenceNav.TargetClrType;
                 continue;
@@ -65,7 +67,7 @@ internal static class Db2IncludeChainExecutor
 
             if (model.TryGetCollectionNavigation(currentType, navMember, out var collectionNav))
             {
-                ApplyCollectionInclude<TRow>(currentEntities, currentType, navMember, collectionNav, model, tableResolver);
+                ApplyCollectionInclude<TRow>(currentEntities, currentType, navMember, collectionNav, model, tableResolver, entityFactory);
                 currentEntities = CollectNextEntities(currentEntities, currentType, navMember);
                 currentType = collectionNav.TargetClrType;
                 continue;
@@ -91,7 +93,8 @@ internal static class Db2IncludeChainExecutor
         MemberInfo navMember,
         Db2ReferenceNavigation navigation,
         Db2Model model,
-        Func<string, (IDb2File<TRow> File, Db2TableSchema Schema)> tableResolver)
+        Func<string, (IDb2File<TRow> File, Db2TableSchema Schema)> tableResolver,
+        IDb2EntityFactory entityFactory)
         where TRow : struct, IRowHandle
     {
         if (!IsReadable(navigation.SourceKeyMember))
@@ -112,7 +115,7 @@ internal static class Db2IncludeChainExecutor
 
         var targetEntityType = model.GetEntityType(navigation.TargetClrType);
         var (relatedFile, _) = tableResolver(targetEntityType.TableName);
-        var materializer = new Db2EntityMaterializerFactory<TRow>(targetEntityType);
+        var materializer = new Db2EntityMaterializerFactory<TRow>(targetEntityType, entityFactory);
 
         var entitiesWithKeys = new List<(object Entity, int Key)>(entities.Count);
         HashSet<int> keys = [];
@@ -154,7 +157,8 @@ internal static class Db2IncludeChainExecutor
         MemberInfo navMember,
         Db2CollectionNavigation navigation,
         Db2Model model,
-        Func<string, (IDb2File<TRow> File, Db2TableSchema Schema)> tableResolver)
+        Func<string, (IDb2File<TRow> File, Db2TableSchema Schema)> tableResolver,
+        IDb2EntityFactory entityFactory)
         where TRow : struct, IRowHandle
     {
         if (!navigation.TargetClrType.IsClass)
@@ -163,10 +167,10 @@ internal static class Db2IncludeChainExecutor
         switch (navigation.Kind)
         {
             case Db2CollectionNavigationKind.ForeignKeyArrayToPrimaryKey:
-                ApplyForeignKeyArrayToPrimaryKeyInclude(entities, entityType, navMember, navigation, model, tableResolver);
+                ApplyForeignKeyArrayToPrimaryKeyInclude(entities, entityType, navMember, navigation, model, tableResolver, entityFactory);
                 return;
             case Db2CollectionNavigationKind.DependentForeignKeyToPrimaryKey:
-                ApplyDependentForeignKeyToPrimaryKeyInclude<TRow>(entities, entityType, navMember, navigation, model, tableResolver);
+                ApplyDependentForeignKeyToPrimaryKeyInclude<TRow>(entities, entityType, navMember, navigation, model, tableResolver, entityFactory);
                 return;
             default:
                 throw new NotSupportedException(
@@ -180,7 +184,8 @@ internal static class Db2IncludeChainExecutor
         MemberInfo navMember,
         Db2CollectionNavigation navigation,
         Db2Model model,
-        Func<string, (IDb2File<TRow> File, Db2TableSchema Schema)> tableResolver)
+        Func<string, (IDb2File<TRow> File, Db2TableSchema Schema)> tableResolver,
+        IDb2EntityFactory entityFactory)
         where TRow : struct, IRowHandle
     {
         if (navigation.SourceKeyCollectionMember is null || navigation.SourceKeyFieldSchema is null)
@@ -194,7 +199,7 @@ internal static class Db2IncludeChainExecutor
 
         var targetEntityType = model.GetEntityType(navigation.TargetClrType);
         var (relatedFile, _) = tableResolver(targetEntityType.TableName);
-        var materializer = new Db2EntityMaterializerFactory<TRow>(targetEntityType);
+        var materializer = new Db2EntityMaterializerFactory<TRow>(targetEntityType, entityFactory);
 
         var entitiesWithIds = new List<(object Entity, int[] Ids)>(entities.Count);
         HashSet<int> keys = [];
@@ -252,7 +257,8 @@ internal static class Db2IncludeChainExecutor
         MemberInfo navMember,
         Db2CollectionNavigation navigation,
         Db2Model model,
-        Func<string, (IDb2File<TRow> File, Db2TableSchema Schema)> tableResolver)
+        Func<string, (IDb2File<TRow> File, Db2TableSchema Schema)> tableResolver,
+        IDb2EntityFactory entityFactory)
         where TRow : struct, IRowHandle
     {
         if (navigation.PrincipalKeyMember is null)
@@ -281,7 +287,7 @@ internal static class Db2IncludeChainExecutor
 
         var targetEntityType = model.GetEntityType(navigation.TargetClrType);
         var (relatedFile, _) = tableResolver(targetEntityType.TableName);
-        var materializer = new Db2EntityMaterializerFactory<TRow>(targetEntityType);
+        var materializer = new Db2EntityMaterializerFactory<TRow>(targetEntityType, entityFactory);
 
         Dictionary<int, List<object>> dependentsByKey = [];
         if (keys.Count != 0)
@@ -532,14 +538,15 @@ internal static class Db2IncludeChainExecutor
         private readonly object _materializer;
         private readonly Func<IDb2File<TRow>, RowHandle, object> _materialize;
 
-        public Db2EntityMaterializerFactory(Db2EntityType entityType)
+        public Db2EntityMaterializerFactory(Db2EntityType entityType, IDb2EntityFactory entityFactory)
         {
             ArgumentNullException.ThrowIfNull(entityType);
+            ArgumentNullException.ThrowIfNull(entityFactory);
 
             var targetClrType = entityType.ClrType;
             var materializerType = typeof(Db2EntityMaterializer<,>).MakeGenericType(targetClrType, typeof(TRow));
 
-            _materializer = Activator.CreateInstance(materializerType, entityType)
+            _materializer = Activator.CreateInstance(materializerType, entityType, entityFactory)
                 ?? throw new InvalidOperationException($"Unable to create materializer for {targetClrType.FullName}.");
 
             var fileParam = Expression.Parameter(typeof(IDb2File<TRow>), "file");

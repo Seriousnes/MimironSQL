@@ -39,12 +39,9 @@ public class MimironDb2ModelCustomizer(ModelCustomizerDependencies dependencies)
             entityType.SetTableName(clrType.Name);
         }
 
-        foreach (var property in entityType.GetProperties())
+        foreach (var property in entityType.GetProperties().Where(static p => p.PropertyInfo is not null))
         {
-            if (property.PropertyInfo is null)
-                continue;
-
-            var columnAttr = property.PropertyInfo.GetCustomAttributes(typeof(ColumnAttribute), inherit: true)
+            var columnAttr = property.PropertyInfo!.GetCustomAttributes(typeof(ColumnAttribute), inherit: true)
                 .OfType<ColumnAttribute>()
                 .FirstOrDefault();
 

@@ -368,23 +368,13 @@ public sealed class DbContextGenerator : IIncrementalGenerator
         sb.AppendLine($"        builder.ToTable(\"{EscapeString(entity.TableName)}\");");
         sb.AppendLine("        builder.HasKey(x => x.Id);");
 
-        foreach (var p in entity.ScalarProperties)
+        foreach (var p in entity.ScalarProperties.Where(static p => p.ColumnName is not null))
         {
-            if (p.ColumnName is null)
-                continue;
-
             sb.AppendLine($"        builder.Property(x => x.{p.PropertyName}).HasColumnName(\"{EscapeString(p.ColumnName)}\");");
         }
 
-        foreach (var nav in entity.Navigations)
+        foreach (var nav in entity.Navigations.Where(nav => !nav.IsCollection && byTableName.ContainsKey(nav.TargetTableName)))
         {
-            if (nav.IsCollection)
-                continue;
-
-            if (!byTableName.TryGetValue(nav.TargetTableName, out var target))
-                continue;
-
-            _ = target;
             sb.AppendLine($"        builder.HasOne(x => x.{nav.PropertyName}).WithMany().HasForeignKey(x => x.{nav.ForeignKeyPropertyName});");
         }
 
@@ -531,11 +521,9 @@ public sealed class DbContextGenerator : IIncrementalGenerator
                 scalarPropertyNameByColumnName[columnName] = (escapedPropertyName, propertyName);
             }
 
-            foreach (var entry in build.Entries.Where(static e => !e.IsId && e.ElementCount == 1))
+            foreach (var entry in build.Entries.Where(static e => !e.IsId && e.ElementCount == 1 && e.ReferencedTableName is { Length: > 0 }))
             {
-                if (entry.ReferencedTableName is not { Length: > 0 } targetTable)
-                    continue;
-
+                var targetTable = entry.ReferencedTableName!;
                 var columnName = entry.Name;
                 if (!scalarPropertyNameByColumnName.TryGetValue(columnName, out var scalarProperty))
                     continue;

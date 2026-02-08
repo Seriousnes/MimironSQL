@@ -37,19 +37,13 @@ internal sealed class MimironDb2Db2ModelProvider(
 
         var builder = new Db2ModelBuilder();
 
-        foreach (var entityType in efModel.GetEntityTypes().OrderBy(static e => e.ClrType.FullName, StringComparer.Ordinal))
+        foreach (var entityType in efModel.GetEntityTypes().Where(static e => e.ClrType is not null).OrderBy(static e => e.ClrType!.FullName, StringComparer.Ordinal))
         {
-            if (entityType.ClrType is null)
-                continue;
-
             ConfigureEntity(builder, entityType);
         }
 
-        foreach (var entityType in efModel.GetEntityTypes().OrderBy(static e => e.ClrType.FullName, StringComparer.Ordinal))
+        foreach (var entityType in efModel.GetEntityTypes().Where(static e => e.ClrType is not null).OrderBy(static e => e.ClrType!.FullName, StringComparer.Ordinal))
         {
-            if (entityType.ClrType is null)
-                continue;
-
             ConfigureNavigations(builder, entityType);
         }
 
@@ -73,20 +67,12 @@ internal sealed class MimironDb2Db2ModelProvider(
                 .Invoke(db2EntityBuilder, [tableName]);
         }
 
-        foreach (var property in entityType.GetProperties())
+        foreach (var property in entityType.GetProperties()
+            .Where(static p => p.PropertyInfo is not null && !p.IsShadowProperty() && !p.Name.Equals("Id", StringComparison.OrdinalIgnoreCase)))
         {
-            if (property.PropertyInfo is null)
-                continue;
-
-            if (property.IsShadowProperty())
-                continue;
-
-            if (property.Name.Equals("Id", StringComparison.OrdinalIgnoreCase))
-                continue;
-
             var columnName = property.GetColumnName() ?? property.Name;
 
-            var propInfo = property.PropertyInfo;
+            var propInfo = property.PropertyInfo!;
 
             if (propInfo.GetCustomAttribute<ColumnAttribute>(inherit: true) is not null)
                 continue;
@@ -104,13 +90,10 @@ internal sealed class MimironDb2Db2ModelProvider(
 
     private static void ConfigureNavigations(Db2ModelBuilder builder, IEntityType entityType)
     {
-        foreach (var navigation in entityType.GetNavigations())
+        foreach (var navigation in entityType.GetNavigations().Where(static n => n.PropertyInfo is not null))
         {
-            if (navigation.PropertyInfo is null)
-                continue;
-
             if (navigation.IsEagerLoaded)
-                builder.SetAutoInclude(entityType.ClrType, navigation.PropertyInfo);
+                builder.SetAutoInclude(entityType.ClrType, navigation.PropertyInfo!);
 
             var fk = navigation.ForeignKey;
 

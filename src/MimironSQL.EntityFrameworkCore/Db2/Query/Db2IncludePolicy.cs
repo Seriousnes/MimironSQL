@@ -77,13 +77,11 @@ internal static class Db2IncludePolicy
                     {
                         var unwrapped = member.Expression is null ? null : UnwrapConvert(member.Expression);
 
-                        if (unwrapped == rootParam && member.Member is PropertyInfo or FieldInfo)
+                        if (unwrapped == rootParam && member.Member is PropertyInfo or FieldInfo
+                            && (model.TryGetReferenceNavigation(entityType, member.Member, out _)
+                                || model.TryGetCollectionNavigation(entityType, member.Member, out _)))
                         {
-                            if (model.TryGetReferenceNavigation(entityType, member.Member, out _)
-                                || model.TryGetCollectionNavigation(entityType, member.Member, out _))
-                            {
-                                members.Add(member.Member);
-                            }
+                            members.Add(member.Member);
                         }
 
                         Visit(member.Expression);
@@ -109,10 +107,9 @@ internal static class Db2IncludePolicy
                     return;
                 case MemberInitExpression mi:
                     Visit(mi.NewExpression);
-                    foreach (var bnd in mi.Bindings)
+                    foreach (var bnd in mi.Bindings.OfType<MemberAssignment>())
                     {
-                        if (bnd is MemberAssignment ma)
-                            Visit(ma.Expression);
+                        Visit(bnd.Expression);
                     }
                     return;
                 case UnaryExpression u:

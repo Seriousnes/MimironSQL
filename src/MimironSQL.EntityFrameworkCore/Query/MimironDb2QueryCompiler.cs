@@ -39,7 +39,6 @@ internal sealed class MimironDb2QueryCompiler(
         var (file, _) = _store.OpenTableWithSchema(tableName);
 
         var rowType = file.RowType ?? throw new InvalidOperationException($"DB2 file for table '{tableName}' did not specify a row type.");
-        var model = _db2ModelProvider.GetDb2Model();
 
         var result = ExecuteDelegates.GetOrAdd((rootEntityType, rowType, typeof(TResult)), static key =>
         {

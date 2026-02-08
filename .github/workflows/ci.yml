@@ -3,11 +3,10 @@ name: CI
 on:
   pull_request:
     branches: [ main ]
-  push:
-    branches: [ main ]
 
 permissions:
   contents: read
+  pull-requests: write
 
 jobs:
   discover-tests:
@@ -27,6 +26,7 @@ jobs:
           python - <<'PY' > matrix.json
           import json
           import pathlib
+          import re
 
           tests_root = pathlib.Path('tests')
           if not tests_root.exists():
@@ -37,6 +37,17 @@ jobs:
               posix = csproj.as_posix()
               if '/obj/' in posix or '/bin/' in posix:
                   continue
+
+              # Only include actual test projects. The tests/ folder also contains helper projects
+              # (e.g., configuration assemblies) that should not be executed via `dotnet test`.
+              content = csproj.read_text(encoding='utf-8', errors='ignore')
+              is_test = (
+                re.search(r'<IsTestProject>\s*true\s*</IsTestProject>', content, re.IGNORECASE) is not None
+                or 'Microsoft.NET.Test.Sdk' in content
+              )
+
+              if not is_test:
+                continue
 
               projects.append({
                   'name': csproj.stem,
@@ -115,20 +126,24 @@ jobs:
             "-targetdir:coverage" \
             "-reporttypes:Cobertura;TextSummary"
 
-      - name: Enforce 90% line coverage
-        run: |
-          python - << 'PY'
-          import xml.etree.ElementTree as ET
-          import pathlib
+      - name: Code Coverage Summary
+        uses: irongut/CodeCoverageSummary@v1.3.0
+        with:
+          filename: coverage/Cobertura.xml
+          badge: false
+          fail_below_min: true
+          format: markdown
+          hide_branch_rate: false
+          hide_complexity: true
+          indicators: true
+          output: both
+          thresholds: '90 90'
 
-          cobertura = pathlib.Path('coverage') / 'Cobertura.xml'
-          root = ET.parse(cobertura).getroot()
-          line_rate = float(root.attrib.get('line-rate', '0'))
-          percent = line_rate * 100.0
-          print(f"Total line coverage: {percent:.2f}%")
-          if percent < 90.0:
-              raise SystemExit(f"Line coverage gate failed: {percent:.2f}% < 90%")
-          PY
+      - name: Add Coverage PR Comment
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          recreate: true
+          path: code-coverage-results.md
 
       - name: Upload coverage artifact
         uses: actions/upload-artifact@v4

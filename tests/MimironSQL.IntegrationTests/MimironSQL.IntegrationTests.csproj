@@ -30,8 +30,8 @@
 		<ProjectReference Include="..\..\src\MimironSQL.Formats.Wdc5\MimironSQL.Formats.Wdc5.csproj" />
 		<ProjectReference Include="..\..\src\MimironSQL.Providers.CASC\MimironSQL.Providers.CASC.csproj" />
 		<ProjectReference Include="..\..\src\MimironSQL.Providers.FileSystem\MimironSQL.Providers.FileSystem.csproj" />
-		<ProjectReference Include="..\..\src\MimironSQL\MimironSQL.csproj" />
 		<ProjectReference Include="..\..\src\Salsa20\Salsa20.csproj" />
+		<ProjectReference Include="..\..\src\MimironSQL.EntityFrameworkCore\MimironSQL.EntityFrameworkCore.csproj" />
 	</ItemGroup>
 
 	<ItemGroup>

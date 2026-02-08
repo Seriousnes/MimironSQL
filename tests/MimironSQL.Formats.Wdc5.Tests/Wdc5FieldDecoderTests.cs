@@ -1,19 +1,15 @@
+using MimironSQL.Formats.Wdc5.Db2;
+
 using Shouldly;
 
 namespace MimironSQL.Formats.Wdc5.Tests;
 
 public sealed class Wdc5FieldDecoderTests
 {
-    private readonly struct Big16
+    private readonly struct Big16(long a, long b)
     {
-        public readonly long A;
-        public readonly long B;
-
-        public Big16(long a, long b)
-        {
-            A = a;
-            B = b;
-        }
+        public readonly long A = a;
+        public readonly long B = b;
     }
 
     [Fact]
@@ -34,7 +30,7 @@ public sealed class Wdc5FieldDecoderTests
             fieldMeta: fieldMeta,
             columnMeta: columnMeta,
             palletData: [],
-            commonData: new Dictionary<int, uint>())
+            commonData: [])
             .ShouldBe(42u);
     }
 
@@ -56,7 +52,7 @@ public sealed class Wdc5FieldDecoderTests
             fieldMeta: fieldMeta,
             columnMeta: columnMeta,
             palletData: [],
-            commonData: new Dictionary<int, uint>())
+            commonData: [])
             .ShouldBe(-1);
     }
 
@@ -78,7 +74,7 @@ public sealed class Wdc5FieldDecoderTests
             fieldMeta: fieldMeta,
             columnMeta: columnMeta,
             palletData: [],
-            commonData: new Dictionary<int, uint>())
+            commonData: [])
             .ShouldBe(15u);
     }
 
@@ -124,7 +120,7 @@ public sealed class Wdc5FieldDecoderTests
             fieldMeta: fieldMeta,
             columnMeta: columnMeta,
             palletData: [10u, 20u, 30u, 40u],
-            commonData: new Dictionary<int, uint>())
+            commonData: [])
             .ShouldBe(30u);
     }
 
@@ -146,7 +142,7 @@ public sealed class Wdc5FieldDecoderTests
             fieldMeta: fieldMeta,
             columnMeta: columnMeta,
             palletData: [10u, 20u, 30u, 40u],
-            commonData: new Dictionary<int, uint>())
+            commonData: [])
             .ShouldBe(20u);
     }
 
@@ -168,7 +164,7 @@ public sealed class Wdc5FieldDecoderTests
             fieldMeta: fieldMeta,
             columnMeta: columnMeta,
             palletData: [10u, 20u, 30u, 40u],
-            commonData: new Dictionary<int, uint>())
+            commonData: [])
             .ShouldBe(default);
     }
 
@@ -187,7 +183,7 @@ public sealed class Wdc5FieldDecoderTests
                 fieldMeta: fieldMeta,
                 columnMeta: columnMeta,
                 palletData: [],
-                commonData: new Dictionary<int, uint>());
+                commonData: []);
         });
     }
 
@@ -210,7 +206,7 @@ public sealed class Wdc5FieldDecoderTests
                 fieldMeta: fieldMeta,
                 columnMeta: columnMeta,
                 palletData: [],
-                commonData: new Dictionary<int, uint>());
+                commonData: []);
         });
     }
 }

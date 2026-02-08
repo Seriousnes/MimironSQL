@@ -24,9 +24,7 @@ public static class CascInstallLayoutDetector
             Path.Combine(installRoot, ".build.info"),
         };
 
-        string? buildInfoPath = buildInfoCandidates.FirstOrDefault(File.Exists);
-        if (buildInfoPath is null)
-            throw new FileNotFoundException(".build.info not found in install root", Path.Combine(installRoot, ".build.info"));
+        string? buildInfoPath = buildInfoCandidates.FirstOrDefault(File.Exists) ?? throw new FileNotFoundException(".build.info not found in install root", Path.Combine(installRoot, ".build.info"));
 
         // Shared-storage layout: <root>\_retail_ (or similar)\Data\...
         // Since Flavor is obsolete, auto-detect a suitable flavor directory.

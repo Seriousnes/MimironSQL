@@ -1,9 +1,11 @@
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
-using MimironSQL.Db2.Query;
-using MimironSQL.Formats.Wdc5;
+using MimironSQL.EntityFrameworkCore;
 using MimironSQL.IntegrationTests.Helpers;
 using MimironSQL.Providers;
+
+using NSubstitute;
 
 using Shouldly;
 
@@ -39,8 +41,13 @@ public sealed class CascDb2ContextIntegrationLocalTests
         var db2Provider = new CascDBCProvider(storage, manifestProvider);
 
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
-        var context = new WoWDb2Context(dbdProvider, db2Provider, Wdc5Format.Instance);        
-        context.EnsureModelCreated();
+        var tactKeyProvider = Substitute.For<ITactKeyProvider>();
+        tactKeyProvider.TryGetKey(Arg.Any<ulong>(), out Arg.Any<ReadOnlyMemory<byte>>()).Returns(false);
+
+        var optionsBuilder = new DbContextOptionsBuilder<WoWDb2Context>();
+        optionsBuilder.UseMimironDb2(db2Provider, dbdProvider, tactKeyProvider);
+
+        using var context = new WoWDb2Context(optionsBuilder.Options);
 
         var results = context.Map
             .Include(x => x.MapChallengeModes)

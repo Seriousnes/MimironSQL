@@ -67,7 +67,7 @@ public static class CascInstallManifest
 
         if (offset >= bytes.Length)
             throw new InvalidDataException("Missing null terminator in INSTALL file");        
-        var s = Encoding.UTF8.GetString(bytes.Slice(start, offset - start));
+        var s = Encoding.UTF8.GetString(bytes[start..offset]);
         offset++; // consume '\0'
         return s;
     }

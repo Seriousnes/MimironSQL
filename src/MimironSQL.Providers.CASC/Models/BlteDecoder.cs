@@ -32,7 +32,7 @@ public static class BlteDecoder
         if (headerSize > blte.Length)
             throw new InvalidDataException("BLTE header exceeds buffer length");
 
-        var chunkInfo = blte.Slice(8, checked((int)headerSize - 8));
+        var chunkInfo = blte[8..(int)headerSize];
         if (chunkInfo.Length < 5)
             throw new InvalidDataException("BLTE chunk table too small");
 

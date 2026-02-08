@@ -8,7 +8,7 @@ internal sealed class TestAnalyzerConfigOptions(ImmutableDictionary<string, stri
 {
     private readonly ImmutableDictionary<string, string> _options = options;
 
-    public static AnalyzerConfigOptions Empty { get; } = new TestAnalyzerConfigOptions(ImmutableDictionary<string, string>.Empty);
+    public static AnalyzerConfigOptions Empty { get; } = new TestAnalyzerConfigOptions([]);
 
     public override bool TryGetValue(string key, out string value)
         => _options.TryGetValue(key, out value!);

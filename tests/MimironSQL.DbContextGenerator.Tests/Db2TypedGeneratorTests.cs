@@ -21,7 +21,7 @@ public sealed class DbContextGeneratorSmokeTests
     }
 
     [Fact]
-    public void Generator_emits_reference_and_fk_array_navigations_from_columns()
+    public void Generator_emits_reference_navigations_and_skips_fk_arrays()
     {
         var env = "WOW_VERSION=1.0.0.1\n";
 
@@ -64,13 +64,19 @@ FirstRewardQuestID<32>[6]
             ]);
 
         var mapChallengeMode = results.Single(s => s.HintName.EndsWith("MapChallengeMode.g.cs", StringComparison.Ordinal));
-        mapChallengeMode.SourceText.ShouldContain("public ushort MapID { get; set; }");
-        mapChallengeMode.SourceText.ShouldContain("[ForeignKey(nameof(MapID))]");
-        mapChallengeMode.SourceText.ShouldContain("public Map? Map { get; set; }");
+        mapChallengeMode.SourceText.ShouldContain("public int MapID { get; set; }");
+        mapChallengeMode.SourceText.ShouldContain("public virtual Map? Map { get; set; }");
+        mapChallengeMode.SourceText.ShouldNotContain("MapIDKey");
 
-        mapChallengeMode.SourceText.ShouldContain("public ICollection<int> FirstRewardQuestID { get; set; } = [];");
-        mapChallengeMode.SourceText.ShouldContain("[ForeignKey(nameof(FirstRewardQuestID))]");
-        mapChallengeMode.SourceText.ShouldContain("public ICollection<QuestV2> FirstRewardQuest { get; set; } = [];");
+        mapChallengeMode.SourceText.ShouldNotContain("[ForeignKey(");
+        mapChallengeMode.SourceText.ShouldNotContain("FirstRewardQuest");
+
+        var dbContext = results.Single(s => s.HintName.EndsWith("WoWDb2Context.g.cs", StringComparison.Ordinal));
+        dbContext.SourceText.ShouldContain("modelBuilder.ApplyConfigurationsFromAssembly(typeof(WoWDb2Context).Assembly);");
+        dbContext.SourceText.ShouldContain("OnModelCreatingPartial(modelBuilder);");
+
+        var mapChallengeModeConfig = results.Single(s => s.HintName.EndsWith("MapChallengeModeConfiguration.g.cs", StringComparison.Ordinal));
+        mapChallengeModeConfig.SourceText.ShouldContain("builder.HasOne(x => x.Map).WithMany().HasForeignKey(x => x.MapID);");
     }
 
     [Fact]
@@ -107,7 +113,7 @@ Map<32>
 
         var foo = results.Single(s => s.HintName.EndsWith("Foo.g.cs", StringComparison.Ordinal));
         foo.SourceText.ShouldContain("public int Map { get; set; }");
-        foo.SourceText.ShouldContain("public Map? MapEntity { get; set; }");
+        foo.SourceText.ShouldContain("public virtual Map? MapEntity { get; set; }");
     }
 
     private static ImmutableArray<(string HintName, string SourceText)> RunGenerator((string Path, string Content)[] additionalFiles)
@@ -132,7 +138,7 @@ Map<32>
             generators: [generator.AsSourceGenerator()],
             additionalTexts: additionalTexts,
             parseOptions: parseOptions,
-            optionsProvider: new TestAnalyzerConfigOptionsProvider(ImmutableDictionary<string, string>.Empty));
+            optionsProvider: new TestAnalyzerConfigOptionsProvider([]));
 
         driver = driver.RunGenerators(compilation);
 

@@ -71,7 +71,7 @@ public sealed class CascTests
     {
         EndianBitConverter.ReadUIntBigEndian([0x01]).ShouldBe(1UL);
         EndianBitConverter.ReadUIntBigEndian([0x01, 0x02]).ShouldBe(0x0102UL);
-        Should.Throw<ArgumentOutOfRangeException>(() => EndianBitConverter.ReadUIntBigEndian(ReadOnlySpan<byte>.Empty));
+        Should.Throw<ArgumentOutOfRangeException>(() => EndianBitConverter.ReadUIntBigEndian([]));
         Should.Throw<ArgumentOutOfRangeException>(() => EndianBitConverter.ReadUIntBigEndian(new byte[9]));
     }
 }

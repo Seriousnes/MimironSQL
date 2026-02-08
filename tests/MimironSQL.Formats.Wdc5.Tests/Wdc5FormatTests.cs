@@ -1,5 +1,3 @@
-using MimironSQL.Db2;
-
 using Shouldly;
 
 namespace MimironSQL.Formats.Wdc5.Tests;

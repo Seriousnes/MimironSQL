@@ -1,0 +1,59 @@
+using System.Linq.Expressions;
+
+using Microsoft.EntityFrameworkCore.Query;
+using Microsoft.EntityFrameworkCore.Query.Internal;
+using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
+
+using MimironSQL.EntityFrameworkCore.Storage;
+
+using NSubstitute;
+
+using Shouldly;
+
+namespace MimironSQL.EntityFrameworkCore.Tests;
+
+public sealed class MimironDb2DatabaseAndTypeMappingTests
+{
+    [Fact]
+    public void Database_is_read_only()
+    {
+        var queryCompiler = Substitute.For<IQueryCompiler>();
+        var db = new MimironDb2Database(queryCompiler);
+
+        Should.Throw<NotSupportedException>(() => db.SaveChanges([]))
+            .Message.ShouldContain("read-only");
+
+        Should.Throw<NotSupportedException>(() => db.SaveChangesAsync([], CancellationToken.None))
+            .Message.ShouldContain("read-only");
+    }
+
+    [Fact]
+    public void CompileQuery_throws_for_async_and_executes_via_IQueryCompiler_for_sync()
+    {
+        var queryCompiler = Substitute.For<IQueryCompiler>();
+        var db = new MimironDb2Database(queryCompiler);
+
+        var query = Expression.Constant(123);
+
+        var asyncFunc = db.CompileQuery<int>(query, async: true);
+        Should.Throw<NotSupportedException>(() => asyncFunc(null!))
+            .Message.ShouldContain("Async query execution");
+
+        queryCompiler.Execute<int>(query).Returns(123);
+
+        var syncFunc = db.CompileQuery<int>(query, async: false);
+        syncFunc(null!).ShouldBe(123);
+    }
+
+    [Fact]
+    public void TypeMapping_can_be_cloned_with_composed_converter()
+    {
+        var mapping = new MimironDb2TypeMapping(typeof(int));
+        var converter = new ValueConverter<int, int>(v => v, v => v);
+
+        var cloned = mapping.WithComposedConverter(converter);
+
+        cloned.ShouldNotBeSameAs(mapping);
+        cloned.ClrType.ShouldBe(typeof(int));
+    }
+}

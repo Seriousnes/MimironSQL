@@ -137,9 +137,7 @@ public sealed class LocalFirstManifestProvider(IManifestProvider fallback, IOpti
 
     private static bool TryReadEntry(JsonElement element, out string tableName, out int fileDataId)
     {
-        tableName = string.Empty;
         fileDataId = 0;
-
         if (!TryGetStringProperty(element, "tableName", out tableName))
             return false;
 

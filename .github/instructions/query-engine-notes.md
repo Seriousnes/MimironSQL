@@ -13,7 +13,8 @@ Preserve the “minimal decoding” philosophy:
 
 - Relationships are resolved from `Db2Model` (context-scoped), not from WDC5 parsing.
 - Schema (`.dbd`) provides default conventions (field names/types/referenced table name when present).
-- `Db2ModelBuilder` provides overrides and additional relationships not present in DB2/DBD (e.g., shared-primary-key 1:1).
+- The EF Core model (your `DbContext` + `OnModelCreating`) can add/override relationships beyond schema conventions.
+- `Db2ModelBuilder` and related `Db2*Builder` types are internal implementation details used by the provider when building `Db2Model`.
 
 ## Navigation-aware expression translation
 

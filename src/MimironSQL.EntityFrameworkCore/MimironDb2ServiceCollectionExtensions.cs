@@ -12,6 +12,8 @@ using MimironSQL.EntityFrameworkCore.Query;
 using MimironSQL.EntityFrameworkCore.Storage;
 using MimironSQL.Formats;
 using MimironSQL.Formats.Wdc5;
+using MimironSQL.Formats.Wdc5.Db2;
+using MimironSQL.Providers;
 
 namespace MimironSQL.EntityFrameworkCore;
 
@@ -38,7 +40,12 @@ public static class MimironDb2ServiceCollectionExtensions
 
         services.TryAddSingleton<ITypeMappingSource, MimironDb2TypeMappingSource>();
 
-        services.AddSingleton<IDb2Format>(_ => Wdc5Format.Instance);
+        services.AddSingleton<IDb2Format>(sp =>
+        {
+            var tactKeyProvider = sp.GetService<ITactKeyProvider>();
+            var options = tactKeyProvider is not null ? new Wdc5FileOptions(tactKeyProvider) : null;
+            return new Wdc5Format(options);
+        });
         services.AddSingleton<IMimironDb2Store, MimironDb2Store>();
 
         services.TryAddScoped<IMimironDb2Db2ModelProvider, MimironDb2Db2ModelProvider>();

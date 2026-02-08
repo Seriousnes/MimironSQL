@@ -19,8 +19,11 @@ Entity Framework Core database provider for World of Warcraft DB2 files. Enables
 # Core EF provider
 dotnet add package MimironSQL.EntityFrameworkCore
 
-# Providers (choose based on your needs)
+# Choose a provider:
+# - Filesystem provider (for extracted DB2 files)
 dotnet add package MimironSQL.Providers.FileSystem
+# - CASC provider (read directly from WoW installation - no extraction needed)
+dotnet add package MimironSQL.Providers.CASC
 
 # Format support
 dotnet add package MimironSQL.Formats.Wdc5
@@ -37,7 +40,7 @@ dotnet add package MimironSQL.Formats.Wdc5
 
 ## Quick Start
 
-### Basic Configuration
+### Basic Configuration (Filesystem)
 
 ```csharp
 using Microsoft.EntityFrameworkCore;
@@ -49,8 +52,45 @@ var dbdProvider = new FileSystemDbdProvider(
     new FileSystemDbdProviderOptions(@"C:\WoWDBDefs\definitions"));
 
 var db2Provider = new FileSystemDb2StreamProvider(
-    new FileSystemDb2StreamProviderOptions(@"C:\WoW\DBFilesClient"));
+    new FileSystemDb2StreamProviderOptions(@"C:\ExtractedDB2\DBFilesClient"));
 
+var tactKeyProvider = new SimpleTactKeyProvider();
+
+// Configure EF Core
+var options = new DbContextOptionsBuilder<WoWDb2Context>()
+    .UseMimironDb2(db2Provider, dbdProvider, tactKeyProvider)
+    .Options;
+
+using var context = new WoWDb2Context(options);
+```
+
+### Alternative: CASC Configuration (No Extraction)
+
+```csharp
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
+using MimironSQL.EntityFrameworkCore;
+using MimironSQL.Providers;
+
+// Setup manifest provider
+var manifestOptions = new WowDb2ManifestOptions
+{
+    CacheDirectory = @"C:\WoWDBDefs\definitions",
+    AssetName = "manifest.json"
+};
+
+using var httpClient = new HttpClient();
+var wowDb2Manifest = new WowDb2ManifestProvider(httpClient, Options.Create(manifestOptions));
+var manifestProvider = new LocalFirstManifestProvider(wowDb2Manifest, Options.Create(manifestOptions));
+await manifestProvider.EnsureManifestExistsAsync();
+
+// Open CASC
+var storage = await CascStorage.OpenInstallRootAsync(@"C:\Program Files\World of Warcraft");
+var db2Provider = new CascDBCProvider(storage, manifestProvider);
+
+var dbdProvider = new FileSystemDbdProvider(
+    new FileSystemDbdProviderOptions(@"C:\WoWDBDefs\definitions"));
+    
 var tactKeyProvider = new SimpleTactKeyProvider();
 
 // Configure EF Core

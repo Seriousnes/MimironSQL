@@ -1,6 +1,6 @@
 # MimironSQL.Providers.FileSystem
 
-Filesystem-based providers for reading DB2 files and DBD definitions from disk. Provides simple, high-performance file access for local WoW installations and cloned WoWDBDefs repositories.
+Filesystem-based providers for reading DB2 files and DBD definitions from disk. Provides simple, high-performance file access for extracted WoW DB2 files and cloned WoWDBDefs repositories.
 
 ## Overview
 
@@ -11,6 +11,8 @@ Filesystem-based providers for reading DB2 files and DBD definitions from disk. 
 - **TACT Key Providers**: Simple and CSV-based TACT key management
 - Efficient file discovery with case-insensitive lookup
 - Minimal dependencies and straightforward configuration
+
+**Note**: For reading directly from CASC archives without extraction, see `MimironSQL.Providers.CASC`.
 
 ## Installation
 
@@ -531,6 +533,25 @@ services.AddSingleton<IDb2StreamProvider>(sp =>
 - Check CSV has header: `KeyName,Key`
 - Verify keys are valid hexadecimal
 - Use absolute path to CSV file
+
+## Filesystem vs CASC Provider
+
+### When to Use FileSystem Provider
+
+- ✅ You have extracted DB2 files on disk
+- ✅ You want to query while WoW is running
+- ✅ You're working with custom/modified DB2 files
+- ✅ You want simpler debugging (view files directly)
+- ✅ You don't have a WoW installation (using files from elsewhere)
+
+### When to Use CASC Provider
+
+- ✅ You want zero setup (besides installing WoW)
+- ✅ You want automatic updates after patches
+- ✅ Disk space is limited (no extracted copies)
+- ✅ You have a WoW installation available
+
+See [MimironSQL.Providers.CASC](../MimironSQL.Providers.CASC/README.md) for CASC provider documentation.
 
 ## Related Packages
 

@@ -6,7 +6,7 @@ A high-performance, read-only Entity Framework Core (EF Core) database provider 
 
 - **EF Core Integration**: Query DB2 files using standard Entity Framework Core LINQ queries
 - **Multiple Format Support**: Currently supports WDC5 format with extensible architecture for future formats
-- **Flexible Data Sources**: Access DB2 files from filesystem or CASC (Content Addressable Storage Container)
+- **Flexible Data Sources**: Read DB2 files directly from filesystem or CASC archives (no extraction required)
 - **Relationship Navigation**: Support for `Include` and `ThenInclude` to eagerly load related entities
 - **Source Generator**: Automatic DbContext generation from WoWDBDefs definitions
 - **Type-Safe Queries**: Full IntelliSense support with strongly-typed entity classes
@@ -18,7 +18,9 @@ A high-performance, read-only Entity Framework Core (EF Core) database provider 
 
 - .NET 10.0 or later
 - WoWDBDefs definition files (clone from [WoWDBDefs repository](https://github.com/wowdev/WoWDBDefs))
-- World of Warcraft DB2 files (extract from your WoW installation)
+- World of Warcraft DB2 files:
+  - **Option 1**: Read directly from CASC archives (WoW installation directory)
+  - **Option 2**: Extract DB2 files to disk using CASC tools
 
 ### Installation
 
@@ -28,8 +30,11 @@ Install the required NuGet packages:
 # Core EF provider
 dotnet add package MimironSQL.EntityFrameworkCore
 
-# Filesystem provider for reading DB2/DBD files from disk
+# Choose a provider based on your data source:
+# - Filesystem provider (for extracted DB2 files)
 dotnet add package MimironSQL.Providers.FileSystem
+# - CASC provider (read directly from WoW archives - no extraction needed)
+dotnet add package MimironSQL.Providers.CASC
 
 # Source generator for auto-generating DbContext (optional but recommended)
 dotnet add package MimironSQL.DbContextGenerator
@@ -40,7 +45,7 @@ dotnet add package MimironSQL.Formats.Wdc5
 
 ### Basic Usage
 
-#### 1. Configure the EF Core Provider
+#### 1. Configure the EF Core Provider (Filesystem)
 
 ```csharp
 using Microsoft.EntityFrameworkCore;
@@ -52,9 +57,50 @@ var dbdProvider = new FileSystemDbdProvider(
     new FileSystemDbdProviderOptions(@"C:\path\to\WoWDBDefs\definitions"));
 
 var db2Provider = new FileSystemDb2StreamProvider(
-    new FileSystemDb2StreamProviderOptions(@"C:\path\to\wow\DBFilesClient"));
+    new FileSystemDb2StreamProviderOptions(@"C:\path\to\extracted\DBFilesClient"));
 
 // Create a simple TACT key provider (for encrypted sections)
+var tactKeyProvider = new SimpleTactKeyProvider();
+
+// Configure DbContext
+var options = new DbContextOptionsBuilder<WoWDb2Context>()
+    .UseMimironDb2(db2Provider, dbdProvider, tactKeyProvider)
+    .Options;
+
+using var context = new WoWDb2Context(options);
+```
+
+#### 1 (Alternative). Configure with CASC Provider (No Extraction Required)
+
+```csharp
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
+using MimironSQL.EntityFrameworkCore;
+using MimironSQL.Providers;
+
+// Configure DBD provider
+var testDataDir = @"C:\path\to\WoWDBDefs\definitions";
+var dbdProvider = new FileSystemDbdProvider(new FileSystemDbdProviderOptions(testDataDir));
+
+// Configure manifest provider (maps table names to FileDataIDs)
+var manifestOptions = new WowDb2ManifestOptions
+{
+    CacheDirectory = testDataDir,
+    AssetName = "manifest.json",
+};
+
+using var httpClient = new HttpClient();
+var wowDb2ManifestProvider = new WowDb2ManifestProvider(httpClient, Options.Create(manifestOptions));
+var manifestProvider = new LocalFirstManifestProvider(wowDb2ManifestProvider, Options.Create(manifestOptions));
+
+await manifestProvider.EnsureManifestExistsAsync();
+
+// Open CASC storage from WoW installation
+var wowInstallRoot = @"C:\Program Files\World of Warcraft";
+var storage = await CascStorage.OpenInstallRootAsync(wowInstallRoot);
+var db2Provider = new CascDBCProvider(storage, manifestProvider);
+
+// Configure TACT key provider
 var tactKeyProvider = new SimpleTactKeyProvider();
 
 // Configure DbContext
@@ -172,7 +218,7 @@ MimironSQL/
 │   ├── MimironSQL.Formats.Wdc5       # WDC5 format reader and parser
 │   ├── MimironSQL.DbContextGenerator # Roslyn source generator for DbContext
 │   ├── MimironSQL.Providers.FileSystem # Filesystem-based DB2/DBD providers
-│   ├── MimironSQL.Providers.CASC     # CASC-based DB2/DBD providers (WIP)
+│   ├── MimironSQL.Providers.CASC     # CASC archive DB2/DBD providers
 │   ├── MimironSQL.Dbd                # DBD file parser (WoWDBDefs format)
 │   ├── Salsa20                       # Salsa20 encryption for encrypted DB2 sections
 │   └── MimironSQL.Benchmarks         # Performance benchmarking suite

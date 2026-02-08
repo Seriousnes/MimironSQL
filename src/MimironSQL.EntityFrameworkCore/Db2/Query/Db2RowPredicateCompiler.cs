@@ -180,7 +180,7 @@ internal static class Db2RowPredicateCompiler
                             _ => Db2StringMatchKind.Contains,
                         };
 
-                        var starts = Db2DenseStringScanner.FindStartOffsets(file.DenseStringTableBytes.Span, needle, kind);
+                        var starts = Db2DenseStringScanner.FindStartOffsetsCached(file, file.DenseStringTableBytes.Span, needle, kind);
                         var matchMethod = typeof(Db2DenseStringMatch)
                             .GetMethod(methodName, BindingFlags.Public | BindingFlags.Static)!
                             .MakeGenericMethod(typeof(TRow));

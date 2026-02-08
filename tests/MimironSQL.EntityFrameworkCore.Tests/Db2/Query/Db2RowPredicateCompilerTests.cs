@@ -395,6 +395,7 @@ public sealed class Db2RowPredicateCompilerTests
         public int RecordsCount { get; } = valuesByRowId.Count;
 
         public ReadOnlyMemory<byte> DenseStringTableBytes { get; } = denseStringTableBytes;
+        public IDb2FileHeader Header { get; }
 
         public IEnumerable<RowHandle> EnumerateRowHandles() => EnumerateRows();
 
@@ -461,6 +462,8 @@ public sealed class Db2RowPredicateCompilerTests
         public int RecordsCount { get; } = valuesByRowId.Count;
 
         public ReadOnlyMemory<byte> DenseStringTableBytes { get; } = denseStringTableBytes;
+
+        public IDb2FileHeader Header { get; }
 
         public IEnumerable<RowHandle> EnumerateRowHandles() => EnumerateRows();
 

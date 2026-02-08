@@ -11,6 +11,4 @@ internal sealed class Db2NavigationMetadata(MemberInfo navigationMember, Type ta
 
     public MemberInfo? SourceKeyMember { get; set; }
     public MemberInfo? TargetKeyMember { get; set; }
-
-    public bool OverridesSchema { get; set; }
 }

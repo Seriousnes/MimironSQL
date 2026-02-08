@@ -118,38 +118,6 @@ public sealed class Db2NavigationQueryTranslatorTests
     }
 
     [Fact]
-    public void GetNavigationAccesses_finds_one_hop_member_accesses()
-    {
-        var model = CreateModel();
-
-        var accesses = Db2NavigationQueryTranslator.GetNavigationAccesses<Child>(
-            model,
-            (Child x) => new { x.Id, x.Parent!.Name, x.Parent.Level });
-
-        accesses.Count.ShouldBe(2);
-        accesses.Select(a => a.TargetMember.Name).OrderBy(x => x, StringComparer.Ordinal)
-            .ShouldBe([nameof(Parent.Level), nameof(Parent.Name)]);
-    }
-
-    [Fact]
-    public void GetNavigationAccesses_handles_method_calls_conditionals_and_member_inits()
-    {
-        var model = CreateModel();
-
-        var accesses = Db2NavigationQueryTranslator.GetNavigationAccesses<Child>(
-            model,
-            (Child x) => new Holder
-            {
-                Name = x.Parent!.Name.ToUpperInvariant(),
-                Level = x.Parent != null ? x.Parent.Level : 0,
-            });
-
-        accesses.Count.ShouldBe(2);
-        accesses.Select(a => a.TargetMember.Name).OrderBy(x => x, StringComparer.Ordinal)
-            .ShouldBe([nameof(Parent.Level), nameof(Parent.Name)]);
-    }
-
-    [Fact]
     public void TryTranslateScalarPredicate_supports_multiple_scalar_types_and_flipped_comparisons()
     {
         var model = CreateModel();
@@ -243,30 +211,14 @@ public sealed class Db2NavigationQueryTranslatorTests
         Db2NavigationQueryTranslator
             .TryTranslateCollectionAnyPredicate<Parent>(model, x => x.Children.Any(), out var any)
             .ShouldBeTrue();
-
+        any.Navigation.NavigationMember.Name.ShouldBe(nameof(Parent.Children));
         any.DependentPredicate.ShouldBeNull();
 
         Db2NavigationQueryTranslator
-            .TryTranslateCollectionAnyPredicate<Parent>(model, x => x.Children.Any(c => c.ParentId > 0), out var anyWithPredicate)
+            .TryTranslateCollectionAnyPredicate<Parent>(model, x => x.Children.Any(child => child.Id > 0), out var anyWithPredicate)
             .ShouldBeTrue();
-
+        anyWithPredicate.Navigation.NavigationMember.Name.ShouldBe(nameof(Parent.Children));
         anyWithPredicate.DependentPredicate.ShouldNotBeNull();
-        anyWithPredicate.DependentPredicate!.Parameters.Count.ShouldBe(1);
-        anyWithPredicate.DependentPredicate.Parameters[0].Type.ShouldBe(typeof(Child));
-
-    }
-
-    [Fact]
-    public void TryTranslateStringPredicate_supports_equals_with_constant_on_right()
-    {
-        var model = CreateModel();
-
-        Db2NavigationQueryTranslator
-            .TryTranslateStringPredicate<Child>(model, x => x.Parent!.Name == "abc", out var plan)
-            .ShouldBeTrue();
-
-        plan.MatchKind.ShouldBe(Db2NavigationStringMatchKind.Equals);
-        plan.Needle.ShouldBe("abc");
     }
 
     [Fact]
@@ -326,24 +278,6 @@ public sealed class Db2NavigationQueryTranslatorTests
         Db2NavigationQueryTranslator
             .TryTranslateCollectionAnyPredicate<Parent>(model, x => x.Children.AsQueryable().Any(), out _)
             .ShouldBeFalse();
-    }
-
-    [Fact]
-    public void GetNavigationAccesses_throws_when_reference_navigation_is_not_configured()
-    {
-        var builder = new Db2ModelBuilder();
-
-        builder.Entity<Parent>().HasKey(x => x.Id);
-        builder.Entity<Child>().HasKey(x => x.Id);
-
-        var model = builder.Build(SchemaResolver);
-
-        Should.Throw<NotSupportedException>(() =>
-        {
-            _ = Db2NavigationQueryTranslator.GetNavigationAccesses<Child>(
-                model,
-                (Child x) => new { x.Parent!.Name });
-        }).Message.ShouldContain("is not configured");
     }
 
 

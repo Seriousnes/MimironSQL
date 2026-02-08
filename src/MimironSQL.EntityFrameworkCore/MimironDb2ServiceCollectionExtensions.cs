@@ -1,7 +1,5 @@
-using Microsoft.EntityFrameworkCore.ChangeTracking.Internal;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.EntityFrameworkCore.Infrastructure;
-using Microsoft.EntityFrameworkCore.Query.Internal;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -9,6 +7,7 @@ using MimironSQL.EntityFrameworkCore.ChangeTracking;
 using MimironSQL.EntityFrameworkCore.Diagnostics;
 using MimironSQL.EntityFrameworkCore.Infrastructure;
 using MimironSQL.EntityFrameworkCore.Query;
+using MimironSQL.EntityFrameworkCore.Query.Internal;
 using MimironSQL.EntityFrameworkCore.Storage;
 using MimironSQL.Formats;
 using MimironSQL.Formats.Wdc5;
@@ -21,8 +20,9 @@ public static class MimironDb2ServiceCollectionExtensions
     {
         new EntityFrameworkServicesBuilder(services).TryAddCoreServices();
 
-        services.Replace(ServiceDescriptor.Scoped<IStateManager, MimironDb2StateManager>());
         services.Replace(ServiceDescriptor.Scoped<ILazyLoader, MimironDb2LazyLoader>());
+
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IInterceptor, MimironDb2ReadOnlySaveChangesInterceptor>());
 
         // EF Core's internal diagnostics logger requires a concrete provider-specific implementation.
         services.TryAddSingleton<LoggingDefinitions, MimironDb2LoggingDefinitions>();
@@ -38,13 +38,12 @@ public static class MimironDb2ServiceCollectionExtensions
 
         services.TryAddSingleton<ITypeMappingSource, MimironDb2TypeMappingSource>();
 
-        services.AddSingleton<IDb2Format>(_ => Wdc5Format.Instance);
+    services.AddSingleton<IDb2Format, Wdc5Format>();
         services.AddSingleton<IMimironDb2Store, MimironDb2Store>();
 
         services.TryAddScoped<IMimironDb2Db2ModelProvider, MimironDb2Db2ModelProvider>();
 
-#pragma warning disable EF1001 // Internal EF Core API usage is intentional for provider implementation.
-    services.AddScoped<IQueryCompiler, MimironDb2QueryCompiler>();
-#pragma warning restore EF1001
+        services.TryAddScoped<IMimironDb2QueryExecutor, MimironDb2QueryExecutor>();
+        MimironDb2EfCoreInternalServiceRegistration.Add(services);
     }
 }

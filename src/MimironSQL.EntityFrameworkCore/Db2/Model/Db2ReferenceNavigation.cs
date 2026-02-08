@@ -12,8 +12,7 @@ internal sealed class Db2ReferenceNavigation(
     MemberInfo sourceKeyMember,
     MemberInfo targetKeyMember,
     Db2FieldSchema sourceKeyFieldSchema,
-    Db2FieldSchema targetKeyFieldSchema,
-    bool overridesSchema)
+    Db2FieldSchema targetKeyFieldSchema)
 {
     public Type SourceClrType { get; } = sourceClrType;
     public MemberInfo NavigationMember { get; } = navigationMember;
@@ -24,5 +23,4 @@ internal sealed class Db2ReferenceNavigation(
     public MemberInfo TargetKeyMember { get; } = targetKeyMember;
     public Db2FieldSchema SourceKeyFieldSchema { get; } = sourceKeyFieldSchema;
     public Db2FieldSchema TargetKeyFieldSchema { get; } = targetKeyFieldSchema;
-    public bool OverridesSchema { get; } = overridesSchema;
 }

@@ -13,9 +13,6 @@ internal sealed class Db2Model(
     private readonly IReadOnlyDictionary<(Type SourceClrType, MemberInfo NavigationMember), Db2CollectionNavigation> _collectionNavigations = collectionNavigations;
     private readonly IReadOnlyDictionary<Type, IReadOnlyList<MemberInfo>> _autoIncludeNavigations = autoIncludeNavigations;
 
-    public bool TryGetEntityType(Type clrType, out Db2EntityType entityType)
-        => _entityTypes.TryGetValue(clrType, out entityType!);
-
     public Db2EntityType GetEntityType(Type clrType)
         => _entityTypes.TryGetValue(clrType, out var entityType)
             ? entityType

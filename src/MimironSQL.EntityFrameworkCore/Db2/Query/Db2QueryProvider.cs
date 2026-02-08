@@ -15,6 +15,7 @@ internal sealed class Db2QueryProvider<TEntity, TRow>(
     Db2Model model,
     Func<string, (IDb2File<TRow> File, Db2TableSchema Schema)> tableResolver,
     IDb2EntityFactory entityFactory) : IQueryProvider
+    where TEntity : class
     where TRow : struct, IRowHandle
 {
     private static readonly ConcurrentDictionary<Type, Func<Db2QueryProvider<TEntity, TRow>, Expression, IEnumerable>> ExecuteEnumerableDelegates = new();
@@ -24,8 +25,6 @@ internal sealed class Db2QueryProvider<TEntity, TRow>(
     private readonly Db2EntityMaterializer<TEntity, TRow> _materializer = new(model.GetEntityType(typeof(TEntity)), entityFactory);
     private readonly Db2Model _model = model;
     private readonly Func<string, (IDb2File<TRow> File, Db2TableSchema Schema)> _tableResolver = tableResolver;
-
-    internal TEntity Materialize(RowHandle handle) => _materializer.Materialize(file, handle);
 
     public IQueryable CreateQuery(Expression expression)
     {
@@ -444,39 +443,6 @@ internal sealed class Db2QueryProvider<TEntity, TRow>(
             if (take.HasValue && yielded >= take.Value)
                 yield break;
         }
-    }
-
-    private IEnumerable<TProjected> EnumerateNavigationProjected<TProjected>(
-        List<Func<TRow, bool>> rowPredicates,
-        int? take,
-        IReadOnlyList<Db2NavigationMemberAccessPlan> navAccesses,
-        LambdaExpression selector)
-    {
-        IEnumerable<TRow> FilteredRows()
-        {
-            var yielded = 0;
-            foreach (var row in file.EnumerateRows())
-            {
-                if (!rowPredicates.All(p => p(row)))
-                    continue;
-
-                yield return row;
-
-                yielded++;
-                if (take.HasValue && yielded >= take.Value)
-                    yield break;
-            }
-        }
-
-        return Db2NavigationRowProjector.ProjectFromRows<TProjected, TRow>(
-            file,
-            FilteredRows(),
-            _rootEntityType,
-            _model,
-            _tableResolver,
-            [.. navAccesses],
-            selector,
-            null);
     }
 
     private TResult ExecuteScalar<TResult>(Expression expression)

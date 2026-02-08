@@ -36,8 +36,8 @@ public sealed class Wdc5Tests(Wdc5TestFixture fixture) : IClassFixture<Wdc5TestF
     public void Wdc5Format_GetLayout_UsesHeaderHashAndFieldsCount()
     {
         using var stream = CreateMinimalWdc5Stream(layoutHash: 0xCAFEBABE, fieldsCount: 7, recordsCount: 0, sectionsCount: 0);
-        var format = Wdc5Format.Instance;
-        var file = (Wdc5File)format.OpenFile(stream);
+        var format = new Wdc5Format();
+        var file = format.OpenFile(stream);
         var layout = format.GetLayout(file);
         Assert.Equal(0xCAFEBABEu, layout.LayoutHash);
         Assert.Equal(7, layout.PhysicalFieldsCount);

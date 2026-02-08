@@ -1,182 +1,133 @@
 # MimironSQL
 
-MimironSQL is a read-only Entity Framework Core (EF Core) database provider for querying World of Warcraft DB2/WDC5 data.
+A read-only Entity Framework Core database provider for World of Warcraft DB2 files. MimironSQL lets you query game data tables using familiar LINQ and EF Core patterns, with full support for the WDC5 binary format and WoWDBDefs-driven schema discovery.
 
-The legacy custom query surface (`Db2Context` / `Db2Table`) has been removed (issue #43). The supported public surface is the EF provider.
+## Features
 
-## Getting Started
+- **EF Core integration** — query DB2 files with LINQ, navigation properties, and the standard `DbContext` pattern
+- **Source-generated DbContext** — a Roslyn source generator reads WoWDBDefs `.dbd` files at compile time and emits entity classes, configurations, and a typed `WoWDb2Context`
+- **File system & CASC providers** — load DB2 data from extracted files on disk or directly from a World of Warcraft installation via CASC
+- **Encrypted section support** — transparent Salsa20 decryption for TACT-encrypted DB2 sections
+- **Extensible format & provider model** — implement `IDb2Format`, `IDb2StreamProvider`, `IDbdProvider`, or `ITactKeyProvider` from the Contracts package to add new formats or data sources
 
-### 1) Provide access to DB2 + DBD
+## Packages
 
-```csharp
-using Microsoft.EntityFrameworkCore;
+| Package | Description |
+|---------|-------------|
+| `MimironSQL.EntityFrameworkCore` | EF Core database provider for DB2 files |
+| `MimironSQL.DbContextGenerator` | Source generator that emits entities and DbContext from `.dbd` definitions |
+| `MimironSQL.Contracts` | Public interfaces and types for extending MimironSQL |
+| `MimironSQL.Formats.Wdc5` | WDC5 binary format reader |
+| `Salsa20` | Salsa20 stream cipher used for encrypted DB2 sections |
 
-using MimironSQL.EntityFrameworkCore;
-using MimironSQL.Providers;
+## Installation
 
-using NSubstitute;
+Packages are published to **GitHub Packages**, not nuget.org. Add the GitHub NuGet source first:
 
-var dbdProvider = new FileSystemDbdProvider(new FileSystemDbdProviderOptions(@"C:\path\to\WoWDBDefs"));
-var db2Provider = new FileSystemDb2StreamProvider(new FileSystemDb2StreamProviderOptions(@"C:\path\to\DBFilesClient"));
-
-var tactKeyProvider = Substitute.For<ITactKeyProvider>();
-tactKeyProvider.TryGetKey(Arg.Any<ulong>(), out Arg.Any<ReadOnlyMemory<byte>>()).Returns(false);
-
-var options = new DbContextOptionsBuilder<WoWDb2Context>()
-    .UseMimironDb2(db2Provider, dbdProvider, tactKeyProvider)
-    // Optional:
-    // .UseLazyLoadingProxies()
-    .Options;
-
-using var context = new WoWDb2Context(options);
+```shell
+dotnet nuget add source "https://nuget.pkg.github.com/Seriousnes/index.json" \
+  --name MimironSQL \
+  --username YOUR_GITHUB_USERNAME \
+  --password YOUR_GITHUB_PAT
 ```
 
-### 2) Query using EF Core
+Then install the packages you need:
+
+```shell
+dotnet add package MimironSQL.EntityFrameworkCore
+dotnet add package MimironSQL.DbContextGenerator
+```
+
+`MimironSQL.Contracts`, `MimironSQL.Formats.Wdc5`, and `Salsa20` are transitive dependencies — you only need to reference them directly if you're building a custom provider or format.
+
+## Quick Start
+
+### 1. Add a `.env` file
+
+The source generator needs a WoW build version to select the correct DBD layout. Create a `.env` (or `.env.local`) file in your project root:
+
+```
+WOW_VERSION=12.0.0.65655
+```
+
+### 2. Define your DbContext
+
+The `MimironSQL.DbContextGenerator` package generates a `WoWDb2Context` with `DbSet<T>` properties for every `.dbd` table definition. You can extend the generated context with a partial class:
 
 ```csharp
-var results = context.MapChallengeMode
-    .Include(x => x.Map)
-    .Where(x => x.Map != null && x.Map.Directory.Contains('a'))
-    .Take(50)
+public partial class WoWDb2Context;
+```
+
+### 3. Register with DI
+
+#### File system provider
+
+```csharp
+services.AddSingleton<IDb2StreamProvider>(
+    new FileSystemDb2StreamProvider(new("path/to/db2/files")));
+services.AddSingleton<IDbdProvider>(
+    new FileSystemDbdProvider(new("path/to/dbd/definitions")));
+services.AddSingleton<ITactKeyProvider>(
+    new FileSystemTactKeyProvider(new("path/to/tactkeys.csv")));
+
+services.AddDbContext<WoWDb2Context>((sp, options) =>
+    options.UseMimironDb2(
+        sp.GetRequiredService<IDb2StreamProvider>(),
+        sp.GetRequiredService<IDbdProvider>(),
+        sp.GetRequiredService<ITactKeyProvider>()));
+```
+
+#### CASC provider
+
+```csharp
+services.AddCascNet(configuration);
+
+services.AddSingleton<IDbdProvider>(
+    new FileSystemDbdProvider(new("path/to/dbd/definitions")));
+services.AddSingleton<ITactKeyProvider>(
+    new FileSystemTactKeyProvider(new("path/to/tactkeys.csv")));
+
+services.AddDbContext<WoWDb2Context>((sp, options) =>
+    options.UseMimironDb2(
+        sp.GetRequiredService<IDb2StreamProvider>(),
+        sp.GetRequiredService<IDbdProvider>(),
+        sp.GetRequiredService<ITactKeyProvider>()));
+```
+
+`AddCascNet` registers `IDb2StreamProvider` and related CASC services. `IDbdProvider` and `ITactKeyProvider` still need to be registered separately.
+
+### 4. Query
+
+```csharp
+var maps = context.Maps
+    .Where(m => m.MapType == 1)
     .ToList();
 ```
 
-## Repository Layout
+#### Notes
+* **Read-only provider.** `SaveChanges()` throws `NotSupportedException`. Async query execution is not supported.
 
-- [src/MimironSQL.EntityFrameworkCore](src/MimironSQL.EntityFrameworkCore) — EF Core provider implementation
-- [src/MimironSQL.DbContextGenerator](src/MimironSQL.DbContextGenerator) — source generator for EF `DbContext` + mappings
-- [src/MimironSQL.Providers.FileSystem](src/MimironSQL.Providers.FileSystem) — filesystem providers
-- [src/MimironSQL.Providers.CASC](src/MimironSQL.Providers.CASC) — CASC providers
+## Extensibility
 
-Each project under `src/` has its own README with public API notes.
+The `MimironSQL.Contracts` package defines the extension points:
 
-## Public API
+| Interface | Purpose |
+|-----------|---------|
+| `IDb2StreamProvider` | Opens a `Stream` for a named DB2 table |
+| `IDbdProvider` | Opens a parsed `IDbdFile` for a named table |
+| `ITactKeyProvider` | Resolves TACT encryption keys by lookup ID |
+| `IDb2Format` | Reads a DB2 binary stream into an `IDb2File` |
 
-MimironSQL exposes an EF Core provider surface.
+Implement any of these interfaces and pass your implementation to `UseMimironDb2()` or register it with the `Db2FormatRegistry` to plug in new data sources or file format versions.
 
-- Configure via `UseMimironDb2(...)` on `DbContextOptionsBuilder`.
-- Query via standard EF Core LINQ (`Where`, `Select`, `Include`, etc.).
-- Read-only: `SaveChanges` / `SaveChangesAsync` are not supported.
-- Async query execution (`ToListAsync`, etc.) is not supported.
+## Acknowledgments
 
-## Supported LINQ Operations
+This project builds on the work of the [wowdev](https://github.com/wowdev) community:
 
-MimironSQL supports the following LINQ query operations:
-
-- `Where` - Filtering
-- `Select` - Projection (including anonymous types and navigation properties)
-- `FirstOrDefault`, `First` - Retrieve first element
-- `SingleOrDefault`, `Single` - Retrieve single element
-- `Take`, `Skip` - Result limiting and pagination
-- `Count`, `Any`, `All` - Aggregation
-- `Include`, `ThenInclude` - Eager loading of navigation properties
-
-**Note:** Unsupported LINQ operations will throw `NotSupportedException` at query execution time. Write operations (Insert, Update, Delete) are not supported as DB2 files are read-only.
-
-## Navigation Configuration Examples
-
-### One-to-One (Shared Primary Key)
-
-```csharp
-modelBuilder.Entity<Spell>()
-    .HasOne(s => s.SpellName)
-    .WithOne(sn => sn.Spell)
-    .HasForeignKey<SpellName>(sn => sn.Id);
-```
-
-### Many-to-One (Foreign Key)
-
-```csharp
-modelBuilder.Entity<MapChallengeMode>()
-    .HasOne(mc => mc.Map)
-    .WithMany(m => m.MapChallengeModes)
-    .HasForeignKey(mc => mc.MapID);
-```
-
-### One-to-Many (Inverse of Many-to-One)
-
-```csharp
-modelBuilder.Entity<Map>()
-    .HasMany(m => m.MapChallengeModes)
-    .WithOne(mc => mc.Map)
-    .HasForeignKey(mc => mc.MapID);
-```
-
-## Advanced Usage
-
-### Custom Table Names
-
-```csharp
-modelBuilder
-    .Entity<CustomEntity>()
-    .ToTable("ActualTableName");
-```
-
-### External Configuration Classes
-
-```csharp
-public class MapConfiguration : IEntityTypeConfiguration<Map>
-{
-    public void Configure(EntityTypeBuilder<Map> builder)
-    {
-        builder.ToTable("Map");
-
-        builder.HasMany(m => m.MapChallengeModes)
-            .WithOne(mc => mc.Map)
-            .HasForeignKey(mc => mc.MapID);
-    }
-}
-
-// In OnModelCreating:
-modelBuilder.ApplyConfigurationsFromAssembly(Assembly.GetExecutingAssembly());
-```
-
-## Troubleshooting
-
-### "No .db2 file found for table"
-Ensure your DB2 files directory contains the required `.db2` files and the table name matches the file name (case-insensitive).
-
-### "Field not found in schema"
-Your entity property names must match the field names in the corresponding `.dbd` definition file from WoWDBDefs. Check the definition for exact field names.
-
-### "Entity type has no key member"
-Ensure your entity class:
-1. Has a public primary key configured by convention (e.g., a property named `Id`), OR
-2. Has a key configured via `modelBuilder.Entity<T>().HasKey(e => e.CustomId)`, OR
-3. Is configured as keyless via `modelBuilder.Entity<T>().HasNoKey()` (if appropriate)
-
-### Navigation Not Working
-1. Check that the navigation and FK are configured in `OnModelCreating`
-2. Verify FK and PK members map to DB2 columns in the `.dbd` schema
-3. If using lazy-loading proxies, ensure navigation properties are `virtual`
-
-## Performance Tips
-
-1. **Filter by key early** - Prefer `Where(e => e.Id == id).Take(1)` over scanning
-2. **Limit results with `Take()`** - Avoid materializing entire tables
-3. **Project only needed columns** - Use `Select()` to project only required fields
-4. **Use `Include()` sparingly** - Only eager-load navigations when needed
-
-## Requirements
-
-- .NET 10.0 or later
-- WoWDBDefs definition files (`.dbd` files)
-- World of Warcraft DB2 files (`.db2` files)
+- [WoWDBDefs](https://github.com/wowdev/WoWDBDefs) — database definition files that provide column names, types, and layout metadata for DB2 tables
+- [DBCD](https://github.com/wowdev/DBCD) — reference C# implementation for reading DB2 files
+- [wowdev.wiki](https://wowdev.wiki/DB2) — community-maintained documentation of the DB2 file format specification
 
 ## License
 
-This project is licensed under the MIT License. See [LICENSE.txt](LICENSE.txt) for details.
-
-For acknowledgments of specifications and community resources used in this project, see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
-
-## Contributing
-
-Contributions are welcome! Please ensure all tests pass before submitting pull requests.
-
-```bash
-# Build the project
-dotnet build MimironSQL.slnx
-
-# Run tests
-dotnet test MimironSQL.slnx
-```
+[MIT](LICENSE.txt)

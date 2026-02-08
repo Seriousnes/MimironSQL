@@ -15,8 +15,6 @@ internal sealed class Db2EntityType(
 {
     private readonly IReadOnlyDictionary<string, string> _columnNameMappings = columnNameMappings;
 
-    internal IReadOnlyDictionary<string, string> ColumnNameMappings => _columnNameMappings;
-
     public Type ClrType { get; } = clrType;
     public string TableName { get; } = tableName;
 

@@ -13,8 +13,7 @@ internal sealed class Db2CollectionNavigation(
     Db2FieldSchema? sourceKeyFieldSchema,
     MemberInfo? dependentForeignKeyMember,
     Db2FieldSchema? dependentForeignKeyFieldSchema,
-    MemberInfo? principalKeyMember,
-    bool overridesSchema)
+    MemberInfo? principalKeyMember)
 {
     public Type SourceClrType { get; } = sourceClrType;
     public MemberInfo NavigationMember { get; } = navigationMember;
@@ -28,5 +27,4 @@ internal sealed class Db2CollectionNavigation(
     public Db2FieldSchema? DependentForeignKeyFieldSchema { get; } = dependentForeignKeyFieldSchema;
 
     public MemberInfo? PrincipalKeyMember { get; } = principalKeyMember;
-    public bool OverridesSchema { get; } = overridesSchema;
 }

@@ -11,11 +11,12 @@ public sealed class Wdc5FormatTests
     }
 
     [Fact]
-    public void Register_registers_instance()
+    public void Register_registers_format()
     {
         var registry = new Db2FormatRegistry();
         Wdc5Format.Register(registry);
 
-        registry.Formats.ShouldContain(Wdc5Format.Instance);
+        registry.Formats.Count.ShouldBe(1);
+        registry.Formats[0].ShouldBeOfType<Wdc5Format>();
     }
 }

@@ -14,6 +14,4 @@ internal sealed class Db2CollectionNavigationMetadata(MemberInfo navigationMembe
     public MemberInfo? DependentForeignKeyMember { get; set; }
 
     public MemberInfo? PrincipalKeyMember { get; set; }
-
-    public bool OverridesSchema { get; set; }
 }

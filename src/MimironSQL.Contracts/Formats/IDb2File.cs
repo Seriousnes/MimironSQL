@@ -4,6 +4,8 @@ namespace MimironSQL.Formats;
 
 public interface IDb2File
 {
+    IDb2FileHeader Header { get; }
+
     Type RowType { get; }
 
     Db2Flags Flags { get; }

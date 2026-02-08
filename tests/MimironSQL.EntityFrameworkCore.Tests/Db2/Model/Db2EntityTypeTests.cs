@@ -224,8 +224,7 @@ public sealed class Db2EntityTypeTests
             sourceKeyMember: typeof(Entity).GetProperty(nameof(Entity.Level))!,
             targetKeyMember: typeof(Entity).GetProperty(nameof(Entity.Level))!,
             sourceKeyFieldSchema: new Db2FieldSchema("Level", Db2ValueType.Int64, 1, 1, true, false, false, false, null),
-            targetKeyFieldSchema: new Db2FieldSchema("Level", Db2ValueType.Int64, 1, 1, true, false, false, false, null),
-            overridesSchema: false);
+            targetKeyFieldSchema: new Db2FieldSchema("Level", Db2ValueType.Int64, 1, 1, true, false, false, false, null));
 
         var plan = new Db2NavigationJoinPlan(root, nav, target);
 
@@ -252,8 +251,7 @@ public sealed class Db2EntityTypeTests
             sourceKeyMember: idMember,
             targetKeyMember: idMember,
             sourceKeyFieldSchema: pk,
-            targetKeyFieldSchema: pk,
-            overridesSchema: false);
+            targetKeyFieldSchema: pk);
 
         var plan = new Db2NavigationJoinPlan(entity, nav, entity);
 

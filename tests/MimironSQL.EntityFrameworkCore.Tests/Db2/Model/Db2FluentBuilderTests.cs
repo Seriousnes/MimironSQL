@@ -17,8 +17,7 @@ public sealed class Db2FluentBuilderTests
 
         builder.Entity<Child>()
             .HasOne(x => x.Parent)
-            .WithForeignKey(x => x.ParentId)
-            .OverridesSchema();
+            .WithForeignKey(x => x.ParentId);
 
         builder.Entity<Parent>().HasKey(x => x.Id);
         builder.Entity<Child>().HasKey(x => x.Id);
@@ -31,7 +30,6 @@ public sealed class Db2FluentBuilderTests
         nav.Kind.ShouldBe(Db2ReferenceNavigationKind.ForeignKeyToPrimaryKey);
         nav.SourceKeyMember.Name.ShouldBe(nameof(Child.ParentId));
         nav.TargetKeyMember.Name.ShouldBe(nameof(Parent.Id));
-        nav.OverridesSchema.ShouldBeTrue();
     }
 
     [Fact]
@@ -63,8 +61,7 @@ public sealed class Db2FluentBuilderTests
 
         builder.Entity<Parent>()
             .HasMany(x => x.Children)
-            .WithForeignKey(x => x.ParentId)
-            .OverridesSchema();
+            .WithForeignKey(x => x.ParentId);
 
         builder.Entity<Parent>().HasKey(x => x.Id);
         builder.Entity<Child>().HasKey(x => x.Id);
@@ -79,7 +76,6 @@ public sealed class Db2FluentBuilderTests
         nav.DependentForeignKeyMember!.Name.ShouldBe(nameof(Child.ParentId));
         nav.PrincipalKeyMember.ShouldNotBeNull();
         nav.PrincipalKeyMember!.Name.ShouldBe(nameof(Parent.Id));
-        nav.OverridesSchema.ShouldBeTrue();
     }
 
     [Fact]
@@ -119,7 +115,8 @@ public sealed class Db2FluentBuilderTests
         var model = builder.Build(SchemaResolver);
         var entity = model.GetEntityType(typeof(ColumnMapped));
 
-        entity.ColumnNameMappings[nameof(ColumnMapped.DisplayName)].ShouldBe("Display_Name");
+        var member = typeof(ColumnMapped).GetProperty(nameof(ColumnMapped.DisplayName))!;
+        entity.ResolveFieldSchema(member, "test").Name.ShouldBe("Display_Name");
     }
 
     [Fact]

@@ -9,87 +9,12 @@ namespace MimironSQL.EntityFrameworkCore.Db2.Model;
 
 internal sealed class Db2ModelBuilder
 {
-    private bool configurationsApplied = false;
     private readonly Dictionary<Type, Db2EntityTypeMetadata> _entityTypes = [];
 
     public Db2EntityTypeBuilder<T> Entity<T>()
         => Entity(typeof(T)) is { } metadata
             ? new Db2EntityTypeBuilder<T>(this, metadata)
             : throw new InvalidOperationException("Unable to register entity type.");
-
-    public Db2ModelBuilder ApplyConfiguration<T>(IDb2EntityTypeConfiguration<T> configuration)
-    {
-        ArgumentNullException.ThrowIfNull(configuration);
-
-        var builder = Entity<T>();
-        configuration.Configure(builder);
-        return this;
-    }
-
-    public Db2ModelBuilder ApplyConfigurationsFromAssembly(params Assembly[] assemblies)
-    {
-        if (configurationsApplied)
-            throw new InvalidOperationException("ApplyConfigurationsFromAssembly can only be called once per model builder.");
-
-        var configInterfaceType = typeof(IDb2EntityTypeConfiguration<>);
-        var configurations = new List<(Type ConfigType, Type EntityType)>();
-
-        foreach (var a in assemblies)
-        {
-            configurations.AddRange(a.GetTypes()
-                .Where(t => !t.IsAbstract && !t.IsGenericTypeDefinition)
-                .Select(t => (Type: t, Interface: t.GetInterfaces()
-                    .FirstOrDefault(i => i.IsGenericType && i.GetGenericTypeDefinition() == configInterfaceType)))
-                .Where(x => x.Interface is not null)
-                .Select(x => (ConfigType: x.Type, EntityType: x.Interface!.GetGenericArguments()[0])));
-        }
-
-        var duplicates = configurations
-            .GroupBy(x => x.EntityType)
-            .Where(g => g.Count() > 1)
-            .Select(g => new
-            {
-                EntityType = g.Key,
-                ConfigTypes = g.Select(x => x.ConfigType).OrderBy(t => t.FullName, StringComparer.Ordinal).ToArray(),
-            })
-            .OrderBy(x => x.EntityType.FullName, StringComparer.Ordinal)
-            .ToArray();
-
-        if (duplicates is { Length: not 0 })
-        {
-            var message = string.Join(
-                Environment.NewLine,
-                duplicates.Select(d =>
-                    $"Multiple entity type configurations found for '{d.EntityType.FullName}': {string.Join(", ", d.ConfigTypes.Select(t => t.FullName))}."));
-
-            throw new InvalidOperationException(message);
-        }
-
-        var applyMethodDefinition = typeof(Db2ModelBuilder).GetMethod(nameof(ApplyConfiguration)) ?? throw new InvalidOperationException(
-            $"Unable to locate '{nameof(ApplyConfiguration)}' on '{typeof(Db2ModelBuilder).FullName}'.");
-
-        foreach (var (configType, entityType) in configurations.OrderBy(x => x.ConfigType.FullName, StringComparer.Ordinal))
-        {
-            try
-            {
-                if (Activator.CreateInstance(configType) is not { } config)
-                    continue;
-
-                var applyMethod = applyMethodDefinition.MakeGenericMethod(entityType);
-                applyMethod.Invoke(this, [config]);
-            }
-            catch (Exception ex) when (ex is MissingMethodException or TargetInvocationException or MemberAccessException or TypeLoadException)
-            {
-                throw new InvalidOperationException(
-                    $"Unable to instantiate configuration type '{configType.FullName}'. " +
-                    $"Ensure the configuration class has a public parameterless constructor.",
-                    ex);
-            }
-        }
-
-        configurationsApplied = true;
-        return this;
-    }
 
     internal Db2EntityTypeMetadata Entity(Type clrType)
     {
@@ -148,222 +73,6 @@ internal sealed class Db2ModelBuilder
         metadata.AutoIncludeNavigations.Add(navigationMember);
     }
 
-    internal void ApplySchemaNavigationConventions(Func<string, Db2TableSchema> schemaResolver)
-    {
-        ArgumentNullException.ThrowIfNull(schemaResolver);
-
-        var pending = new Queue<Type>(_entityTypes.Keys);
-        var visited = new HashSet<Type>();
-
-        while (pending.TryDequeue(out var clrType))
-        {
-            if (!visited.Add(clrType))
-                continue;
-
-            if (!_entityTypes.TryGetValue(clrType, out var entityMetadata))
-                continue;
-
-            var tableName = entityMetadata.TableName ?? clrType.Name;
-            var schema = schemaResolver(tableName);
-
-            foreach (var f in schema.Fields
-                .Where(f => f.ReferencedTableName is not null && f.Name.EndsWith("ID", StringComparison.OrdinalIgnoreCase)))
-            {
-                var navName = f.Name[..^2];
-
-                var navMember = FindMember(clrType, navName);
-                if (navMember is null)
-                    continue;
-
-                var fkMember = FindMember(clrType, f.Name);
-                if (fkMember is null)
-                    continue;
-
-                var navMemberType = navMember.GetMemberType();
-                if (navMemberType != typeof(string) && typeof(System.Collections.IEnumerable).IsAssignableFrom(navMemberType))
-                {
-                    // Schema conventions only apply to 1-hop reference navigations.
-                    // Collection navigations are not yet supported here.
-                    continue;
-                }
-
-                var targetClrType = navMemberType;
-                if (targetClrType.IsValueType)
-                    continue;
-
-                if (!_entityTypes.TryGetValue(targetClrType, out var targetMetadata))
-                {
-                    targetMetadata = new Db2EntityTypeMetadata(targetClrType)
-                    {
-                        TableName = targetClrType.Name,
-                    };
-
-                    _entityTypes.Add(targetClrType, targetMetadata);
-                    pending.Enqueue(targetClrType);
-                }
-
-                if (!targetMetadata.TableNameWasConfigured && targetMetadata.TableName == targetClrType.Name && targetMetadata.TableName != f.ReferencedTableName)
-                    targetMetadata.TableName = f.ReferencedTableName;
-
-                var existing = entityMetadata.Navigations.FirstOrDefault(n => n.NavigationMember == navMember);
-                if (existing is null)
-                {
-                    var nav = new Db2NavigationMetadata(navMember, targetClrType)
-                    {
-                        Kind = Db2ReferenceNavigationKind.ForeignKeyToPrimaryKey,
-                        SourceKeyMember = fkMember,
-                    };
-
-                    entityMetadata.Navigations.Add(nav);
-                    continue;
-                }
-
-                if (existing.OverridesSchema)
-                    continue;
-
-                if (existing is not { Kind: Db2ReferenceNavigationKind.ForeignKeyToPrimaryKey })
-                    throw new NotSupportedException($"Navigation '{clrType.FullName}.{navName}' conflicts with schema FK '{f.Name}'. Use OverridesSchema() on the model configuration to override schema resolution.");
-
-                if (existing.SourceKeyMember is not null && existing.SourceKeyMember != fkMember)
-                    throw new NotSupportedException($"Navigation '{clrType.FullName}.{navName}' has FK member '{existing.SourceKeyMember.Name}' but schema FK is '{f.Name}'. Use OverridesSchema() to override schema resolution.");
-
-                existing.SourceKeyMember = fkMember;
-            }
-        }
-    }
-
-    internal void ApplyAttributeNavigationConventions()
-    {
-        var pending = new Queue<Type>(_entityTypes.Keys);
-        var visited = new HashSet<Type>();
-
-        while (pending.TryDequeue(out var clrType))
-        {
-            if (!visited.Add(clrType))
-                continue;
-
-            if (!_entityTypes.TryGetValue(clrType, out var metadata))
-                continue;
-
-            var properties = clrType.GetProperties(BindingFlags.Instance | BindingFlags.Public);
-
-            foreach (var p in properties)
-            {
-                if (p.GetCustomAttribute<ForeignKeyAttribute>(inherit: false) is not { } fkAttr)
-                    continue;
-
-                var foreignKeyName = ParseSingleForeignKeyName(fkAttr.Name, clrType, p);
-                var overridesSchema = p.GetCustomAttribute<OverridesSchemaAttribute>(inherit: false) is not null;
-
-                // Case 1: [ForeignKey] placed on a scalar FK property, pointing to a reference navigation.
-                if (IsScalarForeignKeyProperty(p))
-                {
-                    var navMember = FindMember(clrType, foreignKeyName)
-                        ?? throw new NotSupportedException($"[ForeignKey] on '{clrType.FullName}.{p.Name}' references navigation '{foreignKeyName}', but no matching public property was found.");
-
-                    if (navMember is not PropertyInfo navProperty)
-                        throw new NotSupportedException($"[ForeignKey] on '{clrType.FullName}.{p.Name}' must reference a public property.");
-
-                    if (navProperty.GetCustomAttribute<ForeignKeyAttribute>(inherit: false) is not null)
-                    {
-                        throw new NotSupportedException(
-                            $"Foreign key mapping for navigation '{clrType.FullName}.{navProperty.Name}' cannot specify [ForeignKey] on both the navigation and the FK property.");
-                    }
-
-                    if (TryGetIEnumerableElementType(navProperty.PropertyType, out _))
-                        throw new NotSupportedException($"[ForeignKey] on '{clrType.FullName}.{p.Name}' cannot target a collection navigation '{navProperty.Name}'.");
-
-                    if (navProperty.PropertyType.IsValueType)
-                        throw new NotSupportedException($"Navigation '{clrType.FullName}.{navProperty.Name}' must be a reference type.");
-
-                    if (metadata.Navigations.Any(n => n.NavigationMember == navProperty) || metadata.CollectionNavigations.Any(n => n.NavigationMember == navProperty))
-                    {
-                        throw new NotSupportedException(
-                            $"Navigation '{clrType.FullName}.{navProperty.Name}' cannot be configured multiple times (fluent configuration and/or [ForeignKey]).");
-                    }
-
-                    var nav = new Db2NavigationMetadata(navProperty, navProperty.PropertyType)
-                    {
-                        Kind = Db2ReferenceNavigationKind.ForeignKeyToPrimaryKey,
-                        SourceKeyMember = p,
-                        OverridesSchema = overridesSchema,
-                    };
-
-                    metadata.Navigations.Add(nav);
-                    pending.Enqueue(navProperty.PropertyType);
-                    Entity(navProperty.PropertyType);
-                    continue;
-                }
-
-                // Case 2: [ForeignKey] placed on a navigation property.
-                if (TryGetIEnumerableElementType(p.PropertyType, out var elementType))
-                {
-                    ArgumentNullException.ThrowIfNull(elementType);
-
-                    if (elementType.IsValueType)
-                        throw new NotSupportedException($"Collection navigation '{clrType.FullName}.{p.Name}' must target a reference type.");
-
-                    if (metadata.Navigations.Any(n => n.NavigationMember == p) || metadata.CollectionNavigations.Any(n => n.NavigationMember == p))
-                    {
-                        throw new NotSupportedException(
-                            $"Navigation '{clrType.FullName}.{p.Name}' cannot be configured multiple times (fluent configuration and/or [ForeignKey]).");
-                    }
-
-                    var collectionNav = new Db2CollectionNavigationMetadata(p, elementType)
-                    {
-                        OverridesSchema = overridesSchema,
-                    };
-
-                    // If the FK name matches a member on the dependent element type, treat this as a conventional "dependent FK -> principal PK" collection.
-                    // Otherwise, if it matches a key collection member on the source, treat it as an FK-array navigation.
-                    if (FindMember(elementType, foreignKeyName) is { } dependentFkMember)
-                    {
-                        collectionNav.Kind = Db2CollectionNavigationKind.DependentForeignKeyToPrimaryKey;
-                        collectionNav.DependentForeignKeyMember = dependentFkMember;
-                    }
-                    else if (FindMember(clrType, foreignKeyName) is { } sourceKeyCollectionMember)
-                    {
-                        collectionNav.Kind = Db2CollectionNavigationKind.ForeignKeyArrayToPrimaryKey;
-                        collectionNav.SourceKeyCollectionMember = sourceKeyCollectionMember;
-                    }
-                    else
-                    {
-                        throw new NotSupportedException(
-                            $"[ForeignKey] on '{clrType.FullName}.{p.Name}' must reference either a dependent FK '{elementType.FullName}.{foreignKeyName}' or a source key collection '{clrType.FullName}.{foreignKeyName}', but no matching public property was found.");
-                    }
-
-                    metadata.CollectionNavigations.Add(collectionNav);
-                    pending.Enqueue(elementType);
-                    Entity(elementType);
-                    continue;
-                }
-
-                if (p.PropertyType.IsValueType)
-                    throw new NotSupportedException($"Navigation '{clrType.FullName}.{p.Name}' must be a reference type.");
-
-                if (metadata.Navigations.Any(n => n.NavigationMember == p) || metadata.CollectionNavigations.Any(n => n.NavigationMember == p))
-                {
-                    throw new NotSupportedException(
-                        $"Navigation '{clrType.FullName}.{p.Name}' cannot be configured multiple times (fluent configuration and/or [ForeignKey]).");
-                }
-
-                var fkMember = FindMember(clrType, foreignKeyName)
-                    ?? throw new NotSupportedException($"[ForeignKey] on '{clrType.FullName}.{p.Name}' references FK '{foreignKeyName}', but no matching public property was found.");
-
-                var referenceNav = new Db2NavigationMetadata(p, p.PropertyType)
-                {
-                    Kind = Db2ReferenceNavigationKind.ForeignKeyToPrimaryKey,
-                    SourceKeyMember = fkMember,
-                    OverridesSchema = overridesSchema,
-                };
-
-                metadata.Navigations.Add(referenceNav);
-                pending.Enqueue(p.PropertyType);
-                Entity(p.PropertyType);
-            }
-        }
-    }
-
     internal Db2Model Build(Func<string, Db2TableSchema> schemaResolver)
     {
         ArgumentNullException.ThrowIfNull(schemaResolver);
@@ -410,7 +119,7 @@ internal sealed class Db2ModelBuilder
                     case Db2ReferenceNavigationKind.SharedPrimaryKeyOneToOne when (nav.SourceKeyMember is null || nav.TargetKeyMember is null):
                         throw new NotSupportedException($"Shared primary key navigation '{nav.NavigationMember.Name}' on '{clrType.FullName}' must specify both key selectors.");
                     case Db2ReferenceNavigationKind.ForeignKeyToPrimaryKey when nav.SourceKeyMember is null:
-                        throw new NotSupportedException($"FK navigation '{nav.NavigationMember.Name}' on '{clrType.FullName}' must specify a foreign key selector (WithForeignKey) or be provided by schema conventions.");
+                        throw new NotSupportedException($"FK navigation '{nav.NavigationMember.Name}' on '{clrType.FullName}' must specify a foreign key selector (WithForeignKey).");
                     case Db2ReferenceNavigationKind.ForeignKeyToPrimaryKey when nav.TargetKeyMember is null:
                         nav.TargetKeyMember = ResolvePrimaryKeyMember(Entity(nav.TargetClrType));
                         break;
@@ -434,8 +143,7 @@ internal sealed class Db2ModelBuilder
                     sourceKeyMember: nav.SourceKeyMember!,
                     targetKeyMember: nav.TargetKeyMember!,
                     sourceKeyFieldSchema: sourceKeyFieldSchema,
-                    targetKeyFieldSchema: targetKeyFieldSchema,
-                    overridesSchema: nav.OverridesSchema);
+                    targetKeyFieldSchema: targetKeyFieldSchema);
             }
 
             foreach (var nav in m.CollectionNavigations)
@@ -470,8 +178,7 @@ internal sealed class Db2ModelBuilder
                                 sourceKeyFieldSchema: sourceKeyFieldSchema,
                                 dependentForeignKeyMember: null,
                                 dependentForeignKeyFieldSchema: null,
-                                principalKeyMember: null,
-                                overridesSchema: nav.OverridesSchema);
+                                principalKeyMember: null);
 
                             continue;
                         }
@@ -501,8 +208,7 @@ internal sealed class Db2ModelBuilder
                                 sourceKeyFieldSchema: null,
                                 dependentForeignKeyMember: nav.DependentForeignKeyMember,
                                 dependentForeignKeyFieldSchema: dependentFkFieldSchema,
-                                principalKeyMember: principalKeyMember,
-                                overridesSchema: nav.OverridesSchema);
+                                principalKeyMember: principalKeyMember);
 
                             continue;
                         }
@@ -626,11 +332,6 @@ internal sealed class Db2ModelBuilder
         return null;
     }
 
-    private static bool IsScalarForeignKeyProperty(PropertyInfo property)
-    {
-        return property.PropertyType.IsScalarType();
-    }
-
     private static bool TryGetIEnumerableElementType(Type type, out Type? elementType)
     {
         if (type == typeof(string))
@@ -660,17 +361,4 @@ internal sealed class Db2ModelBuilder
         elementType = null;
         return false;
     }
-
-    private static string ParseSingleForeignKeyName(string name, Type clrType, PropertyInfo property)
-    {
-        var trimmed = name.Trim();
-        if (trimmed.Contains(',', StringComparison.Ordinal))
-        {
-            throw new NotSupportedException(
-                $"[ForeignKey] on '{clrType.FullName}.{property.Name}' does not support composite keys. Use fluent configuration instead.");
-        }
-
-        return trimmed;
-    }
-
 }

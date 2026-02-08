@@ -147,27 +147,58 @@ internal sealed class MimironDb2Db2ModelProvider(
             }
 
             // Reference navigation
-            // dependent = entityType, principal = target
             var sourceClr = entityType.ClrType;
             var targetClr = navigation.TargetEntityType.ClrType;
 
-            var sourceFkProp = fk.Properties[0].PropertyInfo;
-            if (sourceFkProp is null)
-                continue;
-
-            var principalKey = fk.PrincipalKey.Properties[0].PropertyInfo;
-            if (principalKey is null)
-                continue;
-
             var hasOneBuilder = InvokeHasOne(builder, sourceClr, targetClr, navProperty);
 
-            var withForeignKey = hasOneBuilder.GetType().GetMethod(nameof(Db2ReferenceNavigationBuilder<,>.WithForeignKey))!;
-            var withForeignKeyGeneric = withForeignKey.MakeGenericMethod(sourceFkProp.PropertyType);
-            withForeignKeyGeneric.Invoke(hasOneBuilder, [BuildPropertyLambda(sourceClr, sourceFkProp)]);
+            // ForeignKeyToPrimaryKey: FK is on the entity declaring the navigation.
+            if (fk.DeclaringEntityType.ClrType == sourceClr)
+            {
+                var sourceFkProp = fk.Properties[0].PropertyInfo;
+                if (sourceFkProp is null)
+                    continue;
 
-            var hasPrincipalKeyMethod = hasOneBuilder.GetType().GetMethod(nameof(Db2ReferenceNavigationBuilder<,>.HasPrincipalKey))!;
-            var hasPrincipalKeyGenericMethod = hasPrincipalKeyMethod.MakeGenericMethod(principalKey.PropertyType);
-            hasPrincipalKeyGenericMethod.Invoke(hasOneBuilder, [BuildPropertyLambda(targetClr, principalKey)]);
+                var principalKey = fk.PrincipalKey.Properties[0].PropertyInfo;
+                if (principalKey is null)
+                    continue;
+
+                var withForeignKey = hasOneBuilder.GetType().GetMethod(nameof(Db2ReferenceNavigationBuilder<,>.WithForeignKey))!;
+                var withForeignKeyGeneric = withForeignKey.MakeGenericMethod(sourceFkProp.PropertyType);
+                withForeignKeyGeneric.Invoke(hasOneBuilder, [BuildPropertyLambda(sourceClr, sourceFkProp)]);
+
+                var hasPrincipalKeyMethod = hasOneBuilder.GetType().GetMethod(nameof(Db2ReferenceNavigationBuilder<,>.HasPrincipalKey))!;
+                var hasPrincipalKeyGenericMethod = hasPrincipalKeyMethod.MakeGenericMethod(principalKey.PropertyType);
+                hasPrincipalKeyGenericMethod.Invoke(hasOneBuilder, [BuildPropertyLambda(targetClr, principalKey)]);
+
+                continue;
+            }
+
+            // SharedPrimaryKeyOneToOne: navigation is on the principal, but the FK is the dependent PK.
+            // This shows up in EF as a unique FK where dependent PK == FK.
+            if (fk.IsUnique
+                && fk.DeclaringEntityType.ClrType == targetClr
+                && fk.DeclaringEntityType.FindPrimaryKey() is { Properties.Count: 1 } dependentPk
+                && ReferenceEquals(dependentPk.Properties[0], fk.Properties[0]))
+            {
+                var principalKey = fk.PrincipalKey.Properties[0].PropertyInfo;
+                var dependentKey = dependentPk.Properties[0].PropertyInfo;
+
+                if (principalKey is null || dependentKey is null)
+                    continue;
+
+                if (principalKey.PropertyType != dependentKey.PropertyType)
+                    continue;
+
+                var withSharedPk = hasOneBuilder.GetType().GetMethod(nameof(Db2ReferenceNavigationBuilder<,>.WithSharedPrimaryKey))!;
+                var withSharedPkGeneric = withSharedPk.MakeGenericMethod(principalKey.PropertyType);
+                withSharedPkGeneric.Invoke(
+                    hasOneBuilder,
+                    [
+                        BuildPropertyLambda(sourceClr, principalKey),
+                        BuildPropertyLambda(targetClr, dependentKey),
+                    ]);
+            }
         }
     }
 

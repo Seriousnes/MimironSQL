@@ -325,6 +325,8 @@ public sealed class Db2RowProjectorCompilerTests
 
         public ReadOnlyMemory<byte> DenseStringTableBytes { get; } = denseStringTableBytes;
 
+        public IDb2FileHeader Header { get; }
+
         public IEnumerable<RowHandle> EnumerateRowHandles() => EnumerateRows();
 
         public IEnumerable<RowHandle> EnumerateRows()

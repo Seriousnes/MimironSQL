@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Linq.Expressions;
 using System.Reflection;
 
@@ -474,11 +475,6 @@ internal static class Db2NavigationQueryCompiler
         if (navigation.DependentForeignKeyFieldSchema is null)
             return [];
 
-        var m = typeof(Db2NavigationQueryCompiler)
-            .GetMethod(nameof(FindMatchingRootIdsForCollectionAnyTyped), BindingFlags.Static | BindingFlags.NonPublic)!;
-
-        var g = m.MakeGenericMethod(navigation.TargetClrType, typeof(TRow));
-
         var typedPredicate = dependentPredicate is null
             ? null
             : Expression.Lambda(
@@ -486,7 +482,53 @@ internal static class Db2NavigationQueryCompiler
                 dependentPredicate.Body,
                 dependentPredicate.Parameters);
 
-        return (HashSet<int>)g.Invoke(null, [model, tableResolver, navigation, typedPredicate])!;
+        return CollectionAnyDispatcher<TRow>.Invoke(navigation.TargetClrType, model, tableResolver, navigation, typedPredicate);
+    }
+
+    private static class CollectionAnyDispatcher<TRow>
+        where TRow : struct, IRowHandle
+    {
+        private static readonly ConcurrentDictionary<Type, Func<
+            Db2Model,
+            Func<string, (IDb2File<TRow> File, Db2TableSchema Schema)>,
+            Db2CollectionNavigation,
+            LambdaExpression?,
+            HashSet<int>>> Cache = new();
+
+        public static HashSet<int> Invoke(
+            Type dependentEntityClrType,
+            Db2Model model,
+            Func<string, (IDb2File<TRow> File, Db2TableSchema Schema)> tableResolver,
+            Db2CollectionNavigation navigation,
+            LambdaExpression? dependentPredicate)
+        {
+            var del = Cache.GetOrAdd(dependentEntityClrType, Create);
+            return del(model, tableResolver, navigation, dependentPredicate);
+        }
+
+        private static Func<
+            Db2Model,
+            Func<string, (IDb2File<TRow> File, Db2TableSchema Schema)>,
+            Db2CollectionNavigation,
+            LambdaExpression?,
+            HashSet<int>> Create(Type dependentEntityClrType)
+        {
+            var method = typeof(Db2NavigationQueryCompiler)
+                .GetMethod(nameof(FindMatchingRootIdsForCollectionAnyTyped), BindingFlags.Static | BindingFlags.NonPublic)!
+                .MakeGenericMethod(dependentEntityClrType, typeof(TRow));
+
+            return (Func<
+                Db2Model,
+                Func<string, (IDb2File<TRow> File, Db2TableSchema Schema)>,
+                Db2CollectionNavigation,
+                LambdaExpression?,
+                HashSet<int>>)method.CreateDelegate(typeof(Func<
+                    Db2Model,
+                    Func<string, (IDb2File<TRow> File, Db2TableSchema Schema)>,
+                    Db2CollectionNavigation,
+                    LambdaExpression?,
+                    HashSet<int>>));
+        }
     }
 
     private static HashSet<int> FindMatchingRootIdsForCollectionAnyTyped<TDependent, TRow>(
@@ -578,7 +620,7 @@ internal static class Db2NavigationQueryCompiler
             var isDenseOptimizable = !relatedFile.Flags.HasFlag(Db2Flags.Sparse) && !plan.TargetStringFieldSchema.IsVirtual;
             if (isDenseOptimizable && relatedFile is IDb2DenseStringTableIndexProvider<TRow> provider)
             {
-                var starts = Db2DenseStringScanner.FindStartOffsets(relatedFile.DenseStringTableBytes.Span, plan.Needle, mk);
+                var starts = Db2DenseStringScanner.FindStartOffsetsCached(relatedFile, relatedFile.DenseStringTableBytes.Span, plan.Needle, mk);
 
                 foreach (var relatedRow in relatedFile.EnumerateRows())
                 {

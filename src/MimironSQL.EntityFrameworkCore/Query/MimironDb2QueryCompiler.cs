@@ -5,7 +5,6 @@ using System.Reflection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Query;
-using Microsoft.EntityFrameworkCore.Query.Internal;
 
 using MimironSQL.EntityFrameworkCore.Db2.Query;
 using MimironSQL.EntityFrameworkCore.Db2.Schema;
@@ -14,13 +13,12 @@ using MimironSQL.Formats;
 
 namespace MimironSQL.EntityFrameworkCore.Query;
 
-#pragma warning disable EF1001 // Internal EF Core API usage is intentional for provider implementation.
-internal sealed class MimironDb2QueryCompiler(
+internal sealed class MimironDb2QueryExecutor(
     ICurrentDbContext currentDbContext,
     IMimironDb2Store store,
-    IMimironDb2Db2ModelProvider db2ModelProvider) : IQueryCompiler
+    IMimironDb2Db2ModelProvider db2ModelProvider) : IMimironDb2QueryExecutor
 {
-    private static readonly ConcurrentDictionary<(Type EntityType, Type RowType, Type ResultType), Func<MimironDb2QueryCompiler, Expression, object?>> ExecuteDelegates = new();
+    private static readonly ConcurrentDictionary<(Type EntityType, Type RowType, Type ResultType), Func<MimironDb2QueryExecutor, Expression, object?>> ExecuteDelegates = new();
 
     private readonly DbContext _context = currentDbContext?.Context ?? throw new ArgumentNullException(nameof(currentDbContext));
     private readonly IMimironDb2Store _store = store ?? throw new ArgumentNullException(nameof(store));
@@ -29,6 +27,8 @@ internal sealed class MimironDb2QueryCompiler(
     public TResult Execute<TResult>(Expression query)
     {
         ArgumentNullException.ThrowIfNull(query);
+
+        query = MimironDb2EfExpressionNormalizer.Normalize(query);
 
         var rootEntityType = GetRootEntityClrType(query);
 
@@ -43,19 +43,22 @@ internal sealed class MimironDb2QueryCompiler(
 
         var result = ExecuteDelegates.GetOrAdd((rootEntityType, rowType, typeof(TResult)), static key =>
         {
-            var method = typeof(MimironDb2QueryCompiler)
+            var method = typeof(MimironDb2QueryExecutor)
                 .GetMethod(nameof(ExecuteTyped), BindingFlags.NonPublic | BindingFlags.Instance)!
                 .MakeGenericMethod(key.EntityType, key.RowType, key.ResultType);
 
-            return method.CreateDelegate<Func<MimironDb2QueryCompiler, Expression, object?>>();
+            return method.CreateDelegate<Func<MimironDb2QueryExecutor, Expression, object?>>();
         })(this, query);
 
         return (TResult)result!;
     }
 
     private object? ExecuteTyped<TEntity, TRow, TResult>(Expression query)
+        where TEntity : class
         where TRow : struct, IRowHandle
     {
+        query = MimironDb2EfExpressionNormalizer.Normalize(query);
+
         var efEntityType = _context.Model.FindEntityType(typeof(TEntity))
             ?? throw new NotSupportedException($"Entity type '{typeof(TEntity).FullName}' is not part of the EF model.");
 
@@ -76,18 +79,6 @@ internal sealed class MimironDb2QueryCompiler(
         var rewritten = new RootQueryRewriter<TEntity>(rootQueryable).Visit(query);
         return provider.Execute<TResult>(rewritten!);
     }
-
-    public Func<QueryContext, TResult> CreateCompiledQuery<TResult>(Expression query)
-        => _ => Execute<TResult>(query);
-
-    public Func<QueryContext, TResult> CreateCompiledAsyncQuery<TResult>(Expression query)
-        => _ => throw new NotSupportedException("Async query execution is not supported.");
-
-    public TResult ExecuteAsync<TResult>(Expression query, CancellationToken cancellationToken)
-        => throw new NotSupportedException("Async query execution is not supported.");
-
-    public Expression<Func<QueryContext, TResult>> PrecompileQuery<TResult>(Expression query, bool async)
-        => throw new NotSupportedException("Query precompilation is not supported.");
 
     private static Type GetRootEntityClrType(Expression expression)
     {
@@ -119,9 +110,10 @@ internal sealed class MimironDb2QueryCompiler(
 
         protected override Expression VisitConstant(ConstantExpression node)
         {
-            if (node.Type.IsGenericType
-                && node.Type.GetGenericTypeDefinition().FullName == "Microsoft.EntityFrameworkCore.Query.Internal.EntityQueryable`1"
-                && node.Type.GetGenericArguments()[0] == typeof(TEntity))
+            if (node.Value is IQueryable q
+                && q.ElementType == typeof(TEntity)
+                && q.Expression is EntityQueryRootExpression eqr
+                && eqr.EntityType.ClrType == typeof(TEntity))
             {
                 return Expression.Constant(_root, typeof(IQueryable<TEntity>));
             }
@@ -130,4 +122,3 @@ internal sealed class MimironDb2QueryCompiler(
         }
     }
 }
-#pragma warning restore EF1001

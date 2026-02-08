@@ -45,12 +45,6 @@ internal sealed class Db2ReferenceNavigationBuilder<TSource, TTarget>(Db2ModelBu
         }
     }
 
-    public Db2ReferenceNavigationBuilder<TSource, TTarget> OverridesSchema()
-    {
-        _metadata.OverridesSchema = true;
-        return this;
-    }
-
     public Db2ReferenceNavigationBuilder<TSource, TTarget> WithForeignKey<TKey>(
         Expression<Func<TSource, TKey>> foreignKey)
     {

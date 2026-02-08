@@ -60,7 +60,7 @@ public sealed class MimironDb2QueryExecutionTests
     private static int ReadFirstRowId(IDb2StreamProvider db2Provider, string tableName)
     {
         using var stream = db2Provider.OpenDb2Stream(tableName);
-        var file = (IDb2File<RowHandle>)Wdc5Format.Instance.OpenFile(stream);
+        var file = (IDb2File<RowHandle>)new Wdc5Format().OpenFile(stream);
         return file.EnumerateRowHandles().First().RowId;
     }
 

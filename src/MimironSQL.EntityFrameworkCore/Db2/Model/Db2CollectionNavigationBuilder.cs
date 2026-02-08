@@ -105,10 +105,4 @@ internal sealed class Db2CollectionNavigationBuilder<TSource, TTarget>(Db2ModelB
             };
         }
     }
-
-    public Db2CollectionNavigationBuilder<TSource, TTarget> OverridesSchema()
-    {
-        _metadata.OverridesSchema = true;
-        return this;
-    }
 }

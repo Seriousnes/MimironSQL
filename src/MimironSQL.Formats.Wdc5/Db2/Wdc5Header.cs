@@ -1,6 +1,7 @@
 using System.Diagnostics.CodeAnalysis;
 
 using MimironSQL.Db2;
+using MimironSQL.Formats;
 
 namespace MimironSQL.Formats.Wdc5.Db2;
 
@@ -25,4 +26,4 @@ public readonly record struct Wdc5Header(
     int ColumnMetaDataSize,
     int CommonDataSize,
     int PalletDataSize,
-    int SectionsCount);
+    int SectionsCount) : IDb2FileHeader;

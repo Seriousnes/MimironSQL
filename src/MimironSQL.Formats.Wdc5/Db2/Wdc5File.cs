@@ -28,6 +28,8 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
 
     public Type RowType => typeof(RowHandle);
 
+    IDb2FileHeader IDb2File.Header => Header;
+
     public Db2Flags Flags => Header.Flags;
 
     public int RecordsCount => Header.RecordsCount;

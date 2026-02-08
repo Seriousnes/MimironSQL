@@ -127,6 +127,7 @@ internal sealed class MimironDb2LazyLoader(
     }
 
     private void LoadTyped<TEntity, TRow>(object entity, PropertyInfo navigationProperty)
+        where TEntity : class
         where TRow : struct, IRowHandle
     {
         var model = _db2ModelProvider.GetDb2Model();

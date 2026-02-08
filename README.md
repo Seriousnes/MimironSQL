@@ -1,134 +1,281 @@
 # MimironSQL
 
-MimironSQL is a read-only Entity Framework Core (EF Core) database provider for querying World of Warcraft DB2/WDC5 data.
+A high-performance, read-only Entity Framework Core (EF Core) database provider for querying World of Warcraft DB2 files. Built on top of the WoWDBDefs schema definitions, MimironSQL enables developers to query WoW game data using standard LINQ expressions and the familiar EF Core API.
 
-The legacy custom query surface (`Db2Context` / `Db2Table`) has been removed (issue #43). The supported public surface is the EF provider.
+## Features
 
-## Getting Started
+- **EF Core Integration**: Query DB2 files using standard Entity Framework Core LINQ queries
+- **Multiple Format Support**: Currently supports WDC5 format with extensible architecture for future formats
+- **Flexible Data Sources**: Access DB2 files from filesystem or CASC (Content Addressable Storage Container)
+- **Relationship Navigation**: Support for `Include` and `ThenInclude` to eagerly load related entities
+- **Source Generator**: Automatic DbContext generation from WoWDBDefs definitions
+- **Type-Safe Queries**: Full IntelliSense support with strongly-typed entity classes
+- **Performance Optimized**: Lazy evaluation and efficient binary parsing
 
-### 1) Provide access to DB2 + DBD
+## Quick Start
+
+### Prerequisites
+
+- .NET 10.0 or later
+- WoWDBDefs definition files (clone from [WoWDBDefs repository](https://github.com/wowdev/WoWDBDefs))
+- World of Warcraft DB2 files (extract from your WoW installation)
+
+### Installation
+
+Install the required NuGet packages:
+
+```bash
+# Core EF provider
+dotnet add package MimironSQL.EntityFrameworkCore
+
+# Filesystem provider for reading DB2/DBD files from disk
+dotnet add package MimironSQL.Providers.FileSystem
+
+# Source generator for auto-generating DbContext (optional but recommended)
+dotnet add package MimironSQL.DbContextGenerator
+
+# WDC5 format support
+dotnet add package MimironSQL.Formats.Wdc5
+```
+
+### Basic Usage
+
+#### 1. Configure the EF Core Provider
 
 ```csharp
 using Microsoft.EntityFrameworkCore;
-
 using MimironSQL.EntityFrameworkCore;
 using MimironSQL.Providers;
 
-using NSubstitute;
+// Configure providers for DB2 files and DBD definitions
+var dbdProvider = new FileSystemDbdProvider(
+    new FileSystemDbdProviderOptions(@"C:\path\to\WoWDBDefs\definitions"));
 
-var dbdProvider = new FileSystemDbdProvider(new FileSystemDbdProviderOptions(@"C:\path\to\WoWDBDefs"));
-var db2Provider = new FileSystemDb2StreamProvider(new FileSystemDb2StreamProviderOptions(@"C:\path\to\DBFilesClient"));
+var db2Provider = new FileSystemDb2StreamProvider(
+    new FileSystemDb2StreamProviderOptions(@"C:\path\to\wow\DBFilesClient"));
 
-var tactKeyProvider = Substitute.For<ITactKeyProvider>();
-tactKeyProvider.TryGetKey(Arg.Any<ulong>(), out Arg.Any<ReadOnlyMemory<byte>>()).Returns(false);
+// Create a simple TACT key provider (for encrypted sections)
+var tactKeyProvider = new SimpleTactKeyProvider();
 
+// Configure DbContext
 var options = new DbContextOptionsBuilder<WoWDb2Context>()
     .UseMimironDb2(db2Provider, dbdProvider, tactKeyProvider)
-    // Optional:
-    // .UseLazyLoadingProxies()
     .Options;
 
 using var context = new WoWDb2Context(options);
 ```
 
-### 2) Query using EF Core
+#### 2. Define Your DbContext (Manual Approach)
 
 ```csharp
-var results = context.MapChallengeMode
-    .Include(x => x.Map)
-    .Where(x => x.Map != null && x.Map.Directory.Contains('a'))
-    .Take(50)
-    .ToList();
-```
-
-## Repository Layout
-
-- [src/MimironSQL.EntityFrameworkCore](src/MimironSQL.EntityFrameworkCore) — EF Core provider implementation
-- [src/MimironSQL.DbContextGenerator](src/MimironSQL.DbContextGenerator) — source generator for EF `DbContext` + mappings
-- [src/MimironSQL.Providers.FileSystem](src/MimironSQL.Providers.FileSystem) — filesystem providers
-- [src/MimironSQL.Providers.CASC](src/MimironSQL.Providers.CASC) — CASC providers
-
-Each project under `src/` has its own README with public API notes.
-
-## Public API
-
-MimironSQL exposes an EF Core provider surface.
-
-- Configure via `UseMimironDb2(...)` on `DbContextOptionsBuilder`.
-- Query via standard EF Core LINQ (`Where`, `Select`, `Include`, etc.).
-- Read-only: `SaveChanges` / `SaveChangesAsync` are not supported.
-- Async query execution (`ToListAsync`, etc.) is not supported.
-
-## Supported LINQ Operations
-
-MimironSQL supports the following LINQ query operations:
-
-- `Where` - Filtering
-- `Select` - Projection (including anonymous types and navigation properties)
-- `FirstOrDefault`, `First` - Retrieve first element
-- `SingleOrDefault`, `Single` - Retrieve single element
-- `Take`, `Skip` - Result limiting and pagination
-- `Count`, `Any`, `All` - Aggregation
-- `Include`, `ThenInclude` - Eager loading of navigation properties
-
-**Note:** Unsupported LINQ operations will throw `NotSupportedException` at query execution time. Write operations (Insert, Update, Delete) are not supported as DB2 files are read-only.
-
-## Navigation Configuration Examples
-
-### One-to-One (Shared Primary Key)
-
-```csharp
-modelBuilder.Entity<Spell>()
-    .HasOne(s => s.SpellName)
-    .WithOne(sn => sn.Spell)
-    .HasForeignKey<SpellName>(sn => sn.Id);
-```
-
-### Many-to-One (Foreign Key)
-
-```csharp
-modelBuilder.Entity<MapChallengeMode>()
-    .HasOne(mc => mc.Map)
-    .WithMany(m => m.MapChallengeModes)
-    .HasForeignKey(mc => mc.MapID);
-```
-
-### One-to-Many (Inverse of Many-to-One)
-
-```csharp
-modelBuilder.Entity<Map>()
-    .HasMany(m => m.MapChallengeModes)
-    .WithOne(mc => mc.Map)
-    .HasForeignKey(mc => mc.MapID);
-```
-
-## Advanced Usage
-
-### Custom Table Names
-
-```csharp
-modelBuilder
-    .Entity<CustomEntity>()
-    .ToTable("ActualTableName");
-```
-
-### External Configuration Classes
-
-```csharp
-public class MapConfiguration : IEntityTypeConfiguration<Map>
+public class WoWDb2Context : DbContext
 {
-    public void Configure(EntityTypeBuilder<Map> builder)
-    {
-        builder.ToTable("Map");
+    public WoWDb2Context(DbContextOptions<WoWDb2Context> options) 
+        : base(options) { }
 
-        builder.HasMany(m => m.MapChallengeModes)
-            .WithOne(mc => mc.Map)
+    public DbSet<Map> Map => Set<Map>();
+    public DbSet<MapChallengeMode> MapChallengeMode => Set<MapChallengeMode>();
+    public DbSet<Spell> Spell => Set<Spell>();
+
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    {
+        // Configure table mappings
+        modelBuilder.Entity<Map>().ToTable("Map");
+        modelBuilder.Entity<MapChallengeMode>().ToTable("MapChallengeMode");
+        
+        // Configure relationships
+        modelBuilder.Entity<MapChallengeMode>()
+            .HasOne(mc => mc.Map)
+            .WithMany(m => m.MapChallengeModes)
             .HasForeignKey(mc => mc.MapID);
     }
 }
 
-// In OnModelCreating:
-modelBuilder.ApplyConfigurationsFromAssembly(Assembly.GetExecutingAssembly());
+public class Map
+{
+    public int Id { get; set; }
+    public string? Directory { get; set; }
+    public string? MapName { get; set; }
+    
+    public virtual ICollection<MapChallengeMode> MapChallengeModes { get; set; } = [];
+}
+
+public class MapChallengeMode
+{
+    public int Id { get; set; }
+    public int MapID { get; set; }
+    
+    public virtual Map? Map { get; set; }
+}
+```
+
+#### 3. Query Using LINQ
+
+```csharp
+// Simple query
+var maps = context.Map
+    .Where(m => m.Directory!.Contains("dungeon"))
+    .Take(10)
+    .ToList();
+
+// Query with navigation
+var challengeModes = context.MapChallengeMode
+    .Include(mc => mc.Map)
+    .Where(mc => mc.Map != null && mc.Map.MapName!.StartsWith("The"))
+    .ToList();
+
+// Nested includes
+var spells = context.Spell
+    .Include(s => s.SpellName)
+    .ThenInclude(sn => sn.SpellDescription)
+    .Take(100)
+    .ToList();
+
+// Projections
+var mapSummary = context.Map
+    .Select(m => new { m.Id, m.MapName, m.Directory })
+    .Take(50)
+    .ToList();
+```
+
+### Using the Source Generator (Recommended)
+
+The `MimironSQL.DbContextGenerator` automatically generates your DbContext and entity classes from WoWDBDefs:
+
+1. Add the generator package:
+   ```bash
+   dotnet add package MimironSQL.DbContextGenerator
+   ```
+
+2. Create a `.env` file in your project root:
+   ```env
+   WOW_VERSION=11.0.7.58162
+   DBD_PATH=C:\path\to\WoWDBDefs\definitions
+   ```
+
+3. Add the `.env` file to your `.csproj`:
+   ```xml
+   <ItemGroup>
+     <AdditionalFiles Include=".env" />
+   </ItemGroup>
+   ```
+
+4. The generator will create your DbContext automatically at compile time!
+
+## Repository Structure
+
+```
+MimironSQL/
+├── src/
+│   ├── MimironSQL.Contracts          # Public interfaces and abstractions for extensibility
+│   ├── MimironSQL.EntityFrameworkCore # EF Core database provider implementation
+│   ├── MimironSQL.Formats.Wdc5       # WDC5 format reader and parser
+│   ├── MimironSQL.DbContextGenerator # Roslyn source generator for DbContext
+│   ├── MimironSQL.Providers.FileSystem # Filesystem-based DB2/DBD providers
+│   ├── MimironSQL.Providers.CASC     # CASC-based DB2/DBD providers (WIP)
+│   ├── MimironSQL.Dbd                # DBD file parser (WoWDBDefs format)
+│   ├── Salsa20                       # Salsa20 encryption for encrypted DB2 sections
+│   └── MimironSQL.Benchmarks         # Performance benchmarking suite
+└── tests/                            # Unit and integration tests
+```
+
+Each project under `src/` has its own comprehensive README explaining its public API and usage.
+
+## Supported LINQ Operations
+
+MimironSQL supports a rich subset of LINQ operations:
+
+### Filtering & Projection
+- ✅ `Where` - Filter records
+- ✅ `Select` - Project to new types (including anonymous types)
+- ✅ `FirstOrDefault`, `First` - Get first element
+- ✅ `SingleOrDefault`, `Single` - Get single element
+
+### Navigation & Eager Loading
+- ✅ `Include` - Eager load related entities
+- ✅ `ThenInclude` - Eager load nested relationships
+
+### Limiting & Pagination
+- ✅ `Take` - Limit results
+- ✅ `Skip` - Skip records for pagination
+
+### Aggregation
+- ✅ `Count` - Count records
+- ✅ `Any` - Check if any records exist
+- ✅ `All` - Check if all records match predicate
+
+### Not Supported
+- ❌ Async operations (`ToListAsync`, etc.)
+- ❌ Write operations (Insert, Update, Delete, SaveChanges)
+- ❌ Grouping (`GroupBy`)
+- ❌ Joins (use navigation properties with `Include` instead)
+- ❌ Complex aggregations (`Sum`, `Average`, `Min`, `Max`)
+
+## Architecture Overview
+
+```
+LINQ Query
+    ↓
+EF Core Query Provider
+    ↓
+MimironSQL Query Pipeline
+    ↓
+Schema Mapper (WoWDBDefs)
+    ↓
+Format Reader (WDC5)
+    ↓
+Stream Provider (FileSystem/CASC)
+```
+
+The architecture is designed to be extensible:
+
+- **Formats**: Implement `IDb2Format` to support new DB2 formats (WDC4, WDC6, etc.)
+- **Providers**: Implement `IDb2StreamProvider` for new data sources (network, archives, etc.)
+- **Schema**: Implement `IDbdProvider` for alternative schema sources
+
+See [architecture.md](./.github/instructions/architecture.md) for detailed design documentation.
+
+## Performance Tips
+
+1. **Filter Early**: Apply `Where` clauses early in your query chain
+2. **Limit Results**: Use `Take()` to avoid materializing entire tables
+3. **Project Selectively**: Use `Select()` to project only needed columns
+4. **Use Include Sparingly**: Only eager-load navigations when actually needed
+5. **Cache DbContext**: Reuse the same DbContext instance for multiple queries in a session
+
+## Examples
+
+### Example 1: Find Maps by Name Pattern
+
+```csharp
+var dungeonMaps = context.Map
+    .Where(m => m.Directory!.Contains("dungeon"))
+    .Select(m => new { m.Id, m.MapName, m.Directory })
+    .ToList();
+```
+
+### Example 2: Query with Multiple Navigations
+
+```csharp
+var spellsWithDetails = context.Spell
+    .Include(s => s.SpellName)
+    .Include(s => s.SpellMisc)
+    .Where(s => s.SpellName != null)
+    .Take(100)
+    .ToList();
+```
+
+### Example 3: Pagination
+
+```csharp
+int pageSize = 50;
+int pageNumber = 2;
+
+var pagedResults = context.Item
+    .OrderBy(i => i.Id)
+    .Skip(pageSize * (pageNumber - 1))
+    .Take(pageSize)
+    .ToList();
 ```
 
 ## Troubleshooting
@@ -150,33 +297,59 @@ Ensure your entity class:
 2. Verify FK and PK members map to DB2 columns in the `.dbd` schema
 3. If using lazy-loading proxies, ensure navigation properties are `virtual`
 
-## Performance Tips
+## Development
 
-1. **Filter by key early** - Prefer `Where(e => e.Id == id).Take(1)` over scanning
-2. **Limit results with `Take()`** - Avoid materializing entire tables
-3. **Project only needed columns** - Use `Select()` to project only required fields
-4. **Use `Include()` sparingly** - Only eager-load navigations when needed
+### Building the Project
 
-## Requirements
+```bash
+# Build all projects
+dotnet build MimironSQL.slnx
 
-- .NET 10.0 or later
-- WoWDBDefs definition files (`.dbd` files)
-- World of Warcraft DB2 files (`.db2` files)
+# Build in Release mode
+dotnet build MimironSQL.slnx -c Release
+```
+
+### Running Tests
+
+```bash
+# Run all tests
+dotnet test MimironSQL.slnx
+
+# Run tests with coverage
+dotnet test MimironSQL.slnx --collect:"XPlat Code Coverage"
+```
+
+### Code Coverage
+
+See [tools/coverage/README.md](./tools/coverage/README.md) for detailed instructions on generating and analyzing code coverage reports.
+
+## Contributing
+
+Contributions are welcome! Please:
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Make your changes following the [coding style guidelines](./.github/instructions/coding-style.md)
+4. Write tests for your changes
+5. Ensure all tests pass (`dotnet test MimironSQL.slnx`)
+6. Submit a pull request
+
+See [test-strategy.md](./.github/instructions/test-strategy.md) for testing guidelines.
 
 ## License
 
 This project is licensed under the MIT License. See [LICENSE.txt](LICENSE.txt) for details.
 
+## Acknowledgments
+
 For acknowledgments of specifications and community resources used in this project, see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
-## Contributing
+Special thanks to:
+- The [WoWDBDefs](https://github.com/wowdev/WoWDBDefs) community for maintaining DB2 schema definitions
+- The [wowdev.wiki](https://wowdev.wiki) community for DB2 format documentation
 
-Contributions are welcome! Please ensure all tests pass before submitting pull requests.
+## Related Resources
 
-```bash
-# Build the project
-dotnet build MimironSQL.slnx
-
-# Run tests
-dotnet test MimironSQL.slnx
-```
+- [WoWDBDefs Repository](https://github.com/wowdev/WoWDBDefs) - DB2 schema definitions
+- [wowdev.wiki - DB2](https://wowdev.wiki/DB2) - DB2 file format specification
+- [Entity Framework Core Documentation](https://learn.microsoft.com/en-us/ef/core/) - EF Core reference

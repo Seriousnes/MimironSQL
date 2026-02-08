@@ -10,8 +10,8 @@
 
 ## Test project structure
 
-- Unit tests are split per library under `Tests/` (e.g. `Tests/MimironSQL.Dbd.Tests`, `Tests/MimironSQL.Formats.Wdc5.Tests`, etc.).
-- Integration tests live in `Tests/MimironSQL.Integration.Tests` and are intended to cover multi-project scenarios (query pipeline execution, generated DbContext usage, provider + format interactions).
+- Unit tests are split per library under `tests/` (e.g. `tests/MimironSQL.Dbd.Tests`, `tests/MimironSQL.Formats.Wdc5.Tests`, etc.).
+- Integration tests live in `tests/MimironSQL.IntegrationTests` and are intended to cover multi-project scenarios (query pipeline execution, generated `DbContext` usage, provider + format interactions).
 - CASC integration scenarios are **local-only** and must not be required for CI to pass.
 
 ## Coverage (collector-based)
@@ -80,8 +80,14 @@ Get-ChildItem . -Recurse -Directory -Filter TestResults | Remove-Item -Recurse -
             var testDataDir = TestDataPaths.GetTestDataDirectory();
             var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
             var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
-            var context = new TestDb2Context(dbdProvider, db2Provider);
-            context.EnsureModelCreated();
+            var tactKeyProvider = Substitute.For<ITactKeyProvider>();
+            tactKeyProvider.TryGetKey(Arg.Any<ulong>(), out Arg.Any<ReadOnlyMemory<byte>>()).Returns(false);
+
+            var options = new DbContextOptionsBuilder<WoWDb2Context>()
+                .UseMimironDb2(db2Provider, dbdProvider, tactKeyProvider)
+                .Options;
+
+            var context = new WoWDb2Context(options);
 
             var results = context.Spell
                 .Include(s => s.SpellName)
@@ -97,8 +103,14 @@ Get-ChildItem . -Recurse -Directory -Filter TestResults | Remove-Item -Recurse -
             var testDataDir = TestDataPaths.GetTestDataDirectory();
             var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
             var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
-            var context = new TestDb2Context(dbdProvider, db2Provider);
-            context.EnsureModelCreated();
+            var tactKeyProvider = Substitute.For<ITactKeyProvider>();
+            tactKeyProvider.TryGetKey(Arg.Any<ulong>(), out Arg.Any<ReadOnlyMemory<byte>>()).Returns(false);
+
+            var options = new DbContextOptionsBuilder<WoWDb2Context>()
+                .UseMimironDb2(db2Provider, dbdProvider, tactKeyProvider)
+                .Options;
+
+            var context = new WoWDb2Context(options);
 
             var categories = context.AccountStoreCategory;
 
@@ -115,8 +127,6 @@ Get-ChildItem . -Recurse -Directory -Filter TestResults | Remove-Item -Recurse -
     ```csharp
     public class FileSystemProviderQueryTests(TestFixture fixture) : IClassFixture<TestFixture>
     {
-
-    }
         [Fact]
         public void Test_A()
         {
@@ -132,7 +142,7 @@ Get-ChildItem . -Recurse -Directory -Filter TestResults | Remove-Item -Recurse -
         public void Test_B()
         {
             var categories = fixture.Context.AccountStoreCategory;
-            
+
             var first = categories
                 .Where(x => x.StoreFrontID > 0)
                 .FirstOrDefault();
@@ -140,21 +150,28 @@ Get-ChildItem . -Recurse -Directory -Filter TestResults | Remove-Item -Recurse -
             first.ShouldNotBeNull();
             first!.Id.ShouldBeGreaterThan(0);
         }
+    }
 
-    internal class TestFixture
+    internal sealed class TestFixture
     {
         public TestFixture()
         {
-            var testDataDir = TestDataPaths.GetTestDataDirectory(); 
-            Db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
-            DbdProvider = new FileSystemDbdProvider(new(testDataDir));  
-            Context = new TestDb2Context(dbdProvider, db2Provider);
-            Context.EnsureModelCreated();
+            var testDataDir = TestDataPaths.GetTestDataDirectory();
+
+            var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
+            var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
+
+            var tactKeyProvider = Substitute.For<ITactKeyProvider>();
+            tactKeyProvider.TryGetKey(Arg.Any<ulong>(), out Arg.Any<ReadOnlyMemory<byte>>()).Returns(false);
+
+            var options = new DbContextOptionsBuilder<WoWDb2Context>()
+                .UseMimironDb2(db2Provider, dbdProvider, tactKeyProvider)
+                .Options;
+
+            Context = new WoWDb2Context(options);
         }
 
-        public IDb2StreamProvider Db2Provider { get; }
-        public IDbdProvider DbdProvider { get; }
-        public TestDb2Context Context { get; } 
+        public WoWDb2Context Context { get; }
     }
     ```
 - Static helper methods to create a context are not an acceptable alternative to the above fixture pattern

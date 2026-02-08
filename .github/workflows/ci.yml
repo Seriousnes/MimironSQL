@@ -27,6 +27,7 @@ jobs:
           python - <<'PY' > matrix.json
           import json
           import pathlib
+          import re
 
           tests_root = pathlib.Path('tests')
           if not tests_root.exists():
@@ -37,6 +38,17 @@ jobs:
               posix = csproj.as_posix()
               if '/obj/' in posix or '/bin/' in posix:
                   continue
+
+              # Only include actual test projects. The tests/ folder also contains helper projects
+              # (e.g., configuration assemblies) that should not be executed via `dotnet test`.
+              content = csproj.read_text(encoding='utf-8', errors='ignore')
+              is_test = (
+                re.search(r'<IsTestProject>\s*true\s*</IsTestProject>', content, re.IGNORECASE) is not None
+                or 'Microsoft.NET.Test.Sdk' in content
+              )
+
+              if not is_test:
+                continue
 
               projects.append({
                   'name': csproj.stem,

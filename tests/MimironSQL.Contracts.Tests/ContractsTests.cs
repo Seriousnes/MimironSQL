@@ -25,10 +25,41 @@ public sealed class ContractsTests
     }
 
     [Fact]
+    public void Db2FormatDetector_Detect_Wdc3Magic_ReturnsWdc3()
+    {
+        Span<byte> bytes = stackalloc byte[4];
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes, 0x33434457);
+        Db2FormatDetector.Detect(bytes).ShouldBe(Db2Format.Wdc3);
+    }
+
+    [Fact]
+    public void Db2FormatDetector_Detect_Wdc4Magic_ReturnsWdc4()
+    {
+        Span<byte> bytes = stackalloc byte[4];
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes, 0x34434457);
+        Db2FormatDetector.Detect(bytes).ShouldBe(Db2Format.Wdc4);
+    }
+
+    [Fact]
+    public void Db2FormatDetector_DetectOrThrow_Wdc5Magic_ReturnsWdc5()
+    {
+        Span<byte> bytes = stackalloc byte[4];
+        BinaryPrimitives.WriteUInt32LittleEndian(bytes, 0x35434457);
+        Db2FormatDetector.DetectOrThrow(bytes).ShouldBe(Db2Format.Wdc5);
+    }
+
+    [Fact]
     public void Db2FormatDetector_DetectOrThrow_Unknown_ThrowsWithMagicText()
     {
         var ex = Should.Throw<InvalidDataException>(() => Db2FormatDetector.DetectOrThrow([(byte)'N', (byte)'O', (byte)'P', (byte)'E']));
         ex.Message.ShouldContain("NOPE");
+    }
+
+    [Fact]
+    public void Db2FormatDetector_DetectOrThrow_ShortHeader_ThrowsWithEmptyMagicText()
+    {
+        var ex = Should.Throw<InvalidDataException>(() => Db2FormatDetector.DetectOrThrow([(byte)'N', (byte)'O', (byte)'P']));
+        ex.Message.ShouldContain("magic ''");
     }
 
     [Fact]

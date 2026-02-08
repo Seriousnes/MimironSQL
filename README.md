@@ -1,289 +1,63 @@
 # MimironSQL
 
-MimironSQL is a high-performance LINQ query provider for World of Warcraft's DB2 database files. It enables type-safe querying of game data using familiar LINQ syntax, with support for extracted `.db2` files from the filesystem.
+MimironSQL is a read-only Entity Framework Core (EF Core) database provider for querying World of Warcraft DB2/WDC5 data.
 
-## Features
+The legacy custom query surface (`Db2Context` / `Db2Table`) has been removed (issue #43). The supported public surface is the EF provider.
 
-- **Type-safe LINQ queries** - Query DB2 files using standard LINQ operations
-- **Navigation properties** - Configure and traverse relationships between tables
-- **Multiple data sources** - Read from the filesystem
-- **High performance** - Optimized for efficient data access and materialization
-- **Read-only** - Safe, non-destructive access to game data
+## Getting Started
 
-## Installation
-
-MimironSQL is a .NET library targeting .NET 10. To use it in your project, add a reference to the MimironSQL projects:
-
-```xml
-<ItemGroup>
-  <ProjectReference Include="..\MimironSQL\MimironSQL.csproj" />
-  <ProjectReference Include="..\MimironSQL.Formats.Wdc5\MimironSQL.Formats.Wdc5.csproj" />
-</ItemGroup>
-```
-
-### Dependencies
-
-MimironSQL requires:
-- **.NET 10.0 or later**
-- **WoWDBDefs definitions** - Database schema definitions from [WoWDBDefs](https://github.com/wowdev/WoWDBDefs)
-
-## Quick Start
-
-### 1. Define Your Entities
-
-Create classes that represent your DB2 tables by inheriting from `Db2Entity`:
+### 1) Provide access to DB2 + DBD
 
 ```csharp
-using MimironSQL.Db2;
+using Microsoft.EntityFrameworkCore;
 
-public class Map : Db2Entity
-{
-    public required string Directory { get; set; }
-    public required string MapName_lang { get; set; }
-    public int ParentMapID { get; set; }
-    
-    // Navigation properties
-    public Map? ParentMap { get; set; }
-    public ICollection<MapChallengeMode> MapChallengeModes { get; set; } = null!;
-}
-
-public class MapChallengeMode : Db2Entity
-{
-    public required ushort MapID { get; set; }
-    public required string Name_lang { get; set; }
-    
-    // Navigation property
-    public Map? Map { get; set; }
-}
-```
-
-**Entity Base Classes:**
-- `Db2Entity` - Base class for entities with `int` primary key
-- `Db2LongEntity` - For entities with `long` primary key
-- `Db2GuidEntity` - For entities with `Guid` primary key
-- `Db2StringEntity` - For entities with `string` primary key
-
-### 2. Create a DB2 Context
-
-Define a context class that inherits from `Db2Context` and exposes your tables:
-
-```csharp
-using MimironSQL.Db2.Query;
-using MimironSQL.Db2.Model;
+using MimironSQL.EntityFrameworkCore;
 using MimironSQL.Providers;
 
-public class WowDb2Context : Db2Context
-{
-    public Db2Table<Map> Map { get; init; } = null!;
-    public Db2Table<MapChallengeMode> MapChallengeMode { get; init; } = null!;
-    public Db2Table<Spell> Spell { get; init; } = null!;
-    
-    public WowDb2Context(IDbdProvider dbdProvider, IDb2StreamProvider db2StreamProvider)
-        : base(dbdProvider, db2StreamProvider)
-    {
-    }
-    
-    protected override void OnModelCreating(Db2ModelBuilder modelBuilder)
-    {
-        // Configure navigations (optional)
-        modelBuilder
-            .Entity<MapChallengeMode>()
-            .HasOne(mc => mc.Map)
-            .WithForeignKey(mc => mc.MapID);
-            
-        modelBuilder
-            .Entity<Map>()
-            .HasMany(m => m.MapChallengeModes)
-            .WithForeignKey(mc => mc.MapID);
-    }
-}
+using NSubstitute;
+
+var dbdProvider = new FileSystemDbdProvider(new FileSystemDbdProviderOptions(@"C:\path\to\WoWDBDefs"));
+var db2Provider = new FileSystemDb2StreamProvider(new FileSystemDb2StreamProviderOptions(@"C:\path\to\DBFilesClient"));
+
+var tactKeyProvider = Substitute.For<ITactKeyProvider>();
+tactKeyProvider.TryGetKey(Arg.Any<ulong>(), out Arg.Any<ReadOnlyMemory<byte>>()).Returns(false);
+
+var options = new DbContextOptionsBuilder<WoWDb2Context>()
+    .UseMimironDb2(db2Provider, dbdProvider, tactKeyProvider)
+    // Optional:
+    // .UseLazyLoadingProxies()
+    .Options;
+
+using var context = new WoWDb2Context(options);
 ```
 
-### 3. Configure Providers
-
-Set up providers for DB2 files and schema definitions:
+### 2) Query using EF Core
 
 ```csharp
-using MimironSQL.Providers;
-
-// Configure filesystem paths
-var dbdProvider = new FileSystemDbdProvider(
-    new FileSystemDbdProviderOptions(@"C:\WoWDBDefs\definitions"));
-
-var db2StreamProvider = new FileSystemDb2StreamProvider(
-    new FileSystemDb2StreamProviderOptions(@"C:\WoW\DBFilesClient"));
-
-// Create the context
-var context = new WowDb2Context(dbdProvider, db2StreamProvider);
-```
-
-### 4. Query Your Data
-
-Use standard LINQ to query DB2 files:
-
-```csharp
-// Simple queries
-var maps = context.Map
-    .Where(m => m.Directory.Contains("raid"))
+var results = context.MapChallengeMode
+    .Include(x => x.Map)
+    .Where(x => x.Map != null && x.Map.Directory.Contains('a'))
+    .Take(50)
     .ToList();
-
-// Projections
-var mapNames = context.Map
-    .Select(m => new { m.Id, m.MapName_lang })
-    .ToList();
-
-// Navigation properties
-var challengeModeWithMap = context.MapChallengeMode
-    .Include(mc => mc.Map)
-    .Where(mc => mc.MapID == 2441)
-    .ToList();
-
-// Direct key lookup (fastest)
-var specificMap = context.Map.Find(1);
 ```
 
-## Configuration
+## Repository Layout
 
-### Providers
+- [src/MimironSQL.EntityFrameworkCore](src/MimironSQL.EntityFrameworkCore) — EF Core provider implementation
+- [src/MimironSQL.DbContextGenerator](src/MimironSQL.DbContextGenerator) — source generator for EF `DbContext` + mappings
+- [src/MimironSQL.Providers.FileSystem](src/MimironSQL.Providers.FileSystem) — filesystem providers
+- [src/MimironSQL.Providers.CASC](src/MimironSQL.Providers.CASC) — CASC providers
 
-MimironSQL uses two provider interfaces:
+Each project under `src/` has its own README with public API notes.
 
-#### IDb2StreamProvider
+## Public API
 
-Provides access to DB2 file streams.
+MimironSQL exposes an EF Core provider surface.
 
-**FileSystemDb2StreamProvider** - Reads DB2 files from disk:
-
-```csharp
-var db2Provider = new FileSystemDb2StreamProvider(
-    new FileSystemDb2StreamProviderOptions(
-        Db2DirectoryPath: @"C:\WoW\DBFilesClient"
-    ));
-```
-
-#### IDbdProvider
-
-Provides access to DBD (Database Definition) files from WoWDBDefs.
-
-**FileSystemDbdProvider** - Reads DBD files from disk:
-
-```csharp
-var dbdProvider = new FileSystemDbdProvider(
-    new FileSystemDbdProviderOptions(
-        DefinitionsDirectory: @"C:\WoWDBDefs\definitions"
-    ));
-```
-
-### Format Registration
-
-MimironSQL automatically registers WDC5 format support. To use a different format:
-
-```csharp
-using MimironSQL.Formats.Wdc5;
-
-public class WowDb2Context : Db2Context
-{
-    public WowDb2Context(IDbdProvider dbdProvider, IDb2StreamProvider db2StreamProvider)
-        : base(dbdProvider, db2StreamProvider)
-    {
-        // WDC5 is registered by default
-        // Or explicitly register:
-        RegisterFormat(Wdc5Format.Register);
-    }
-}
-```
-
-## Public API Reference
-
-### Core Classes
-
-#### `Db2Context`
-
-Abstract base class for creating DB2 contexts.
-
-**Constructor:**
-```csharp
-protected Db2Context(IDbdProvider dbdProvider, IDb2StreamProvider db2StreamProvider)
-```
-
-**Methods:**
-- `void RegisterFormat(params IDb2Format[] formats)` - Register DB2 format handlers
-- `void RegisterFormat(Action<Db2FormatRegistry> registerFormats)` - Register formats using a callback
-- `protected Db2Table<T> Table<T>(string? tableName = null)` - Access a table by entity type
-- `protected virtual void OnModelCreating(Db2ModelBuilder modelBuilder)` - Configure entity relationships
-
-#### `Db2Table<T>`
-
-Represents a queryable DB2 table.
-
-**Properties:**
-- `Db2TableSchema Schema` - Schema information for the table
-- `IQueryProvider Provider` - Query provider for LINQ execution
-
-**Methods:**
-- `T? Find<TId>(TId id)` - Find entity by primary key (fastest lookup method)
-
-#### `Db2Entity<TId>` / `Db2Entity`
-
-Base classes for DB2 entities.
-
-**Properties:**
-- `TId Id { get; set; }` - Primary key property
-
-**Derived Classes:**
-- `Db2Entity` - For `int` keys
-- `Db2LongEntity` - For `long` keys
-- `Db2GuidEntity` - For `Guid` keys
-- `Db2StringEntity` - For `string` keys
-
-### Model Configuration
-
-#### `Db2ModelBuilder`
-
-Fluent API for configuring entity relationships.
-
-**Methods:**
-- `Db2EntityTypeBuilder<T> Entity<T>()` - Configure an entity type
-- `Db2ModelBuilder ApplyConfiguration<T>(IDb2EntityTypeConfiguration<T> configuration)` - Apply external configuration
-- `Db2ModelBuilder ApplyConfigurationsFromAssembly(params Assembly[] assemblies)` - Scan and apply all configurations
-
-#### `Db2EntityTypeBuilder<T>`
-
-Configure a specific entity type.
-
-**Methods:**
-- `Db2EntityTypeBuilder<T> ToTable(string tableName)` - Map to a specific table name
-- `Db2ReferenceNavigationBuilder<T, TTarget> HasOne<TTarget>(Expression<Func<T, TTarget?>> navigation)` - Configure a one-to-one/many-to-one relationship
-- `Db2CollectionNavigationBuilder<T, TTarget> HasMany<TTarget>(Expression<Func<T, IEnumerable<TTarget>>> navigation)` - Configure a one-to-many relationship
-
-#### `Db2ReferenceNavigationBuilder<TSource, TTarget>`
-
-Configure reference (one-to-one/many-to-one) navigations.
-
-**Methods:**
-- `WithSharedPrimaryKey<TKey>(Expression<Func<TSource, TKey>> sourceKey, Expression<Func<TTarget, TKey>> targetKey)` - Configure shared primary key relationship
-- `WithForeignKey<TKey>(Expression<Func<TSource, TKey>> foreignKey)` - Specify foreign key property
-- `HasPrincipalKey<TKey>(Expression<Func<TTarget, TKey>> principalKey)` - Specify principal key (target)
-- `OverridesSchema()` - Mark navigation as overriding schema conventions
-
-#### `Db2CollectionNavigationBuilder<TSource, TTarget>`
-
-Configure collection (one-to-many) navigations.
-
-**Methods:**
-- `WithForeignKey<TKey>(Expression<Func<TTarget, TKey>> foreignKey)` - Specify foreign key on dependent entity
-- `WithForeignKeyArray(Expression<Func<TSource, IEnumerable<int>>> foreignKeyIds)` - Configure array-based foreign keys
-- `HasPrincipalKey<TKey>(Expression<Func<TSource, TKey>> principalKey)` - Specify principal key
-- `OverridesSchema()` - Mark navigation as overriding schema conventions
-
-### Query Extensions
-
-#### `Db2QueryableExtensions`
-
-LINQ extensions for DB2 queries.
-
-**Methods:**
-- `IQueryable<TEntity> Include<TEntity, TProperty>(this IQueryable<TEntity> source, Expression<Func<TEntity, TProperty>> navigationPropertyPath)` - Eagerly load navigation properties
+- Configure via `UseMimironDb2(...)` on `DbContextOptionsBuilder`.
+- Query via standard EF Core LINQ (`Where`, `Select`, `Include`, etc.).
+- Read-only: `SaveChanges` / `SaveChangesAsync` are not supported.
+- Async query execution (`ToListAsync`, etc.) is not supported.
 
 ## Supported LINQ Operations
 
@@ -294,9 +68,8 @@ MimironSQL supports the following LINQ query operations:
 - `FirstOrDefault`, `First` - Retrieve first element
 - `SingleOrDefault`, `Single` - Retrieve single element
 - `Take`, `Skip` - Result limiting and pagination
-- `Count`, `Any` - Aggregation
-- `Include` - Eager loading of navigation properties
-- `Find` - Direct primary key lookup (most efficient)
+- `Count`, `Any`, `All` - Aggregation
+- `Include`, `ThenInclude` - Eager loading of navigation properties
 
 **Note:** Unsupported LINQ operations will throw `NotSupportedException` at query execution time. Write operations (Insert, Update, Delete) are not supported as DB2 files are read-only.
 
@@ -305,49 +78,28 @@ MimironSQL supports the following LINQ query operations:
 ### One-to-One (Shared Primary Key)
 
 ```csharp
-modelBuilder
-    .Entity<Spell>()
+modelBuilder.Entity<Spell>()
     .HasOne(s => s.SpellName)
-    .WithSharedPrimaryKey(s => s.Id, sn => sn.Id);
+    .WithOne(sn => sn.Spell)
+    .HasForeignKey<SpellName>(sn => sn.Id);
 ```
 
 ### Many-to-One (Foreign Key)
 
 ```csharp
-modelBuilder
-    .Entity<MapChallengeMode>()
+modelBuilder.Entity<MapChallengeMode>()
     .HasOne(mc => mc.Map)
-    .WithForeignKey(mc => mc.MapID);
+    .WithMany(m => m.MapChallengeModes)
+    .HasForeignKey(mc => mc.MapID);
 ```
 
 ### One-to-Many (Inverse of Many-to-One)
 
 ```csharp
-modelBuilder
-    .Entity<Map>()
+modelBuilder.Entity<Map>()
     .HasMany(m => m.MapChallengeModes)
-    .WithForeignKey(mc => mc.MapID);
-```
-
-### One-to-Many (Array of Foreign Keys)
-
-```csharp
-modelBuilder
-    .Entity<MapChallengeMode>()
-    .HasMany(m => m.FirstRewardQuest)
-    .WithForeignKeyArray(m => m.FirstRewardQuestID);
-```
-
-### Schema Override
-
-If your model conflicts with schema conventions:
-
-```csharp
-modelBuilder
-    .Entity<MyEntity>()
-    .HasOne(e => e.CustomNavigation)
-    .WithForeignKey(e => e.CustomFK)
-    .OverridesSchema();
+    .WithOne(mc => mc.Map)
+    .HasForeignKey(mc => mc.MapID);
 ```
 
 ## Advanced Usage
@@ -363,27 +115,20 @@ modelBuilder
 ### External Configuration Classes
 
 ```csharp
-public class MapConfiguration : IDb2EntityTypeConfiguration<Map>
+public class MapConfiguration : IEntityTypeConfiguration<Map>
 {
-    public void Configure(Db2EntityTypeBuilder<Map> builder)
+    public void Configure(EntityTypeBuilder<Map> builder)
     {
         builder.ToTable("Map");
+
         builder.HasMany(m => m.MapChallengeModes)
-               .WithForeignKey(mc => mc.MapID);
+            .WithOne(mc => mc.Map)
+            .HasForeignKey(mc => mc.MapID);
     }
 }
 
 // In OnModelCreating:
 modelBuilder.ApplyConfigurationsFromAssembly(Assembly.GetExecutingAssembly());
-```
-
-### Accessing Raw Files
-
-For advanced scenarios, you can access the underlying DB2 format:
-
-```csharp
-// Access through context internals (use with caution)
-var (file, schema) = context.GetOrOpenTableRaw("Map");
 ```
 
 ## Troubleshooting
@@ -396,18 +141,18 @@ Your entity property names must match the field names in the corresponding `.dbd
 
 ### "Entity type has no key member"
 Ensure your entity class:
-1. Inherits from `Db2Entity` (or variant), OR
-2. Has a property named `Id`, OR
-3. Has a key configured via `modelBuilder.Entity<T>().HasKey(e => e.CustomId)`
+1. Has a public primary key configured by convention (e.g., a property named `Id`), OR
+2. Has a key configured via `modelBuilder.Entity<T>().HasKey(e => e.CustomId)`, OR
+3. Is configured as keyless via `modelBuilder.Entity<T>().HasNoKey()` (if appropriate)
 
 ### Navigation Not Working
-1. Check that the navigation is configured in `OnModelCreating`
-2. Verify foreign key property names match the DBD schema
-3. Use `OverridesSchema()` if your configuration conflicts with auto-detected schema conventions
+1. Check that the navigation and FK are configured in `OnModelCreating`
+2. Verify FK and PK members map to DB2 columns in the `.dbd` schema
+3. If using lazy-loading proxies, ensure navigation properties are `virtual`
 
 ## Performance Tips
 
-1. **Use `Find(id)` for single-record lookups** - This is the fastest way to retrieve a record by primary key
+1. **Filter by key early** - Prefer `Where(e => e.Id == id).Take(1)` over scanning
 2. **Limit results with `Take()`** - Avoid materializing entire tables
 3. **Project only needed columns** - Use `Select()` to project only required fields
 4. **Use `Include()` sparingly** - Only eager-load navigations when needed

@@ -137,6 +137,30 @@ public class MimironDb2ModelCacheKeyFactoryTests
         key.ShouldBe((typeof(TestContext), false));
     }
 
+    [Fact]
+    public void Create_WithNoMimironOptionsExtension_ShouldUseContextTypeAndDesignTimeOnly()
+    {
+        var factory = new MimironDb2ModelCacheKeyFactory();
+
+        using var ctx = new TestContext(
+            new DbContextOptionsBuilder<TestContext>()
+                .UseInMemoryDatabase(nameof(Create_WithNoMimironOptionsExtension_ShouldUseContextTypeAndDesignTimeOnly))
+                .Options);
+        factory.Create(ctx, designTime: true).ShouldBe((typeof(TestContext), true));
+    }
+
+    [Fact]
+    public void Create_Overload_ShouldDefaultDesignTimeToFalse()
+    {
+        var factory = new MimironDb2ModelCacheKeyFactory();
+
+        using var ctx = new TestContext(
+            new DbContextOptionsBuilder<TestContext>()
+                .UseInMemoryDatabase(nameof(Create_Overload_ShouldDefaultDesignTimeToFalse))
+                .Options);
+        factory.Create(ctx).ShouldBe((typeof(TestContext), false));
+    }
+
     private static object CreateKeyFromExtension(
         MimironDb2ModelCacheKeyFactory factory, 
         MimironDb2OptionsExtension extension, 
@@ -159,11 +183,11 @@ public class MimironDb2ModelCacheKeyFactoryTests
         return (contextType, designTime);
     }
 
-    private class TestContext : DbContext
+    private sealed class TestContext(DbContextOptions options) : DbContext(options)
     {
     }
 
-    private class AnotherTestContext : DbContext
+    private sealed class AnotherTestContext(DbContextOptions options) : DbContext(options)
     {
     }
 }

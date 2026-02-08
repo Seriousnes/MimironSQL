@@ -69,6 +69,32 @@ public sealed class ExtensionsTests
     }
 
     [Fact]
+    public void ExpressionExtensions_ContainsParameter_FindsParameter_InMethodCallArgumentsOnly()
+    {
+        var p = Expression.Parameter(typeof(KeyHolder), "h");
+
+        var toString = Expression.Call(p, typeof(object).GetMethod(nameof(object.ToString))!);
+        var concat = Expression.Call(
+            typeof(string).GetMethod(nameof(string.Concat), [typeof(string), typeof(string)])!,
+            Expression.Constant("x="),
+            toString);
+
+        concat.ContainsParameter(p).ShouldBeTrue();
+    }
+
+    [Fact]
+    public void ExpressionExtensions_ContainsParameter_FindsParameter_InNewExpressionArgumentsOnly()
+    {
+        var p = Expression.Parameter(typeof(KeyHolder), "h");
+        var intKey = Expression.Property(p, nameof(KeyHolder.IntKey));
+
+        var ctor = typeof(Record).GetConstructor([typeof(int)])!;
+        var expr = Expression.New(ctor, intKey);
+
+        expr.ContainsParameter(p).ShouldBeTrue();
+    }
+
+    [Fact]
     public void TypeExtensions_IsScalarType_RecognizesPrimitivesEnumsAndNullable()
     {
         typeof(int).IsScalarType().ShouldBeTrue();
@@ -183,4 +209,6 @@ public sealed class ExtensionsTests
         A = 1,
         B = 2,
     }
+
+    private sealed record Record(int Key);
 }

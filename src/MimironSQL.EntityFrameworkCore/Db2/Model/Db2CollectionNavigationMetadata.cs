@@ -2,7 +2,7 @@ using System.Reflection;
 
 namespace MimironSQL.Db2.Model;
 
-public sealed class Db2CollectionNavigationMetadata(MemberInfo navigationMember, Type targetClrType)
+internal sealed class Db2CollectionNavigationMetadata(MemberInfo navigationMember, Type targetClrType)
 {
     public MemberInfo NavigationMember { get; } = navigationMember;
     public Type TargetClrType { get; } = targetClrType;

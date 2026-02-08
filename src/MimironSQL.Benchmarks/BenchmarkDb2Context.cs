@@ -1,35 +1,36 @@
+using Microsoft.EntityFrameworkCore;
+
 using MimironSQL.Benchmarks.Fixtures;
-using MimironSQL.Db2.Model;
-using MimironSQL.Db2.Query;
-using MimironSQL.Formats.Wdc5;
-using MimironSQL.Providers;
 
 namespace MimironSQL.Benchmarks;
 
-public sealed class BenchmarkDb2Context(IDbdProvider dbdProvider, IDb2StreamProvider db2StreamProvider)
-    : Db2Context(dbdProvider, db2StreamProvider, Wdc5Format.Instance)
+public sealed class BenchmarkDb2Context(DbContextOptions<BenchmarkDb2Context> options)
+    : DbContext(options)
 {
-    public Db2Table<Map> Map { get; init; } = null!;
-    public Db2Table<MapChallengeMode> MapChallengeMode { get; init; } = null!;
-    public Db2Table<QuestV2> QuestV2 { get; init; } = null!;
-    public Db2Table<Spell> Spell { get; init; } = null!;
-    public Db2Table<SpellName> SpellName { get; init; } = null!;
+    public DbSet<Map> Map => Set<Map>();
+    public DbSet<MapChallengeMode> MapChallengeMode => Set<MapChallengeMode>();
+    public DbSet<QuestV2> QuestV2 => Set<QuestV2>();
+    public DbSet<Spell> Spell => Set<Spell>();
+    public DbSet<SpellName> SpellName => Set<SpellName>();
 
-        public override void OnModelCreating(Db2ModelBuilder modelBuilder)
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
-        modelBuilder
-            .Entity<Spell>()
-            .HasOne(s => s.SpellName)
-            .WithSharedPrimaryKey(s => s.Id, sn => sn.Id);
+        base.OnModelCreating(modelBuilder);
 
-        modelBuilder
-            .Entity<MapChallengeMode>()
-            .HasMany(m => m.FirstRewardQuest)
-            .WithForeignKeyArray(m => m.FirstRewardQuestID);
+        modelBuilder.Entity<Map>().ToTable("Map");
+        modelBuilder.Entity<MapChallengeMode>().ToTable("MapChallengeMode");
+        modelBuilder.Entity<QuestV2>().ToTable("QuestV2");
+        modelBuilder.Entity<Spell>().ToTable("Spell");
+        modelBuilder.Entity<SpellName>().ToTable("SpellName");
 
-        modelBuilder
-            .Entity<Map>()
-            .HasMany(m => m.MapChallengeModes)
-            .WithForeignKey(mc => mc.MapID);
+        modelBuilder.Entity<MapChallengeMode>()
+            .HasOne(x => x.Map)
+            .WithMany(x => x.MapChallengeModes)
+            .HasForeignKey(x => x.MapID);
+
+        modelBuilder.Entity<Spell>()
+            .HasOne(x => x.SpellName)
+            .WithOne()
+            .HasForeignKey<SpellName>(x => x.Id);
     }
 }

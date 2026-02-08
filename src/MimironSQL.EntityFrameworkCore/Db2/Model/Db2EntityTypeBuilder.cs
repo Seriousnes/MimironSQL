@@ -3,7 +3,7 @@ using System.Reflection;
 
 namespace MimironSQL.Db2.Model;
 
-public sealed partial class Db2EntityTypeBuilder<T>
+internal sealed partial class Db2EntityTypeBuilder<T>
 {
     private readonly Db2ModelBuilder _modelBuilder;
 

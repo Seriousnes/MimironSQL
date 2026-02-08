@@ -9,8 +9,8 @@ using Microsoft.EntityFrameworkCore.Query;
 using Microsoft.EntityFrameworkCore.Query.Internal;
 #pragma warning restore EF1001
 
-using MimironSQL.Db2.Query;
 using MimironSQL.Db2.Model;
+using MimironSQL.Db2.Query;
 using MimironSQL.Db2.Schema;
 using MimironSQL.EntityFrameworkCore.Storage;
 using MimironSQL.Formats;
@@ -24,7 +24,6 @@ internal sealed class MimironDb2QueryCompiler(
     IMimironDb2Db2ModelProvider db2ModelProvider) : IQueryCompiler
 {
     private static readonly ConcurrentDictionary<(Type EntityType, Type RowType, Type ResultType), Func<MimironDb2QueryCompiler, Expression, object?>> ExecuteDelegates = new();
-    private static readonly ConcurrentDictionary<(Type EntityType, Type RowType), Func<string, Db2TableSchema, Db2EntityType, IQueryProvider, IDb2File, IQueryable>> TableFactories = new();
 
     private readonly DbContext _context = currentDbContext?.Context ?? throw new ArgumentNullException(nameof(currentDbContext));
     private readonly IMimironDb2Store _store = store ?? throw new ArgumentNullException(nameof(store));
@@ -89,23 +88,7 @@ internal sealed class MimironDb2QueryCompiler(
         IQueryProvider provider,
         IDb2File<TRow> file)
         where TRow : struct
-    {
-        var factory = TableFactories.GetOrAdd((typeof(TEntity), typeof(TRow)), static key =>
-        {
-            var openGeneric = typeof(Db2QueryProvider<,>).Assembly.GetType("MimironSQL.Db2.Query.Db2Table`2")
-                ?? throw new InvalidOperationException("Unable to locate MimironSQL.Db2.Query.Db2Table`2.");
-
-            var closed = openGeneric.MakeGenericType(key.EntityType, key.RowType);
-            var ctor = closed.GetConstructors(BindingFlags.Instance | BindingFlags.NonPublic)
-                .SingleOrDefault(c => c.GetParameters().Length == 5)
-                ?? throw new InvalidOperationException($"Unable to locate internal Db2Table<,> constructor for {closed.FullName}.");
-
-            return (string tableName, Db2TableSchema schema, Db2EntityType entityType, IQueryProvider provider, IDb2File file)
-                => (IQueryable)ctor.Invoke([tableName, schema, entityType, provider, file]);
-        });
-
-        return (IQueryable<TEntity>)factory(tableName, schema, entityType, provider, file);
-    }
+        => new Db2Table<TEntity, TRow>(tableName, schema, entityType, provider, file);
 
     public Func<QueryContext, TResult> CreateCompiledQuery<TResult>(Expression query)
         => _ => Execute<TResult>(query);

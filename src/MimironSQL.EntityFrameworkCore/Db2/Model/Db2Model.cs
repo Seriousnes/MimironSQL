@@ -2,7 +2,7 @@ using System.Reflection;
 
 namespace MimironSQL.Db2.Model;
 
-public sealed class Db2Model(
+internal sealed class Db2Model(
     IReadOnlyDictionary<Type, Db2EntityType> entityTypes,
     IReadOnlyDictionary<(Type SourceClrType, MemberInfo NavigationMember), Db2ReferenceNavigation> referenceNavigations,
     IReadOnlyDictionary<(Type SourceClrType, MemberInfo NavigationMember), Db2CollectionNavigation> collectionNavigations)

@@ -1,7 +1,10 @@
-using MimironSQL.Db2.Query;
+using Microsoft.EntityFrameworkCore;
+
 using MimironSQL.Formats.Wdc5;
 using MimironSQL.IntegrationTests.Helpers;
 using MimironSQL.Providers;
+
+using NSubstitute;
 
 using Shouldly;
 
@@ -19,9 +22,13 @@ public sealed class FileSystemDb2ContextIntegrationTests
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
         var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
 
-        var context = new WoWDb2Context(dbdProvider, db2Provider, Wdc5Format.Instance);
-        context.EnsureModelCreated();
-        return context;
+        var tactKeyProvider = Substitute.For<ITactKeyProvider>();
+        tactKeyProvider.TryGetKey(Arg.Any<ulong>(), out Arg.Any<ReadOnlyMemory<byte>>()).Returns(false);
+
+        var optionsBuilder = new DbContextOptionsBuilder<WoWDb2Context>();
+        optionsBuilder.UseMimironDb2(db2Provider, dbdProvider, tactKeyProvider);
+
+        return new WoWDb2Context(optionsBuilder.Options);
     }
 
     [Fact]

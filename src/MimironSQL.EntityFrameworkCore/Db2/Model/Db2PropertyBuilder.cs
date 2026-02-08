@@ -4,7 +4,7 @@ using System.Reflection;
 
 namespace MimironSQL.Db2.Model;
 
-public sealed class Db2PropertyBuilder<T>
+internal sealed class Db2PropertyBuilder<T>
 {
     private readonly Db2EntityTypeMetadata _metadata;
     private readonly PropertyInfo _property;

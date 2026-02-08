@@ -1,15 +1,10 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
-
-using MimironSQL.Db2.Model;
+﻿using Microsoft.EntityFrameworkCore;
 
 namespace MimironSQL;
 
 public partial class WoWDb2Context
 {
-    public override void OnModelCreating(Db2ModelBuilder modelBuilder)
+    partial void OnModelCreatingPartial(ModelBuilder modelBuilder)
     {
-        base.OnModelCreating(modelBuilder);
     }
 }

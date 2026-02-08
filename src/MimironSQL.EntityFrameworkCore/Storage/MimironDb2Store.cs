@@ -5,7 +5,7 @@ using MimironSQL.Providers;
 
 namespace MimironSQL.EntityFrameworkCore.Storage;
 
-public sealed class MimironDb2Store : IMimironDb2Store
+internal sealed class MimironDb2Store : IMimironDb2Store
 {
     private readonly IDb2StreamProvider _db2StreamProvider;
     private readonly IDbdProvider _dbdProvider;

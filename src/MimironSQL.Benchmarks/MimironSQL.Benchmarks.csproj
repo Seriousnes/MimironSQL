@@ -8,8 +8,8 @@
 	</PropertyGroup>
 
 	<ItemGroup>
-		<ProjectReference Include="..\MimironSQL.Formats.Wdc5\MimironSQL.Formats.Wdc5.csproj" />
-		<ProjectReference Include="..\MimironSQL\MimironSQL.csproj" />
+		<ProjectReference Include="..\MimironSQL.EntityFrameworkCore\MimironSQL.EntityFrameworkCore.csproj" />
+		<ProjectReference Include="..\MimironSQL.Providers.FileSystem\MimironSQL.Providers.FileSystem.csproj" />
 	</ItemGroup>
 
 	<ItemGroup>

@@ -1,6 +1,6 @@
 namespace MimironSQL.Db2.Schema;
 
-public sealed class Db2TableSchema(string tableName, uint layoutHash, int physicalColumnCount, IReadOnlyList<Db2FieldSchema> fields)
+internal sealed class Db2TableSchema(string tableName, uint layoutHash, int physicalColumnCount, IReadOnlyList<Db2FieldSchema> fields)
 {
     private readonly Dictionary<string, Db2FieldSchema> _fieldsByName = new(StringComparer.Ordinal);
 

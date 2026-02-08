@@ -1,3 +1,5 @@
+using Microsoft.EntityFrameworkCore;
+
 using BenchmarkDotNet.Attributes;
 using MimironSQL.Providers;
 
@@ -16,7 +18,19 @@ public class Db2TableLoadBenchmarks
         var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
         var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
 
-        _context = new BenchmarkDb2Context(dbdProvider, db2Provider);
+        var optionsBuilder = new DbContextOptionsBuilder<BenchmarkDb2Context>();
+        optionsBuilder.UseMimironDb2(db2Provider, dbdProvider, new NullTactKeyProvider());
+
+        _context = new BenchmarkDb2Context(optionsBuilder.Options);
+    }
+
+    private sealed class NullTactKeyProvider : ITactKeyProvider
+    {
+        public bool TryGetKey(ulong keyName, out ReadOnlyMemory<byte> key)
+        {
+            key = default;
+            return false;
+        }
     }
 
     public static IEnumerable<Db2BenchmarkCase> Cases =>
@@ -24,26 +38,29 @@ public class Db2TableLoadBenchmarks
         new(
             "Map: Include MapChallengeModes, ToList",
             static context => context.Map
+                .Include(m => m.MapChallengeModes)
                 .ToList()
                 .Count),
 
         new(
-            "MapChallengeMode: Include FirstRewardQuest, ToList",
+            "MapChallengeMode: Include Map, ToList",
             static context => context.MapChallengeMode
+                .Include(m => m.Map)
                 .ToList()
                 .Count),
 
         new(
             "Spell: Projection (no Include), ToList",
             static context => context.Spell
-                .Select(s => new SpellProjection(s.Id, s.SpellName.Name_lang))
+                .Select(s => new SpellProjection(s.Id, s.NameSubtext_lang))
                 .ToList()
                 .Count),
 
         new(
             "Spell: Include SpellName + Projection, ToList",
             static context => context.Spell
-                .Select(s => new SpellProjection(s.Id, s.SpellName.Name_lang))
+                .Include(s => s.SpellName)
+                .Select(s => new SpellProjection(s.Id, s.SpellName == null ? null : s.SpellName.Name_lang))
                 .ToList()
                 .Count),
     ];

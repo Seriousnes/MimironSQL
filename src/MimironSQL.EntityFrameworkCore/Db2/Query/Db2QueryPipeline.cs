@@ -135,16 +135,6 @@ internal sealed record Db2QueryPipeline(
                 }
             }
 
-            if (m.Method.DeclaringType == typeof(Db2QueryableExtensions) && name == nameof(Db2QueryableExtensions.Include))
-            {
-                var navigation = UnquoteLambda(m.Arguments[1]);
-
-                var members = ParseMemberChain(navigation);
-                opsReversed.Add(new Db2IncludeOperation(members));
-                current = m.Arguments[0];
-                continue;
-            }
-
             if (m.Method.DeclaringType?.FullName == EfQueryableExtensionsFullName &&
                 name is "Include" or "ThenInclude")
             {

@@ -13,7 +13,7 @@ internal interface IDb2Table
     string TableName { get; }
 }
 
-public abstract class Db2Table<T> : IQueryable<T>, IDb2Table
+internal abstract class Db2Table<T> : IQueryable<T>, IDb2Table
 {
     internal string TableName { get; }
     public Db2TableSchema Schema { get; }
@@ -39,7 +39,7 @@ public abstract class Db2Table<T> : IQueryable<T>, IDb2Table
 
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 
-    public abstract T? Find<TId>(TId id) where TId : IEquatable<TId>, IComparable<TId>;
+    // Query root only; key-based lookup is not part of the EF provider surface.
 }
 
 internal sealed class Db2Table<T, TRow> : Db2Table<T>
@@ -55,14 +55,5 @@ internal sealed class Db2Table<T, TRow> : Db2Table<T>
         _materializer = new Db2EntityMaterializer<T, TRow>(entityType);
     }
 
-    public override T? Find<TId>(TId id)
-    {
-        if (!typeof(Db2Entity<TId>).IsAssignableFrom(typeof(T)))
-            throw new NotSupportedException($"Entity type {typeof(T).FullName} must derive from {typeof(Db2Entity<TId>).FullName} to use Find with key type {typeof(TId).FullName}.");
-
-        if (!_file.TryGetRowHandle(id, out var handle))
-            return default;
-
-        return _materializer.Materialize(_file, handle);
-    }
+    // Intentionally no Find implementation.
 }

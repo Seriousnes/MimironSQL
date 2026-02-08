@@ -5,7 +5,6 @@ using Microsoft.EntityFrameworkCore.Query.Internal;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
-using MimironSQL.Db2;
 using MimironSQL.EntityFrameworkCore.ChangeTracking;
 using MimironSQL.EntityFrameworkCore.Diagnostics;
 using MimironSQL.EntityFrameworkCore.Query;

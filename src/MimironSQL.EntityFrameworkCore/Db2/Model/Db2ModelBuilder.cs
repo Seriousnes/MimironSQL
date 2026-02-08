@@ -1,13 +1,12 @@
 using System.Reflection;
 using System.ComponentModel.DataAnnotations.Schema;
 
-using MimironSQL.Db2.Query;
 using MimironSQL.Db2.Schema;
 using MimironSQL.Extensions;
 
 namespace MimironSQL.Db2.Model;
 
-public sealed class Db2ModelBuilder
+internal sealed class Db2ModelBuilder
 {
     private bool configurationsApplied = false;
     private readonly Dictionary<Type, Db2EntityTypeMetadata> _entityTypes = [];
@@ -352,16 +351,6 @@ public sealed class Db2ModelBuilder
                 pending.Enqueue(p.PropertyType);
                 Entity(p.PropertyType);
             }
-        }
-    }
-
-    internal void ApplyTablePropertyConventions(Type contextType)
-    {
-        foreach (var (Property, EntityType) in contextType.GetProperties(BindingFlags.Instance | BindingFlags.Public)
-            .Where(p => p.PropertyType is { IsGenericType: true } && p.PropertyType.GetGenericTypeDefinition() == typeof(Db2Table<>))
-            .Select(p => (Property: p, EntityType: p.PropertyType.GetGenericArguments()[0])))
-        {
-            Entity(EntityType);
         }
     }
 

@@ -5,7 +5,7 @@ using MimironSQL.Extensions;
 
 namespace MimironSQL.Db2.Model;
 
-public sealed partial class Db2EntityTypeBuilder<T>
+internal sealed partial class Db2EntityTypeBuilder<T>
 {
     public Db2ReferenceNavigationBuilder<T, TTarget> HasOne<TTarget>(Expression<Func<T, TTarget?>> navigation)
         where TTarget : class

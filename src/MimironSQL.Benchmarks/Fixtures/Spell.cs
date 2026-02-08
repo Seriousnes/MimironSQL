@@ -1,9 +1,9 @@
-using MimironSQL.Db2;
-
 namespace MimironSQL.Benchmarks.Fixtures;
 
-public class Spell : Db2Entity
+public class Spell
 {
+    public int Id { get; set; }
+
     public SpellName? SpellName { get; set; }
 
     public string NameSubtext_lang { get; set; } = string.Empty;

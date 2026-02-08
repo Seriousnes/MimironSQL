@@ -4,7 +4,7 @@ using MimironSQL.Db2.Schema;
 
 namespace MimironSQL.Db2.Model;
 
-public sealed class Db2ReferenceNavigation(
+internal sealed class Db2ReferenceNavigation(
     Type sourceClrType,
     MemberInfo navigationMember,
     Type targetClrType,

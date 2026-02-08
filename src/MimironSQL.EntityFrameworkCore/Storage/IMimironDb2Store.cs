@@ -3,7 +3,7 @@ using MimironSQL.Formats;
 
 namespace MimironSQL.EntityFrameworkCore.Storage;
 
-public interface IMimironDb2Store
+internal interface IMimironDb2Store
 {
     IDb2File OpenTable(string tableName);
     

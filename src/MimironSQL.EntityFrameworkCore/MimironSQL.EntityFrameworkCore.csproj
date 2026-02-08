@@ -25,7 +25,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\MimironSQL\MimironSQL.csproj" />
     <ProjectReference Include="..\MimironSQL.Contracts\MimironSQL.Contracts.csproj" />
     <ProjectReference Include="..\MimironSQL.Dbd\MimironSQL.Dbd.csproj" />
     <ProjectReference Include="..\MimironSQL.Formats.Wdc5\MimironSQL.Formats.Wdc5.csproj" />

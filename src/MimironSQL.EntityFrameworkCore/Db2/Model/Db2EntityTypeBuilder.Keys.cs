@@ -3,7 +3,7 @@ using System.Reflection;
 
 namespace MimironSQL.Db2.Model;
 
-public sealed partial class Db2EntityTypeBuilder<T>
+internal sealed partial class Db2EntityTypeBuilder<T>
 {
     public Db2EntityTypeBuilder<T> HasKey<TKey>(Expression<Func<T, TKey>> key)
     {

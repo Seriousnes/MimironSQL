@@ -1,4 +1,4 @@
-namespace MimironSQL.Db2.Schema;
+namespace MimironSQL.EntityFrameworkCore.Db2.Schema;
 
 internal sealed class Db2TableSchema(string tableName, uint layoutHash, int physicalColumnCount, IReadOnlyList<Db2FieldSchema> fields)
 {

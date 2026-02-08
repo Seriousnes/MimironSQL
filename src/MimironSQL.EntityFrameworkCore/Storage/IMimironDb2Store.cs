@@ -1,4 +1,4 @@
-using MimironSQL.Db2.Schema;
+using MimironSQL.EntityFrameworkCore.Db2.Schema;
 using MimironSQL.Formats;
 
 namespace MimironSQL.EntityFrameworkCore.Storage;

@@ -1,8 +1,8 @@
 using System.Text;
 
 using MimironSQL.Db2;
-using MimironSQL.Db2.Schema;
 using MimironSQL.Dbd;
+using MimironSQL.EntityFrameworkCore.Db2.Schema;
 using MimironSQL.Formats;
 using MimironSQL.Providers;
 

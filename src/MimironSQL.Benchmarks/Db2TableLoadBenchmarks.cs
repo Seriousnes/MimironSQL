@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 
 using BenchmarkDotNet.Attributes;
 using MimironSQL.Providers;
+using MimironSQL.EntityFrameworkCore;
 
 namespace MimironSQL.Benchmarks;
 

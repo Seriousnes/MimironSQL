@@ -12,7 +12,7 @@ public sealed class ContractsTests
     [Fact]
     public void Db2FormatDetector_Detect_ShortHeader_ReturnsUnknown()
     {
-        Db2FormatDetector.Detect(ReadOnlySpan<byte>.Empty).ShouldBe(Db2Format.Unknown);
+        Db2FormatDetector.Detect([]).ShouldBe(Db2Format.Unknown);
         Db2FormatDetector.Detect([1, 2, 3]).ShouldBe(Db2Format.Unknown);
     }
 

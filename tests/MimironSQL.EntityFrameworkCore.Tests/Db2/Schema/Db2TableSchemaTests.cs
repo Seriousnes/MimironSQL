@@ -1,5 +1,5 @@
 using MimironSQL.Db2;
-using MimironSQL.Db2.Schema;
+using MimironSQL.EntityFrameworkCore.Db2.Schema;
 
 using Shouldly;
 

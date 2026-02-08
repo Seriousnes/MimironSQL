@@ -7,6 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using MimironSQL.EntityFrameworkCore.ChangeTracking;
 using MimironSQL.EntityFrameworkCore.Diagnostics;
+using MimironSQL.EntityFrameworkCore.Infrastructure;
 using MimironSQL.EntityFrameworkCore.Query;
 using MimironSQL.EntityFrameworkCore.Storage;
 using MimironSQL.Formats;

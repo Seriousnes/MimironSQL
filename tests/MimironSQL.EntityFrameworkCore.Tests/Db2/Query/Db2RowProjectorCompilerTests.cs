@@ -1,9 +1,9 @@
 using System.Linq.Expressions;
 
 using MimironSQL.Db2;
-using MimironSQL.Db2.Model;
-using MimironSQL.Db2.Query;
-using MimironSQL.Db2.Schema;
+using MimironSQL.EntityFrameworkCore.Db2.Model;
+using MimironSQL.EntityFrameworkCore.Db2.Query;
+using MimironSQL.EntityFrameworkCore.Db2.Schema;
 using MimironSQL.Formats;
 
 using Shouldly;
@@ -80,7 +80,7 @@ public sealed class Db2RowProjectorCompilerTests
     {
         var (entityType, file) = CreateFixture();
 
-        Expression<Func<Entity, long>> selector = e => (long)e.Level;
+        Expression<Func<Entity, long>> selector = e => e.Level;
 
         Db2RowProjectorCompiler.TryCompile<Entity, long, RowHandle>(file, entityType, selector, out var projector, out _)
             .ShouldBeTrue();

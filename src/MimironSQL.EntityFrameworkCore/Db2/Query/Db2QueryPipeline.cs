@@ -1,7 +1,7 @@
 using System.Linq.Expressions;
 using System.Reflection;
 
-namespace MimironSQL.Db2.Query;
+namespace MimironSQL.EntityFrameworkCore.Db2.Query;
 
 internal enum Db2FinalOperator
 {

@@ -1,4 +1,6 @@
-namespace MimironSQL.Db2.Model;
+using MimironSQL.Db2.Model;
+
+namespace MimironSQL.EntityFrameworkCore.Db2.Model;
 
 internal interface IDb2EntityTypeConfiguration<T>
 {

@@ -1,7 +1,8 @@
+using MimironSQL.Db2;
 using MimironSQL.Formats;
 using MimironSQL.Providers;
 
-namespace MimironSQL.Db2.Schema;
+namespace MimironSQL.EntityFrameworkCore.Db2.Schema;
 
 internal sealed class SchemaMapper(IDbdProvider dbdProvider)
 {

@@ -1,10 +1,11 @@
 using System.Reflection;
 using System.ComponentModel.DataAnnotations.Schema;
 
-using MimironSQL.Db2.Schema;
-using MimironSQL.Extensions;
+using MimironSQL.EntityFrameworkCore.Db2.Schema;
+using MimironSQL.EntityFrameworkCore.Extensions;
+using MimironSQL.Db2.Model;
 
-namespace MimironSQL.Db2.Model;
+namespace MimironSQL.EntityFrameworkCore.Db2.Model;
 
 internal sealed class Db2ModelBuilder
 {
@@ -397,7 +398,7 @@ internal sealed class Db2ModelBuilder
                 new Dictionary<string, string>(m.ColumnNameMappings, StringComparer.Ordinal)));
 
             if (m.AutoIncludeNavigations.Count != 0)
-                autoIncludes[clrType] = m.AutoIncludeNavigations.OrderBy(static m => m.Name, StringComparer.Ordinal).ToArray();
+                autoIncludes[clrType] = [.. m.AutoIncludeNavigations.OrderBy(static m => m.Name, StringComparer.Ordinal)];
 
             foreach (var nav in m.Navigations)
             {

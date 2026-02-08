@@ -1,4 +1,5 @@
 using MimironSQL.Db2.Model;
+using MimironSQL.EntityFrameworkCore.Db2.Model;
 
 namespace MimironSQL.EntityFrameworkCore.TestConfigs;
 

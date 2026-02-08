@@ -1,6 +1,6 @@
 using System.Reflection;
 
-namespace MimironSQL.Db2.Model;
+namespace MimironSQL.EntityFrameworkCore.Db2.Model;
 
 internal sealed class Db2EntityTypeMetadata(Type clrType)
 {

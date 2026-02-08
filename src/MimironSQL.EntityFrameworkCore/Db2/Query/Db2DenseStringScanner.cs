@@ -1,6 +1,6 @@
 using System.Text;
 
-namespace MimironSQL.Db2.Query;
+namespace MimironSQL.EntityFrameworkCore.Db2.Query;
 
 internal enum Db2StringMatchKind
 {

@@ -1,17 +1,12 @@
 using System.ComponentModel.DataAnnotations.Schema;
+
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
-using Microsoft.EntityFrameworkCore.Metadata;
 
-namespace MimironSQL.EntityFrameworkCore;
+namespace MimironSQL.EntityFrameworkCore.Infrastructure;
 
-public class MimironDb2ModelCustomizer : ModelCustomizer
+public class MimironDb2ModelCustomizer(ModelCustomizerDependencies dependencies) : ModelCustomizer(dependencies)
 {
-    public MimironDb2ModelCustomizer(ModelCustomizerDependencies dependencies)
-        : base(dependencies)
-    {
-    }
-
     public override void Customize(ModelBuilder modelBuilder, DbContext context)
     {
         base.Customize(modelBuilder, context);

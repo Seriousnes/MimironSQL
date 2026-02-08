@@ -1,8 +1,9 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+
 using System.Runtime.CompilerServices;
 
-namespace MimironSQL.EntityFrameworkCore;
+namespace MimironSQL.EntityFrameworkCore.Infrastructure;
 
 public class MimironDb2ModelCacheKeyFactory : IModelCacheKeyFactory
 {

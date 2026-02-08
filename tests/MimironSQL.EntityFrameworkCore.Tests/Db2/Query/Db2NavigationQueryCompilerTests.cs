@@ -1,9 +1,9 @@
 using System.Linq.Expressions;
 
 using MimironSQL.Db2;
-using MimironSQL.Db2.Model;
-using MimironSQL.Db2.Query;
-using MimironSQL.Db2.Schema;
+using MimironSQL.EntityFrameworkCore.Db2.Model;
+using MimironSQL.EntityFrameworkCore.Db2.Query;
+using MimironSQL.EntityFrameworkCore.Db2.Schema;
 using MimironSQL.Formats;
 
 using Shouldly;
@@ -1097,7 +1097,7 @@ public sealed class Db2NavigationQueryCompilerTests
                 _ => throw new InvalidOperationException($"Unknown table: {tableName}"),
             };
 
-        Expression<Func<Child, bool>> predicate = c => c.Parent!.Name.Contains("p") && c.Name == "c2";
+        Expression<Func<Child, bool>> predicate = c => c.Parent!.Name.Contains('p') && c.Name == "c2";
 
         Db2NavigationQueryCompiler.TryCompileSemiJoinPredicate(model, children, TableResolver, predicate, out var rowPredicate)
             .ShouldBeTrue();
@@ -1142,7 +1142,7 @@ public sealed class Db2NavigationQueryCompilerTests
                 _ => throw new InvalidOperationException($"Unknown table: {tableName}"),
             };
 
-        Expression<Func<Child, bool>> predicate = c => c.Name == "c2" && c.Parent!.Name.Contains("p");
+        Expression<Func<Child, bool>> predicate = c => c.Name == "c2" && c.Parent!.Name.Contains('p');
 
         Db2NavigationQueryCompiler.TryCompileSemiJoinPredicate(model, children, TableResolver, predicate, out var rowPredicate)
             .ShouldBeTrue();

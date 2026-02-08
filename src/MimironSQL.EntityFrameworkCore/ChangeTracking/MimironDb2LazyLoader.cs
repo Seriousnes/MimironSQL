@@ -6,9 +6,8 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
 
-using MimironSQL.Db2.Model;
-using MimironSQL.Db2.Query;
-using MimironSQL.Db2.Schema;
+using MimironSQL.EntityFrameworkCore.Db2.Query;
+using MimironSQL.EntityFrameworkCore.Db2.Schema;
 using MimironSQL.EntityFrameworkCore.Query;
 using MimironSQL.EntityFrameworkCore.Storage;
 using MimironSQL.Formats;
@@ -30,7 +29,7 @@ internal sealed class MimironDb2LazyLoader(
         currentDbContext?.Context ?? throw new ArgumentNullException(nameof(currentDbContext)),
         new ReflectionDb2EntityFactory());
 
-    private readonly ConditionalWeakTable<object, HashSet<string>> _loadedByEntity = new();
+    private readonly ConditionalWeakTable<object, HashSet<string>> _loadedByEntity = [];
 
     public void SetLoaded(object entity, string navigationName, bool loaded)
     {
@@ -88,10 +87,7 @@ internal sealed class MimironDb2LazyLoader(
         var tableName = efEntityType.GetTableName() ?? efEntityType.ClrType.Name;
         var (file, _) = _store.OpenTableWithSchema(tableName);
 
-        var rowType = file.RowType;
-        if (rowType is null)
-            throw new InvalidOperationException($"DB2 file for table '{tableName}' did not specify a row type.");
-
+        var rowType = file.RowType ?? throw new InvalidOperationException($"DB2 file for table '{tableName}' did not specify a row type.");
         var loader = LoadDelegates.GetOrAdd((efEntityType.ClrType, rowType), static key =>
         {
             var method = typeof(MimironDb2LazyLoader)
@@ -141,10 +137,10 @@ internal sealed class MimironDb2LazyLoader(
         var typedEntity = (TEntity)entity;
 
         _ = Db2IncludeChainExecutor.Apply<TEntity, TRow>(
-            source: new[] { typedEntity },
+            source: [typedEntity],
             model: model,
             tableResolver: TableResolver,
-            members: new MemberInfo[] { navigationProperty },
+            members: [navigationProperty],
             entityFactory: _entityFactory);
     }
 }

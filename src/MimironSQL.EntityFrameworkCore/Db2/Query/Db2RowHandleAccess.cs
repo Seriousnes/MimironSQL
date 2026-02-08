@@ -1,6 +1,6 @@
 using MimironSQL.Formats;
 
-namespace MimironSQL.Db2.Query;
+namespace MimironSQL.EntityFrameworkCore.Db2.Query;
 
 internal static class Db2RowHandleAccess
 {

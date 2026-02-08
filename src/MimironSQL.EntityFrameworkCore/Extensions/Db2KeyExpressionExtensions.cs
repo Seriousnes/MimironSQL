@@ -1,7 +1,7 @@
 using System.Linq.Expressions;
 using System.Reflection;
 
-namespace MimironSQL.Extensions;
+namespace MimironSQL.EntityFrameworkCore.Extensions;
 
 internal static class Db2KeyExpressionExtensions
 {

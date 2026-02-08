@@ -138,7 +138,7 @@ Map<32>
             generators: [generator.AsSourceGenerator()],
             additionalTexts: additionalTexts,
             parseOptions: parseOptions,
-            optionsProvider: new TestAnalyzerConfigOptionsProvider(ImmutableDictionary<string, string>.Empty));
+            optionsProvider: new TestAnalyzerConfigOptionsProvider([]));
 
         driver = driver.RunGenerators(compilation);
 

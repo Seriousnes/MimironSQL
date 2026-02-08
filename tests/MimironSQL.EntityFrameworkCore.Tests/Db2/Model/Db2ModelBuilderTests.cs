@@ -2,10 +2,11 @@ using System.ComponentModel.DataAnnotations.Schema;
 using System.Reflection;
 
 using MimironSQL.Db2.Model;
-using MimironSQL.Db2.Schema;
 using MimironSQL.Db2;
 
 using Shouldly;
+using MimironSQL.EntityFrameworkCore.Db2.Model;
+using MimironSQL.EntityFrameworkCore.Db2.Schema;
 
 namespace MimironSQL.EntityFrameworkCore.Tests;
 

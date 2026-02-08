@@ -1,7 +1,7 @@
 using System.Linq.Expressions;
 using System.Reflection;
 
-namespace MimironSQL.Db2.Model;
+namespace MimironSQL.EntityFrameworkCore.Db2.Model;
 
 internal sealed class Db2ReferenceNavigationBuilder<TSource, TTarget>(Db2ModelBuilder modelBuilder, Db2NavigationMetadata metadata)
 {

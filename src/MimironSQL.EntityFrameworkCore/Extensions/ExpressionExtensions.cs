@@ -1,6 +1,6 @@
 using System.Linq.Expressions;
 
-namespace MimironSQL.Extensions;
+namespace MimironSQL.EntityFrameworkCore.Extensions;
 
 internal static class ExpressionExtensions
 {

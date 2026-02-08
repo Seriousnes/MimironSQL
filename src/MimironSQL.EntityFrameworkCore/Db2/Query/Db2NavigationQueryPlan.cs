@@ -1,9 +1,9 @@
 using System.Reflection;
 
-using MimironSQL.Db2.Model;
-using MimironSQL.Db2.Schema;
+using MimironSQL.EntityFrameworkCore.Db2.Model;
+using MimironSQL.EntityFrameworkCore.Db2.Schema;
 
-namespace MimironSQL.Db2.Query;
+namespace MimironSQL.EntityFrameworkCore.Db2.Query;
 
 internal enum Db2NavigationStringMatchKind
 {

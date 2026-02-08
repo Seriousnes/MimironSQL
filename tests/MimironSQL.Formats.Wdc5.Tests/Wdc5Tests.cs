@@ -12,17 +12,13 @@ using NSubstitute;
 using Security.Cryptography;
 
 using Shouldly;
+using MimironSQL.Formats.Wdc5.Db2;
 
 namespace MimironSQL.Formats.Wdc5.Tests;
 
-public sealed class Wdc5Tests : IClassFixture<Wdc5TestFixture>
+public sealed class Wdc5Tests(Wdc5TestFixture fixture) : IClassFixture<Wdc5TestFixture>
 {
-    private readonly Wdc5TestFixture _fixture;
-
-    public Wdc5Tests(Wdc5TestFixture fixture)
-    {
-        _fixture = fixture;
-    }
+    private readonly Wdc5TestFixture _fixture = fixture;
 
     [Fact]
     public void Wdc5File_Ctor_MinimalHeader_ParsesWithZeroFieldsAndSections()
@@ -741,7 +737,7 @@ public sealed class Wdc5Tests : IClassFixture<Wdc5TestFixture>
     [Fact]
     public void Wdc5File_TryReadNullTerminatedUtf8_InvalidBounds_ReturnsFalse()
     {
-        var ok = Wdc5File.TryReadNullTerminatedUtf8(new byte[] { 0, 1, 2 }, startIndex: -1, endExclusive: 3, out _);
+        var ok = Wdc5File.TryReadNullTerminatedUtf8([0, 1, 2], startIndex: -1, endExclusive: 3, out _);
         ok.ShouldBeFalse();
     }
 
@@ -1992,7 +1988,7 @@ public class Wdc5TestFixture
         else if (sbytes is not null)
         {
             elementBits = 8;
-            recordBytes = sbytes.Select(x => unchecked((byte)x)).ToArray();
+            recordBytes = [.. sbytes.Select(x => unchecked((byte)x))];
             sizeBits = checked((ushort)(sbytes.Length * 8));
         }
         else if (shorts is not null)

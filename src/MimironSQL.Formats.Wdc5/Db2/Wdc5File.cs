@@ -8,7 +8,7 @@ using MimironSQL.Db2;
 
 using Security.Cryptography;
 
-namespace MimironSQL.Formats.Wdc5;
+namespace MimironSQL.Formats.Wdc5.Db2;
 
 public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexProvider<RowHandle>
 {

@@ -2,9 +2,9 @@ using System.Linq.Expressions;
 using System.Text;
 
 using MimironSQL.Db2;
-using MimironSQL.Db2.Model;
-using MimironSQL.Db2.Query;
-using MimironSQL.Db2.Schema;
+using MimironSQL.EntityFrameworkCore.Db2.Model;
+using MimironSQL.EntityFrameworkCore.Db2.Query;
+using MimironSQL.EntityFrameworkCore.Db2.Schema;
 using MimironSQL.Formats;
 
 using Shouldly;
@@ -155,7 +155,7 @@ public sealed class Db2RowPredicateCompilerTests
     {
         var (entityType, file) = CreateFixture();
 
-        Expression<Func<Entity, bool>> predicate = e => e.Name.Contains("a", StringComparison.Ordinal);
+        Expression<Func<Entity, bool>> predicate = e => e.Name.Contains('a', StringComparison.Ordinal);
 
         Db2RowPredicateCompiler.TryCompile<Entity, RowHandle>(file, entityType, predicate, out _)
             .ShouldBeFalse();
@@ -191,7 +191,7 @@ public sealed class Db2RowPredicateCompilerTests
         Db2RowPredicateCompiler.TryCompile<Entity, RowHandle>(file, entityType, direct, out _)
             .ShouldBeFalse();
 
-        Expression<Func<Entity, bool>> contains = e => e.Name.Contains("a");
+        Expression<Func<Entity, bool>> contains = e => e.Name.Contains('a');
         Db2RowPredicateCompiler.TryCompile<Entity, RowHandle>(file, entityType, contains, out _)
             .ShouldBeFalse();
 

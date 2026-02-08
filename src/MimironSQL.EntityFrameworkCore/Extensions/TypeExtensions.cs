@@ -1,4 +1,4 @@
-namespace MimironSQL.Extensions;
+namespace MimironSQL.EntityFrameworkCore.Extensions;
 
 internal static class TypeExtensions
 {

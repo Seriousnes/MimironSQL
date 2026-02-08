@@ -1,5 +1,4 @@
 using System.Collections.Concurrent;
-using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations.Schema;
 using System.Linq.Expressions;
 using System.Reflection;
@@ -9,7 +8,7 @@ using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
 
 using MimironSQL.Db2.Model;
-using MimironSQL.Db2.Schema;
+using MimironSQL.EntityFrameworkCore.Db2.Model;
 using MimironSQL.EntityFrameworkCore.Storage;
 
 namespace MimironSQL.EntityFrameworkCore.Query;
@@ -70,7 +69,7 @@ internal sealed class MimironDb2Db2ModelProvider(
         {
             db2EntityBuilder
                 .GetType()
-                .GetMethod(nameof(Db2EntityTypeBuilder<object>.ToTable), BindingFlags.Public | BindingFlags.Instance)!
+                .GetMethod(nameof(Db2EntityTypeBuilder<>.ToTable), BindingFlags.Public | BindingFlags.Instance)!
                 .Invoke(db2EntityBuilder, [tableName]);
         }
 
@@ -98,7 +97,7 @@ internal sealed class MimironDb2Db2ModelProvider(
             var propBuilder = InvokeProperty(db2EntityBuilder, clrType, propInfo);
             propBuilder
                 .GetType()
-                .GetMethod(nameof(Db2PropertyBuilder<object>.HasColumnName), BindingFlags.Public | BindingFlags.Instance)!
+                .GetMethod(nameof(Db2PropertyBuilder<>.HasColumnName), BindingFlags.Public | BindingFlags.Instance)!
                 .Invoke(propBuilder, [columnName]);
         }
     }
@@ -136,11 +135,11 @@ internal sealed class MimironDb2Db2ModelProvider(
 
                 var hasManyBuilder = InvokeHasMany(builder, entityType.ClrType, dependentClr, navProperty);
 
-                var withFk = hasManyBuilder.GetType().GetMethod(nameof(Db2CollectionNavigationBuilder<object, object>.WithForeignKey))!;
+                var withFk = hasManyBuilder.GetType().GetMethod(nameof(Db2CollectionNavigationBuilder<,>.WithForeignKey))!;
                 var withFkGeneric = withFk.MakeGenericMethod(dependentFkProp.PropertyType);
                 withFkGeneric.Invoke(hasManyBuilder, [BuildPropertyLambda(dependentClr, dependentFkProp)]);
 
-                var hasPrincipalKey = hasManyBuilder.GetType().GetMethod(nameof(Db2CollectionNavigationBuilder<object, object>.HasPrincipalKey))!;
+                var hasPrincipalKey = hasManyBuilder.GetType().GetMethod(nameof(Db2CollectionNavigationBuilder<,>.HasPrincipalKey))!;
                 var hasPrincipalKeyGeneric = hasPrincipalKey.MakeGenericMethod(principalKeyProp.PropertyType);
                 hasPrincipalKeyGeneric.Invoke(hasManyBuilder, [BuildPropertyLambda(entityType.ClrType, principalKeyProp)]);
 
@@ -162,11 +161,11 @@ internal sealed class MimironDb2Db2ModelProvider(
 
             var hasOneBuilder = InvokeHasOne(builder, sourceClr, targetClr, navProperty);
 
-            var withForeignKey = hasOneBuilder.GetType().GetMethod(nameof(Db2ReferenceNavigationBuilder<object, object>.WithForeignKey))!;
+            var withForeignKey = hasOneBuilder.GetType().GetMethod(nameof(Db2ReferenceNavigationBuilder<,>.WithForeignKey))!;
             var withForeignKeyGeneric = withForeignKey.MakeGenericMethod(sourceFkProp.PropertyType);
             withForeignKeyGeneric.Invoke(hasOneBuilder, [BuildPropertyLambda(sourceClr, sourceFkProp)]);
 
-            var hasPrincipalKeyMethod = hasOneBuilder.GetType().GetMethod(nameof(Db2ReferenceNavigationBuilder<object, object>.HasPrincipalKey))!;
+            var hasPrincipalKeyMethod = hasOneBuilder.GetType().GetMethod(nameof(Db2ReferenceNavigationBuilder<,>.HasPrincipalKey))!;
             var hasPrincipalKeyGenericMethod = hasPrincipalKeyMethod.MakeGenericMethod(principalKey.PropertyType);
             hasPrincipalKeyGenericMethod.Invoke(hasOneBuilder, [BuildPropertyLambda(targetClr, principalKey)]);
         }
@@ -184,7 +183,7 @@ internal sealed class MimironDb2Db2ModelProvider(
 
     private static object InvokeProperty(object db2EntityBuilder, Type entityClrType, PropertyInfo property)
     {
-        var propertyMethod = db2EntityBuilder.GetType().GetMethod(nameof(Db2EntityTypeBuilder<object>.Property))!;
+        var propertyMethod = db2EntityBuilder.GetType().GetMethod(nameof(Db2EntityTypeBuilder<>.Property))!;
         var generic = propertyMethod.MakeGenericMethod(property.PropertyType);
         return generic.Invoke(db2EntityBuilder, [BuildPropertyLambda(entityClrType, property)])!;
     }
@@ -192,7 +191,7 @@ internal sealed class MimironDb2Db2ModelProvider(
     private static object InvokeHasOne(Db2ModelBuilder builder, Type sourceClr, Type targetClr, PropertyInfo navigation)
     {
         var db2EntityBuilder = InvokeEntity(builder, sourceClr);
-        var method = db2EntityBuilder.GetType().GetMethod(nameof(Db2EntityTypeBuilder<object>.HasOne))!;
+        var method = db2EntityBuilder.GetType().GetMethod(nameof(Db2EntityTypeBuilder<>.HasOne))!;
         var generic = method.MakeGenericMethod(targetClr);
         return generic.Invoke(db2EntityBuilder, [BuildPropertyLambda(sourceClr, navigation)])!;
     }
@@ -200,7 +199,7 @@ internal sealed class MimironDb2Db2ModelProvider(
     private static object InvokeHasMany(Db2ModelBuilder builder, Type sourceClr, Type targetClr, PropertyInfo navigation)
     {
         var db2EntityBuilder = InvokeEntity(builder, sourceClr);
-        var method = db2EntityBuilder.GetType().GetMethod(nameof(Db2EntityTypeBuilder<object>.HasMany))!;
+        var method = db2EntityBuilder.GetType().GetMethod(nameof(Db2EntityTypeBuilder<>.HasMany))!;
         var generic = method.MakeGenericMethod(targetClr);
         return generic.Invoke(db2EntityBuilder, [BuildCollectionNavigationLambda(sourceClr, targetClr, navigation)])!;
     }

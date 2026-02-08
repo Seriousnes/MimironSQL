@@ -1,7 +1,7 @@
 using System.Linq.Expressions;
 using System.Reflection;
 
-using MimironSQL.Extensions;
+using MimironSQL.EntityFrameworkCore.Extensions;
 
 using Shouldly;
 

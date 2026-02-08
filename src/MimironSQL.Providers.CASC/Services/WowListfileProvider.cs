@@ -40,14 +40,8 @@ public sealed class WowListfileProvider : IWowListfileProvider
         var metaPath = Path.Combine(cacheDir, _options.AssetName + ".meta.json");
 
         var release = await GetLatestReleaseAsync(cancellationToken).ConfigureAwait(false);
-        var asset = release.Assets.FirstOrDefault(a => string.Equals(a.Name, _options.AssetName, StringComparison.OrdinalIgnoreCase));
-        if (asset is null)
-            throw new InvalidOperationException($"wow-listfile latest release did not include asset '{_options.AssetName}'.");
-
-        var expectedSha256 = ParseSha256Digest(asset.Digest);
-        if (expectedSha256 is null)
-            throw new InvalidOperationException($"GitHub release asset '{asset.Name}' did not include a sha256 digest.");
-
+        var asset = release.Assets.FirstOrDefault(a => string.Equals(a.Name, _options.AssetName, StringComparison.OrdinalIgnoreCase)) ?? throw new InvalidOperationException($"wow-listfile latest release did not include asset '{_options.AssetName}'.");
+        var expectedSha256 = ParseSha256Digest(asset.Digest) ?? throw new InvalidOperationException($"GitHub release asset '{asset.Name}' did not include a sha256 digest.");
         var existingMeta = await TryReadMetadataAsync(metaPath, cancellationToken).ConfigureAwait(false);
         if (File.Exists(targetCsvPath) && existingMeta?.Sha256 is { Length: > 0 } sha &&
             string.Equals(sha, expectedSha256, StringComparison.OrdinalIgnoreCase))

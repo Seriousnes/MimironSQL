@@ -1,9 +1,7 @@
-using System.Reflection;
-
 using MimironSQL.Db2;
-using MimironSQL.Db2.Model;
-using MimironSQL.Db2.Query;
-using MimironSQL.Db2.Schema;
+using MimironSQL.EntityFrameworkCore.Db2.Model;
+using MimironSQL.EntityFrameworkCore.Db2.Query;
+using MimironSQL.EntityFrameworkCore.Db2.Schema;
 
 using Shouldly;
 
@@ -51,6 +49,20 @@ public sealed class Db2NavigationQueryTranslatorTests
 
         plan.MatchKind.ShouldBe(Db2NavigationStringMatchKind.Contains);
         plan.Needle.ShouldBe("abc");
+        plan.TargetStringMember.Name.ShouldBe(nameof(Parent.Name));
+    }
+
+    [Fact]
+    public void TryTranslateStringPredicate_supports_contains_char()
+    {
+        var model = CreateModel();
+
+        Db2NavigationQueryTranslator
+            .TryTranslateStringPredicate<Child>(model, x => x.Parent!.Name.Contains('a'), out var plan)
+            .ShouldBeTrue();
+
+        plan.MatchKind.ShouldBe(Db2NavigationStringMatchKind.Contains);
+        plan.Needle.ShouldBe("a");
         plan.TargetStringMember.Name.ShouldBe(nameof(Parent.Name));
     }
 
@@ -149,7 +161,7 @@ public sealed class Db2NavigationQueryTranslatorTests
         boolPlan.ComparisonKind.ShouldBe(Db2ScalarComparisonKind.NotEqual);
 
         Db2NavigationQueryTranslator
-            .TryTranslateScalarPredicate<Child>(model, x => x.Parent!.Small > (byte)2, out var bytePlan)
+            .TryTranslateScalarPredicate<Child>(model, x => x.Parent!.Small > 2, out var bytePlan)
             .ShouldBeTrue();
         bytePlan.TargetScalarMember.Name.ShouldBe(nameof(Parent.Small));
         bytePlan.ComparisonKind.ShouldBe(Db2ScalarComparisonKind.GreaterThan);
@@ -185,17 +197,17 @@ public sealed class Db2NavigationQueryTranslatorTests
         var model = CreateModel();
 
         Db2NavigationQueryTranslator
-            .TryTranslateScalarPredicate<Child>(model, x => x.Parent!.TinySigned != (sbyte)0, out var sbytePlan)
+            .TryTranslateScalarPredicate<Child>(model, x => x.Parent!.TinySigned != 0, out var sbytePlan)
             .ShouldBeTrue();
         sbytePlan.TargetScalarMember.Name.ShouldBe(nameof(Parent.TinySigned));
 
         Db2NavigationQueryTranslator
-            .TryTranslateScalarPredicate<Child>(model, x => x.Parent!.Shorty >= (short)1, out var shortPlan)
+            .TryTranslateScalarPredicate<Child>(model, x => x.Parent!.Shorty >= 1, out var shortPlan)
             .ShouldBeTrue();
         shortPlan.TargetScalarMember.Name.ShouldBe(nameof(Parent.Shorty));
 
         Db2NavigationQueryTranslator
-            .TryTranslateScalarPredicate<Child>(model, x => x.Parent!.UShorty <= (ushort)5, out var ushortPlan)
+            .TryTranslateScalarPredicate<Child>(model, x => x.Parent!.UShorty <= 5, out var ushortPlan)
             .ShouldBeTrue();
         ushortPlan.TargetScalarMember.Name.ShouldBe(nameof(Parent.UShorty));
 

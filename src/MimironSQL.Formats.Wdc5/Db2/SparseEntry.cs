@@ -1,7 +1,7 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
 
-namespace MimironSQL.Formats.Wdc5;
+namespace MimironSQL.Formats.Wdc5.Db2;
 
 [ExcludeFromCodeCoverage]
 [StructLayout(LayoutKind.Sequential, Pack = 2)]

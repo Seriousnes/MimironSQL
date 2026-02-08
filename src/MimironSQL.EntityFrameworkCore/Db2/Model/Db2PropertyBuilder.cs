@@ -2,7 +2,7 @@ using System.ComponentModel.DataAnnotations.Schema;
 using System.Linq.Expressions;
 using System.Reflection;
 
-namespace MimironSQL.Db2.Model;
+namespace MimironSQL.EntityFrameworkCore.Db2.Model;
 
 internal sealed class Db2PropertyBuilder<T>
 {

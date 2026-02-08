@@ -1,10 +1,9 @@
 using System.ComponentModel.DataAnnotations.Schema;
-using System.Reflection;
 
 using MimironSQL.Db2;
-using MimironSQL.Db2.Model;
-using MimironSQL.Db2.Query;
-using MimironSQL.Db2.Schema;
+using MimironSQL.EntityFrameworkCore.Db2.Model;
+using MimironSQL.EntityFrameworkCore.Db2.Query;
+using MimironSQL.EntityFrameworkCore.Db2.Schema;
 
 using Shouldly;
 

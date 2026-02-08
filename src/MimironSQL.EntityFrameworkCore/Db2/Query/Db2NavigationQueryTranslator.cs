@@ -1,11 +1,11 @@
 using System.Linq.Expressions;
 using System.Reflection;
 
-using MimironSQL.Db2.Model;
-using MimironSQL.Db2.Schema;
-using MimironSQL.Extensions;
+using MimironSQL.EntityFrameworkCore.Db2.Model;
+using MimironSQL.EntityFrameworkCore.Db2.Schema;
+using MimironSQL.EntityFrameworkCore.Extensions;
 
-namespace MimironSQL.Db2.Query;
+namespace MimironSQL.EntityFrameworkCore.Db2.Query;
 
 internal static class Db2NavigationQueryTranslator
 {
@@ -464,8 +464,19 @@ internal static class Db2NavigationQueryTranslator
 
             case MethodCallExpression { Method.DeclaringType: { } dt } call when dt == typeof(string):
                 {
-                    if (call.Arguments is not { Count: 1 } || !TryGetString(call.Arguments[0], rootParam, out var constant))
+                    if (call.Arguments is not { Count: 1 })
                         return false;
+
+                    if (!TryGetString(call.Arguments[0], rootParam, out var constant))
+                    {
+                        if (call.Method.Name != nameof(string.Contains))
+                            return false;
+
+                        if (call.Arguments[0].UnwrapConvert() is not ConstantExpression { Value: char c })
+                            return false;
+
+                        constant = (c.ToString(), call.Arguments[0]);
+                    }
 
                     if (!TryGetNavThenMemberAccess(call.Object, rootParam, out navMember, out targetMember))
                         return false;

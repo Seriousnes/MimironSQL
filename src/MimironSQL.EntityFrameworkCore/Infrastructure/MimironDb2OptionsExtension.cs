@@ -1,11 +1,12 @@
 using System.Runtime.CompilerServices;
 using System.Text;
-using Microsoft.EntityFrameworkCore;
+
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.DependencyInjection;
+
 using MimironSQL.Providers;
 
-namespace MimironSQL.EntityFrameworkCore;
+namespace MimironSQL.EntityFrameworkCore.Infrastructure;
 
 public class MimironDb2OptionsExtension : IDbContextOptionsExtension
 {
@@ -69,14 +70,9 @@ public class MimironDb2OptionsExtension : IDbContextOptionsExtension
                 $"MimironDb2 providers must be configured. Call {nameof(MimironDb2DbContextOptionsExtensions.UseMimironDb2)} to configure the provider.");
     }
 
-    private sealed class ExtensionInfo : DbContextOptionsExtensionInfo
+    private sealed class ExtensionInfo(IDbContextOptionsExtension extension) : DbContextOptionsExtensionInfo(extension)
     {
         private string? _logFragment;
-
-        public ExtensionInfo(IDbContextOptionsExtension extension)
-            : base(extension)
-        {
-        }
 
         private new MimironDb2OptionsExtension Extension
             => (MimironDb2OptionsExtension)base.Extension;

@@ -1,6 +1,8 @@
 using System.Diagnostics.CodeAnalysis;
 
-namespace MimironSQL.Db2.Schema;
+using MimironSQL.Db2;
+
+namespace MimironSQL.EntityFrameworkCore.Db2.Schema;
 
 [ExcludeFromCodeCoverage]
 public readonly record struct Db2FieldSchema(

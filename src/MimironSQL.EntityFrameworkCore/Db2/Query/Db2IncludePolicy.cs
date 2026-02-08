@@ -1,12 +1,9 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
 
-using MimironSQL.Db2.Model;
+using MimironSQL.EntityFrameworkCore.Db2.Model;
 
-namespace MimironSQL.Db2.Query;
+namespace MimironSQL.EntityFrameworkCore.Db2.Query;
 
 internal static class Db2IncludePolicy
 {
@@ -54,7 +51,7 @@ internal static class Db2IncludePolicy
         }
     }
 
-    private static IReadOnlyList<MemberInfo> GetRootNavigationMembers(Db2Model model, LambdaExpression lambda)
+    private static List<MemberInfo> GetRootNavigationMembers(Db2Model model, LambdaExpression lambda)
     {
         ArgumentNullException.ThrowIfNull(model);
         ArgumentNullException.ThrowIfNull(lambda);

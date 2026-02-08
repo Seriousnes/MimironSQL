@@ -1,6 +1,8 @@
 using System.ComponentModel.DataAnnotations.Schema;
 using System.Reflection;
 
+using MimironSQL.EntityFrameworkCore.Db2.Model;
+
 namespace MimironSQL.Db2.Model;
 
 internal sealed partial class Db2EntityTypeBuilder<T>

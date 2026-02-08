@@ -2,12 +2,14 @@ using System.Text.RegularExpressions;
 
 namespace MimironSQL.Providers;
 
-internal sealed class CascLocalArchiveReader
+internal sealed partial class CascLocalArchiveReader
 {
-    private static readonly Regex IdxNameRegex = new("^(?<bucket>[0-9a-fA-F]{2})(?<version>[0-9a-fA-F]{8})$", RegexOptions.Compiled);
+    [GeneratedRegex("^(?<bucket>[0-9a-fA-F]{2})(?<version>[0-9a-fA-F]{8})$", RegexOptions.Compiled)]
+    private static partial Regex GetIdxNameRegex();
+    private static readonly Regex IdxNameRegex = GetIdxNameRegex();
 
     private readonly string _dataDataDirectory;
-    private readonly IReadOnlyDictionary<byte, CascIdxFile> _activeIdxByBucket;
+    private readonly Dictionary<byte, CascIdxFile> _activeIdxByBucket;
 
     public CascLocalArchiveReader(string dataDataDirectory)
     {
@@ -144,7 +146,7 @@ internal sealed class CascLocalArchiveReader
         return a.Length - b.Length;
     }
 
-    private static IReadOnlyDictionary<byte, CascIdxFile> LoadActiveIdxByBucket(string dataDataDirectory)
+    private static Dictionary<byte, CascIdxFile> LoadActiveIdxByBucket(string dataDataDirectory)
     {
         var idxPaths = Directory.EnumerateFiles(dataDataDirectory, "*.idx", SearchOption.TopDirectoryOnly);
 
@@ -249,5 +251,5 @@ internal sealed class CascLocalArchiveReader
                 throw new EndOfStreamException();
             readTotal += read;
         }
-    }
+    }    
 }

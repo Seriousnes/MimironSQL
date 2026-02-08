@@ -1,18 +1,15 @@
-using System;
 using System.Collections;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
 
-using MimironSQL.Db2.Model;
-using MimironSQL.Db2.Schema;
-using MimironSQL.Extensions;
+using MimironSQL.EntityFrameworkCore.Db2.Model;
+using MimironSQL.EntityFrameworkCore.Db2.Schema;
+using MimironSQL.EntityFrameworkCore.Extensions;
 using MimironSQL.Formats;
 
-namespace MimironSQL.Db2.Query;
+namespace MimironSQL.EntityFrameworkCore.Db2.Query;
 
 internal static class Db2IncludeChainExecutor
 {
@@ -38,7 +35,7 @@ internal static class Db2IncludeChainExecutor
         if (members.Count == 0)
             return source;
 
-        var roots = source as List<TEntity> ?? source.ToList();
+        var roots = source as List<TEntity> ?? [.. source];
         if (roots.Count == 0)
             return roots;
 
@@ -613,7 +610,7 @@ internal static class Db2IncludeChainExecutor
 
             var call = Expression.Call(
                 Expression.Convert(Expression.Constant(_materializer), materializerType),
-                materializerType.GetMethod(nameof(Db2EntityMaterializer<object, TRow>.Materialize))!,
+                materializerType.GetMethod(nameof(Db2EntityMaterializer<,>.Materialize))!,
                 fileParam,
                 handleParam);
 

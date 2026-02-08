@@ -1,11 +1,11 @@
-using MimironSQL.Db2.Schema;
-using MimironSQL.Db2.Model;
-
 using System.Linq.Expressions;
 using System.Reflection;
-using MimironSQL.Formats;
 
-namespace MimironSQL.Db2.Query;
+using MimironSQL.Formats;
+using MimironSQL.EntityFrameworkCore.Db2.Model;
+using MimironSQL.EntityFrameworkCore.Db2.Schema;
+
+namespace MimironSQL.EntityFrameworkCore.Db2.Query;
 
 internal static class Db2RowProjectorCompiler
 {

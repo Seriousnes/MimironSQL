@@ -1,7 +1,7 @@
 using System.Buffers.Binary;
 using System.Text;
 
-namespace MimironSQL.Formats.Wdc5;
+namespace MimironSQL.Formats.Wdc5.Db2;
 
 internal ref struct Wdc5RowReader(ReadOnlySpan<byte> bytes, int positionBits)
 {

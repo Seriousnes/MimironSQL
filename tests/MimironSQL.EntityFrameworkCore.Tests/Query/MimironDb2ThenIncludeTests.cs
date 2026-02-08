@@ -92,7 +92,7 @@ public sealed class MimironDb2ThenIncludeTests
 	{
 		public int Id { get; set; }
 
-		public ICollection<MapChallengeMode> MapChallengeModes { get; set; } = new List<MapChallengeMode>();
+		public ICollection<MapChallengeMode> MapChallengeModes { get; set; } = [];
 	}
 
 	public class MapChallengeMode

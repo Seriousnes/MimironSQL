@@ -1,8 +1,8 @@
-using System.Collections.Generic;
 using System.Linq.Expressions;
 using System.Reflection;
 
-using MimironSQL.Extensions;
+using MimironSQL.EntityFrameworkCore.Db2.Model;
+using MimironSQL.EntityFrameworkCore.Extensions;
 
 namespace MimironSQL.Db2.Model;
 

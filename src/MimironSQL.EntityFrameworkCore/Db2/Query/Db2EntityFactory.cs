@@ -1,10 +1,11 @@
 using System.Collections.Concurrent;
 using System.Linq.Expressions;
+
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
 
-namespace MimironSQL.Db2.Query;
+namespace MimironSQL.EntityFrameworkCore.Db2.Query;
 
 internal interface IDb2EntityFactory
 {
@@ -35,20 +36,13 @@ internal sealed class ReflectionDb2EntityFactory : IDb2EntityFactory
     }
 }
 
-internal sealed class EfLazyLoadingProxyDb2EntityFactory : IDb2EntityFactory
+internal sealed class EfLazyLoadingProxyDb2EntityFactory(DbContext context, IDb2EntityFactory fallback) : IDb2EntityFactory
 {
     private static readonly ConcurrentDictionary<Type, Func<EfLazyLoadingProxyDb2EntityFactory, object>> CreatorCache = new();
 
-    private readonly DbContext _context;
-    private readonly IServiceProvider _services;
-    private readonly IDb2EntityFactory _fallback;
-
-    public EfLazyLoadingProxyDb2EntityFactory(DbContext context, IDb2EntityFactory fallback)
-    {
-        _context = context ?? throw new ArgumentNullException(nameof(context));
-        _services = context.GetInfrastructure();
-        _fallback = fallback ?? throw new ArgumentNullException(nameof(fallback));
-    }
+    private readonly DbContext _context = context ?? throw new ArgumentNullException(nameof(context));
+    private readonly IServiceProvider _services = context.GetInfrastructure();
+    private readonly IDb2EntityFactory _fallback = fallback ?? throw new ArgumentNullException(nameof(fallback));
 
     public object Create(Type entityClrType)
     {
@@ -120,9 +114,9 @@ internal sealed class EfLazyLoadingProxyDb2EntityFactory : IDb2EntityFactory
     {
         proxy = null!;
 
-        var names = preferLazyLoading
-            ? new[] { "CreateLazyLoadingProxy", "CreateProxy" }
-            : new[] { "CreateProxy", "CreateLazyLoadingProxy" };
+        string[] names = preferLazyLoading
+            ? ["CreateLazyLoadingProxy", "CreateProxy"]
+            : ["CreateProxy", "CreateLazyLoadingProxy"];
 
         var methods = proxyFactory.GetType().GetMethods();
 

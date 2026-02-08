@@ -1,11 +1,11 @@
-using MimironSQL.Db2.Model;
-using MimironSQL.Db2.Schema;
+using MimironSQL.EntityFrameworkCore.Db2.Model;
+using MimironSQL.EntityFrameworkCore.Db2.Schema;
 using MimironSQL.Formats;
 
 using System.Linq.Expressions;
 using System.Reflection;
 
-namespace MimironSQL.Db2.Query;
+namespace MimironSQL.EntityFrameworkCore.Db2.Query;
 
 internal sealed class Db2EntityMaterializer<TEntity, TRow>
     where TRow : struct

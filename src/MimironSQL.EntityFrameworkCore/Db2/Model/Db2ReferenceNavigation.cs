@@ -1,8 +1,8 @@
 using System.Reflection;
 
-using MimironSQL.Db2.Schema;
+using MimironSQL.EntityFrameworkCore.Db2.Schema;
 
-namespace MimironSQL.Db2.Model;
+namespace MimironSQL.EntityFrameworkCore.Db2.Model;
 
 internal sealed class Db2ReferenceNavigation(
     Type sourceClrType,

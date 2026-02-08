@@ -1,10 +1,7 @@
 using System.Linq.Expressions;
 
-using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.EntityFrameworkCore.Query;
-#pragma warning disable EF1001 // Internal EF Core API usage is intentional for provider implementation.
 using Microsoft.EntityFrameworkCore.Query.Internal;
-#pragma warning restore EF1001
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.EntityFrameworkCore.Update;
 

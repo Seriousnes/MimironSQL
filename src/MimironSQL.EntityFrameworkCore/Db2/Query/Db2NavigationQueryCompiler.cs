@@ -1,12 +1,13 @@
 using System.Linq.Expressions;
 using System.Reflection;
 
-using MimironSQL.Db2.Model;
-using MimironSQL.Db2.Schema;
-using MimironSQL.Extensions;
+using MimironSQL.Db2;
+using MimironSQL.EntityFrameworkCore.Db2.Model;
+using MimironSQL.EntityFrameworkCore.Db2.Schema;
+using MimironSQL.EntityFrameworkCore.Extensions;
 using MimironSQL.Formats;
 
-namespace MimironSQL.Db2.Query;
+namespace MimironSQL.EntityFrameworkCore.Db2.Query;
 
 internal static class Db2NavigationQueryCompiler
 {
@@ -368,8 +369,7 @@ internal static class Db2NavigationQueryCompiler
             var left = node.Left.UnwrapConvert();
             var right = node.Right.UnwrapConvert();
 
-            if (TryRewrite(left, right, node.NodeType, out var rewritten) ||
-                TryRewrite(right, left, Flip(node.NodeType), out rewritten))
+            if (TryRewrite(left, right, node.NodeType, out var rewritten) || TryRewrite(right, left, Flip(node.NodeType), out rewritten))
             {
                 return rewritten;
             }
@@ -428,7 +428,7 @@ internal static class Db2NavigationQueryCompiler
                 elementType = null!;
                 navAccess = null!;
 
-                if (expression is not MemberExpression { Member: PropertyInfo { Name: nameof(ICollection<int>.Count) } } count)
+                if (expression is not MemberExpression { Member: PropertyInfo { Name: nameof(ICollection<>.Count) } } count)
                     return false;
 
                 if (count.Expression.UnwrapConvert() is not MemberExpression { Member: PropertyInfo } nav)

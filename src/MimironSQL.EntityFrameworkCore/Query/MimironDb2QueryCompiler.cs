@@ -5,13 +5,10 @@ using System.Reflection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Query;
-#pragma warning disable EF1001 // Internal EF Core API usage is intentional for provider implementation.
 using Microsoft.EntityFrameworkCore.Query.Internal;
-#pragma warning restore EF1001
 
-using MimironSQL.Db2.Model;
-using MimironSQL.Db2.Query;
-using MimironSQL.Db2.Schema;
+using MimironSQL.EntityFrameworkCore.Db2.Query;
+using MimironSQL.EntityFrameworkCore.Db2.Schema;
 using MimironSQL.EntityFrameworkCore.Storage;
 using MimironSQL.Formats;
 
@@ -41,10 +38,7 @@ internal sealed class MimironDb2QueryCompiler(
         var tableName = efEntityType.GetTableName() ?? rootEntityType.Name;
         var (file, _) = _store.OpenTableWithSchema(tableName);
 
-        var rowType = file.RowType;
-        if (rowType is null)
-            throw new InvalidOperationException($"DB2 file for table '{tableName}' did not specify a row type.");
-
+        var rowType = file.RowType ?? throw new InvalidOperationException($"DB2 file for table '{tableName}' did not specify a row type.");
         var model = _db2ModelProvider.GetDb2Model();
 
         var result = ExecuteDelegates.GetOrAdd((rootEntityType, rowType, typeof(TResult)), static key =>
@@ -76,20 +70,12 @@ internal sealed class MimironDb2QueryCompiler(
         var provider = new Db2QueryProvider<TEntity, TRow>(file, model, TableResolver, entityFactory);
 
         var db2EntityType = model.GetEntityType(typeof(TEntity)).WithSchema(tableName, schema);
-        var rootQueryable = CreateTableQueryable<TEntity, TRow>(tableName, schema, db2EntityType, provider, file);
+        _ = db2EntityType;
+        var rootQueryable = new Db2Queryable<TEntity>(provider);
 
         var rewritten = new RootQueryRewriter<TEntity>(rootQueryable).Visit(query);
         return provider.Execute<TResult>(rewritten!);
     }
-
-    private static IQueryable<TEntity> CreateTableQueryable<TEntity, TRow>(
-        string tableName,
-        Db2TableSchema schema,
-        Db2EntityType entityType,
-        IQueryProvider provider,
-        IDb2File<TRow> file)
-        where TRow : struct
-        => new Db2Table<TEntity, TRow>(tableName, schema, entityType, provider, file);
 
     public Func<QueryContext, TResult> CreateCompiledQuery<TResult>(Expression query)
         => _ => Execute<TResult>(query);

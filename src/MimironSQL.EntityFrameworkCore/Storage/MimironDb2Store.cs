@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
-using MimironSQL.Db2.Schema;
+
+using MimironSQL.EntityFrameworkCore.Db2.Schema;
 using MimironSQL.Formats;
 using MimironSQL.Providers;
 

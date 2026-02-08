@@ -1,8 +1,10 @@
+using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
-using MimironSQL.EntityFrameworkCore;
+
+using MimironSQL.EntityFrameworkCore.Infrastructure;
 using MimironSQL.Providers;
 
-namespace Microsoft.EntityFrameworkCore;
+namespace MimironSQL.EntityFrameworkCore;
 
 public static class MimironDb2DbContextOptionsExtensions
 {

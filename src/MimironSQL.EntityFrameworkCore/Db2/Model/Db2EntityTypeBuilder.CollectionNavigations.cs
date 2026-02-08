@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Linq.Expressions;
 using System.Reflection;
 
@@ -7,7 +8,7 @@ namespace MimironSQL.Db2.Model;
 
 internal sealed partial class Db2EntityTypeBuilder<T>
 {
-    public Db2CollectionNavigationBuilder<T, TTarget> HasMany<TTarget>(Expression<Func<T, IEnumerable<TTarget>>> navigation)
+    public Db2CollectionNavigationBuilder<T, TTarget> HasMany<TTarget>(Expression<Func<T, ICollection<TTarget>>> navigation)
         where TTarget : class?
     {
         ArgumentNullException.ThrowIfNull(navigation);
@@ -25,12 +26,21 @@ internal sealed partial class Db2EntityTypeBuilder<T>
         if (p.GetMethod is not { IsPublic: true })
             throw new NotSupportedException($"Navigation property '{p.DeclaringType?.FullName}.{p.Name}' must have a public getter.");
 
+        if (p.SetMethod is not { IsPublic: true })
+            throw new NotSupportedException($"Navigation property '{p.DeclaringType?.FullName}.{p.Name}' must have a public setter.");
+
         var navMember = p;
         var navType = navMember.GetMemberType();
 
         var targetClrType = typeof(TTarget);
-        if (!typeof(IEnumerable<TTarget>).IsAssignableFrom(navType))
-            throw new NotSupportedException($"Navigation type mismatch: expected IEnumerable<{targetClrType.FullName}> but found {navType.FullName}.");
+
+        var expectedNavType = typeof(ICollection<>).MakeGenericType(targetClrType);
+        if (navType != expectedNavType)
+        {
+            throw new NotSupportedException(
+                $"Navigation type mismatch: expected '{expectedNavType.FullName}' but found '{navType.FullName}'. " +
+                $"Collection navigation properties must be declared as ICollection<{targetClrType.Name}>.");
+        }
 
         var nav = new Db2CollectionNavigationMetadata(navMember, targetClrType);
         Metadata.CollectionNavigations.Add(nav);

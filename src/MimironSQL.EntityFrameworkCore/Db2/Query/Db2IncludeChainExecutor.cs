@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
@@ -196,6 +197,13 @@ internal static class Db2IncludeChainExecutor
 
         var keyListGetter = GetOrCreateIntEnumerableGetter(entityType, navigation.SourceKeyCollectionMember);
         var setter = GetOrCreateSetter(entityType, navMember);
+        var navMemberType = navMember.GetMemberType();
+
+        if (navMemberType.IsArray)
+        {
+            throw new NotSupportedException(
+                $"Collection navigation '{entityType.FullName}.{navMember.Name}' must be declared as ICollection<{navigation.TargetClrType.Name}> (array-typed collection navigations are not supported). ");
+        }
 
         var targetEntityType = model.GetEntityType(navigation.TargetClrType);
         var (relatedFile, _) = tableResolver(targetEntityType.TableName);
@@ -236,18 +244,35 @@ internal static class Db2IncludeChainExecutor
         {
             var (entity, ids) = entitiesWithIds[i];
 
-            var relatedArray = Array.CreateInstance(navigation.TargetClrType, ids.Length);
+            var count = 0;
             for (var j = 0; j < ids.Length; j++)
             {
                 var id = ids[j];
                 if (id == 0)
                     continue;
 
-                if (relatedByKey.TryGetValue(id, out var related))
-                    relatedArray.SetValue(related, j);
+                if (relatedByKey.ContainsKey(id))
+                    count++;
             }
 
-            setter(entity, relatedArray);
+            var collection = CreateCollectionInstance(navMemberType, navigation.TargetClrType, capacity: count);
+            var buffer = ((IArrayBackedReadOnlyCollection)collection).Buffer;
+
+            var index = 0;
+            for (var j = 0; j < ids.Length; j++)
+            {
+                var id = ids[j];
+                if (id == 0)
+                    continue;
+
+                if (!relatedByKey.TryGetValue(id, out var related))
+                    continue;
+
+                buffer.SetValue(related, index);
+                index++;
+            }
+
+            setter(entity, collection);
         }
     }
 
@@ -272,6 +297,13 @@ internal static class Db2IncludeChainExecutor
 
         var setter = GetOrCreateSetter(entityType, navMember);
         var principalKeyGetter = GetOrCreateIntGetter(entityType, navigation.PrincipalKeyMember);
+        var navMemberType = navMember.GetMemberType();
+
+        if (navMemberType.IsArray)
+        {
+            throw new NotSupportedException(
+                $"Collection navigation '{entityType.FullName}.{navMember.Name}' must be declared as ICollection<{navigation.TargetClrType.Name}> (array-typed collection navigations are not supported). ");
+        }
 
         var entitiesWithKeys = new List<(object Entity, int Key)>(entities.Count);
         HashSet<int> keys = [];
@@ -316,16 +348,43 @@ internal static class Db2IncludeChainExecutor
 
             if (!dependentsByKey.TryGetValue(key, out var dependents) || dependents.Count == 0)
             {
-                setter(entity, Array.CreateInstance(navigation.TargetClrType, 0));
+                setter(entity, CreateCollectionInstance(navMemberType, navigation.TargetClrType, capacity: 0));
                 continue;
             }
 
-            var array = Array.CreateInstance(navigation.TargetClrType, dependents.Count);
+            var collection = CreateCollectionInstance(navMemberType, navigation.TargetClrType, capacity: dependents.Count);
+            var buffer = ((IArrayBackedReadOnlyCollection)collection).Buffer;
             for (var j = 0; j < dependents.Count; j++)
-                array.SetValue(dependents[j], j);
+                buffer.SetValue(dependents[j], j);
 
-            setter(entity, array);
+            setter(entity, collection);
         }
+    }
+
+    private interface IArrayBackedReadOnlyCollection
+    {
+        Array Buffer { get; }
+    }
+
+    private sealed class ArrayBackedReadOnlyCollection<T>(T[] buffer)
+        : ReadOnlyCollection<T>(buffer), IArrayBackedReadOnlyCollection
+    {
+        public Array Buffer { get; } = buffer;
+    }
+
+    private static object CreateCollectionInstance(Type navigationMemberType, Type elementType, int capacity)
+    {
+        var expectedType = typeof(ICollection<>).MakeGenericType(elementType);
+        if (navigationMemberType != expectedType)
+        {
+            throw new NotSupportedException(
+                $"Collection navigation type '{navigationMemberType.FullName}' is not supported. " +
+                $"Collection navigation properties must be declared as '{expectedType.FullName}'.");
+        }
+
+        var buffer = Array.CreateInstance(elementType, capacity);
+        var wrapperType = typeof(ArrayBackedReadOnlyCollection<>).MakeGenericType(elementType);
+        return Activator.CreateInstance(wrapperType, buffer)!;
     }
 
     private static List<object> CollectNextEntities(List<object> entities, Type entityType, MemberInfo navMember)

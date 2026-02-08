@@ -1,6 +1,8 @@
 using System.Linq.Expressions;
 using System.Reflection;
 
+using Microsoft.EntityFrameworkCore;
+
 using MimironSQL.Db2;
 using MimironSQL.Db2.Model;
 using MimironSQL.Db2.Query;
@@ -9,10 +11,54 @@ using MimironSQL.Formats;
 
 using Shouldly;
 
-namespace MimironSQL.Tests;
+namespace MimironSQL.EntityFrameworkCore.Tests;
 
 public sealed class Db2QueryProviderTests
 {
+    [Fact]
+    public void Db2QueryPipeline_recognizes_Include_expression()
+    {
+        var (children, _, _) = CreateParentChildTables();
+
+        var query = EfInclude(children, c => c.Parent);
+
+        var pipeline = Db2QueryPipeline.Parse(query.Expression);
+        var includeCount = pipeline.Operations.OfType<Db2IncludeOperation>().Count();
+
+        includeCount.ShouldBe(1, "Include not recognized. Call chain: " + DescribeCallChain(query.Expression));
+    }
+
+    private static string DescribeCallChain(Expression expression)
+    {
+        var parts = new List<string>();
+        var current = expression;
+
+        while (current is MethodCallExpression m)
+        {
+            parts.Add($"{m.Method.DeclaringType?.FullName ?? "<null>"}.{m.Method.Name} [static={m.Method.IsStatic}] (args={m.Arguments.Count})");
+            current = m.Arguments[0];
+        }
+
+        return string.Join(" -> ", parts);
+    }
+
+    private static IQueryable<TEntity> EfInclude<TEntity, TProperty>(IQueryable<TEntity> source, Expression<Func<TEntity, TProperty>> navigation)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(navigation);
+
+        var include = typeof(EntityFrameworkQueryableExtensions)
+            .GetMethods(BindingFlags.Public | BindingFlags.Static)
+            .Single(m => m is { Name: "Include", IsGenericMethodDefinition: true } && m.GetGenericArguments().Length == 2 && m.GetParameters().Length == 2);
+
+        var call = Expression.Call(
+            include.MakeGenericMethod(typeof(TEntity), typeof(TProperty)),
+            source.Expression,
+            Expression.Quote(navigation));
+
+        return source.Provider.CreateQuery<TEntity>(call);
+    }
+
     [Fact]
     public void ExecuteScalar_supports_Any_Count_and_All()
     {
@@ -147,8 +193,7 @@ public sealed class Db2QueryProviderTests
     {
         var (children, _, _) = CreateParentChildTables();
 
-        var result = children
-            .Include(c => c.Parent)
+        var result = EfInclude(children, c => c.Parent)
             .ToArray();
 
         result.Length.ShouldBe(3);
@@ -167,8 +212,7 @@ public sealed class Db2QueryProviderTests
     {
         var (_, parents, _) = CreateParentChildTables();
 
-        var result = parents
-            .Include(p => p.Children)
+        var result = EfInclude(parents, p => p.Children)
             .ToArray()
             .OrderBy(p => p.Id)
             .ToArray();
@@ -177,13 +221,13 @@ public sealed class Db2QueryProviderTests
 
         var p1 = result[0];
         p1.Id.ShouldBe(1);
-        p1.Children.ShouldBeOfType<Child[]>();
-        ((Child[])p1.Children).Select(c => c.Id).OrderBy(x => x).ToArray().ShouldBe([10]);
+        p1.Children.Select(c => c.Id).OrderBy(x => x).ToArray().ShouldBe([10]);
+        Should.Throw<NotSupportedException>(() => p1.Children.Add(new Child { Id = 999 }));
 
         var p2 = result[1];
         p2.Id.ShouldBe(2);
-        p2.Children.ShouldBeOfType<Child[]>();
-        ((Child[])p2.Children).Select(c => c.Id).OrderBy(x => x).ToArray().ShouldBe([11]);
+        p2.Children.Select(c => c.Id).OrderBy(x => x).ToArray().ShouldBe([11]);
+        Should.Throw<NotSupportedException>(() => p2.Children.Add(new Child { Id = 999 }));
     }
 
     [Fact]
@@ -191,17 +235,13 @@ public sealed class Db2QueryProviderTests
     {
         var (parentWithIds, _, _) = CreateParentWithChildIdsTables();
 
-        var result = parentWithIds
-            .Include(p => p.Children)
+        var result = EfInclude(parentWithIds, p => p.Children)
             .ToArray();
 
         result.Length.ShouldBe(1);
 
-        var arr = (Child[])result[0].Children;
-        arr.Length.ShouldBe(3);
-        arr[0].Id.ShouldBe(10);
-        arr[1].ShouldBeNull();
-        arr[2].Id.ShouldBe(11);
+        // Missing IDs are filtered out; the resulting collection is compact.
+        result[0].Children.Select(c => c.Id).ToArray().ShouldBe([10, 11]);
     }
 
     [Fact]
@@ -209,8 +249,7 @@ public sealed class Db2QueryProviderTests
     {
         var (children, _, _) = CreateParentChildTables();
 
-        var results = children
-            .Include(c => c.Parent)
+        var results = EfInclude(children, c => c.Parent)
             .Where(c => c.Parent!.Level > 3)
             .Select(c => c.Parent!.Name)
             .ToArray();
@@ -223,8 +262,7 @@ public sealed class Db2QueryProviderTests
     {
         var (children, _, _) = CreateParentChildTables();
 
-        var results = children
-            .Include(c => c.Parent)
+        var results = EfInclude(children, c => c.Parent)
             .Where(c => c.ParentId != 0)
             .Select(c => c.Parent!.Name)
             .Select(name => name.Length)
@@ -239,10 +277,7 @@ public sealed class Db2QueryProviderTests
         var (children, _, _) = CreateParentChildTables();
 
         var ex = Should.Throw<NotSupportedException>(() =>
-            children
-                .Select(c => c.Parent!)
-                .Include(p => p.Children)
-                .ToArray());
+            EfInclude(children.Select(c => c.Parent!), p => p.Children).ToArray());
 
         ex.Message.ShouldContain("Include");
         ex.Message.ShouldContain("Select");
@@ -284,9 +319,7 @@ public sealed class Db2QueryProviderTests
         var (table, _) = CreateParentTable();
 
         var ex = Should.Throw<NotSupportedException>(() =>
-            table
-                .Include(p => p.Level)
-                .ToArray());
+            EfInclude(table, p => p.Level).ToArray());
 
         ex.Message.ShouldContain("reference-type");
     }
@@ -297,9 +330,7 @@ public sealed class Db2QueryProviderTests
         var (children, _, _) = CreateParentChildTables();
 
         var ex = Should.Throw<NotSupportedException>(() =>
-            children
-                .Include(c => c.ParentId == 0 ? c.Parent : null)
-                .ToArray());
+            EfInclude(children, c => c.ParentId == 0 ? c.Parent : null).ToArray());
 
         ex.Message.ShouldContain("member access");
     }
@@ -310,9 +341,7 @@ public sealed class Db2QueryProviderTests
         var (children, _, _) = CreateParentChildTables();
 
         var ex = Should.Throw<NotSupportedException>(() =>
-            children
-                .Include(c => c.Parent!.Name)
-                .ToArray());
+            EfInclude(children, c => c.Parent!.Name).ToArray());
 
         ex.Message.ShouldContain("navigation member access chains");
     }
@@ -323,9 +352,7 @@ public sealed class Db2QueryProviderTests
         var (table, _) = CreateChildWithReadOnlyParentTable();
 
         var ex = Should.Throw<NotSupportedException>(() =>
-            table
-                .Include(c => c.Parent)
-                .ToArray());
+            EfInclude(table, c => c.Parent).ToArray());
 
         ex.Message.ShouldContain("must be writable");
     }
@@ -336,9 +363,7 @@ public sealed class Db2QueryProviderTests
         var (table, _) = CreateChildWithUnconfiguredParentTable();
 
         var ex = Should.Throw<NotSupportedException>(() =>
-            table
-                .Include(c => c.Parent)
-                .ToArray());
+            EfInclude(table, c => c.Parent).ToArray());
 
         ex.Message.ShouldContain("not configured");
     }
@@ -362,8 +387,7 @@ public sealed class Db2QueryProviderTests
     {
         var (children, _, _) = CreateParentChildTables();
 
-        var result = children
-            .Include(c => c.Parent)
+        var result = EfInclude(children, c => c.Parent)
             .ToArray();
 
         result.Length.ShouldBe(3);
@@ -381,43 +405,40 @@ public sealed class Db2QueryProviderTests
     }
 
     [Fact]
-    public void Include_collection_navigation_dependent_foreign_key_materializes_arrays()
+    public void Include_collection_navigation_dependent_foreign_key_materializes_immutable_collections()
     {
         var (parents, _, _) = CreateParentChildArrayNavigationTables();
 
-        var result = parents
-            .Include(p => p.Children)
+        var result = EfInclude(parents, p => p.Children)
             .ToArray();
 
         result.Length.ShouldBe(2);
 
         var p1 = result.Single(p => p.Id == 1);
-        p1.Children.Length.ShouldBe(2);
+        p1.Children.Count.ShouldBe(2);
         p1.Children.Select(c => c.Id).OrderBy(x => x).ShouldBe([10, 11]);
+        Should.Throw<NotSupportedException>(() => p1.Children.Add(new ChildForArrayNav { Id = 999 }));
 
         var p2 = result.Single(p => p.Id == 2);
-        p2.Children.Length.ShouldBe(1);
-        p2.Children[0].Id.ShouldBe(12);
+        p2.Children.Count.ShouldBe(1);
+        p2.Children.Single().Id.ShouldBe(12);
     }
 
     [Fact]
-    public void Include_collection_navigation_foreign_key_array_materializes_aligned_arrays()
+    public void Include_collection_navigation_foreign_key_array_materializes_compact_collections()
     {
         var (parents, _, _) = CreateParentWithChildIdsArrayNavigationTables();
 
-        var result = parents
-            .Include(p => p.Children)
+        var result = EfInclude(parents, p => p.Children)
             .ToArray();
 
         result.Length.ShouldBe(1);
         var parent = result[0];
 
         parent.ChildIds.ShouldBe([10, 999, 0, 11]);
-        parent.Children.Length.ShouldBe(4);
-        parent.Children[0].Id.ShouldBe(10);
-        parent.Children[1].ShouldBeNull();
-        parent.Children[2].ShouldBeNull();
-        parent.Children[3].Id.ShouldBe(11);
+        parent.Children.Count.ShouldBe(2);
+        parent.Children.Select(c => c.Id).ToArray().ShouldBe([10, 11]);
+        Should.Throw<NotSupportedException>(() => parent.Children.Add(new ChildForArrayNav { Id = 999 }));
     }
 
     [Fact]
@@ -439,8 +460,7 @@ public sealed class Db2QueryProviderTests
     {
         var (children, _, _) = CreateParentChildTables();
 
-        var result = children
-            .Include(c => c.Parent)
+        var result = EfInclude(children, c => c.Parent)
             .Where(c => c.Parent != null && c.Parent.Level > 3)
             .Select(c => c.Parent!.Name)
             .ToArray();
@@ -934,7 +954,7 @@ public sealed class Db2QueryProviderTests
     {
         public int Id { get; set; }
 
-        public ChildForArrayNav[] Children { get; set; } = [];
+        public ICollection<ChildForArrayNav> Children { get; set; } = [];
     }
 
     private sealed class ParentWithChildIdsArray
@@ -943,7 +963,7 @@ public sealed class Db2QueryProviderTests
 
         public int[] ChildIds { get; set; } = [];
 
-        public ChildForArrayNav[] Children { get; set; } = [];
+        public ICollection<ChildForArrayNav> Children { get; set; } = [];
     }
 
     private sealed class ChildForArrayNav

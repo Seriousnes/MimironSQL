@@ -10,7 +10,7 @@ using NSubstitute;
 
 using Shouldly;
 
-namespace MimironSQL.Tests;
+namespace MimironSQL.EntityFrameworkCore.Tests;
 
 public sealed class SchemaMapperTests
 {

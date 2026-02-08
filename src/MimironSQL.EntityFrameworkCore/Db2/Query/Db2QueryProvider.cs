@@ -8,6 +8,7 @@ using System.Linq.Expressions;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using MimironSQL.Extensions;
+using Microsoft.EntityFrameworkCore.Query;
 
 namespace MimironSQL.Db2.Query;
 
@@ -15,10 +16,13 @@ internal sealed class Db2QueryProvider<TEntity, TRow>(
     IDb2File<TRow> file,
     Db2Model model,
     Func<string, (IDb2File<TRow> File, Db2TableSchema Schema)> tableResolver,
-    IDb2EntityFactory entityFactory) : IQueryProvider
+    IDb2EntityFactory entityFactory) : IQueryProvider, IAsyncQueryProvider
     where TRow : struct, IRowHandle
 {
     private static readonly ConcurrentDictionary<Type, Func<Db2QueryProvider<TEntity, TRow>, Expression, IEnumerable>> ExecuteEnumerableDelegates = new();
+    private static readonly MethodInfo ExecuteGenericMethodDefinition = typeof(Db2QueryProvider<TEntity, TRow>)
+        .GetMethods(BindingFlags.Instance | BindingFlags.Public)
+        .Single(m => m is { Name: nameof(Execute), IsGenericMethodDefinition: true } && m.GetParameters().Length == 1);
 
     private readonly Db2EntityType _rootEntityType = model.GetEntityType(typeof(TEntity));
     private readonly IDb2EntityFactory _entityFactory = entityFactory ?? throw new ArgumentNullException(nameof(entityFactory));
@@ -76,6 +80,46 @@ internal sealed class Db2QueryProvider<TEntity, TRow>(
         }
 
         return ExecuteScalar<TResult>(expression);
+    }
+
+    TResult IAsyncQueryProvider.ExecuteAsync<TResult>(Expression expression, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(expression);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var resultType = typeof(TResult);
+
+        if (resultType == typeof(Task))
+        {
+            _ = Execute<object?>(expression);
+            return (TResult)(object)Task.CompletedTask;
+        }
+
+        if (resultType.IsGenericType)
+        {
+            var genericDef = resultType.GetGenericTypeDefinition();
+            var innerType = resultType.GetGenericArguments()[0];
+
+            if (genericDef == typeof(Task<>))
+            {
+                var inner = ExecuteGenericMethodDefinition.MakeGenericMethod(innerType).Invoke(this, [expression]);
+
+                var fromResult = typeof(Task)
+                    .GetMethods(BindingFlags.Public | BindingFlags.Static)
+                    .Single(m => m is { Name: nameof(Task.FromResult), IsGenericMethodDefinition: true } && m.GetParameters().Length == 1)
+                    .MakeGenericMethod(innerType);
+
+                return (TResult)fromResult.Invoke(null, [inner])!;
+            }
+
+            if (genericDef == typeof(ValueTask<>))
+            {
+                var inner = ExecuteGenericMethodDefinition.MakeGenericMethod(innerType).Invoke(this, [expression]);
+                return (TResult)Activator.CreateInstance(resultType, inner)!;
+            }
+        }
+
+        return Execute<TResult>(expression);
     }
 
     private static Func<IQueryProvider, Expression, IQueryable> CreateQueryableFactory<TElement>()

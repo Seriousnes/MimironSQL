@@ -1,11 +1,12 @@
 using System;
+using System.Collections.Generic;
 using System.Linq.Expressions;
 
 using MimironSQL.Db2.Model;
 
 using Shouldly;
 
-namespace MimironSQL.Tests;
+namespace MimironSQL.EntityFrameworkCore.Tests;
 
 public sealed class Db2NavigationBuilderGuardTests
 {
@@ -94,7 +95,7 @@ public sealed class Db2NavigationBuilderGuardTests
         var param = Expression.Parameter(typeof(HasManyPrivateGetterSource), "x");
         var prop = typeof(HasManyPrivateGetterSource).GetProperty(nameof(HasManyPrivateGetterSource.Children))!;
         var body = Expression.Property(param, prop);
-        var lambda = Expression.Lambda<Func<HasManyPrivateGetterSource, IEnumerable<HasManyTarget?>>>(body, param);
+        var lambda = Expression.Lambda<Func<HasManyPrivateGetterSource, ICollection<HasManyTarget>>>(body, param);
 
         var ex = Should.Throw<NotSupportedException>(() => entity.HasMany(lambda));
         ex.Message.ShouldContain("public getter");
@@ -107,7 +108,7 @@ public sealed class Db2NavigationBuilderGuardTests
 
         var entity = builder.Entity<HasManyObjectNavSource>();
 
-        Expression<Func<HasManyObjectNavSource, IEnumerable<HasManyTarget>>> nav = x => (IEnumerable<HasManyTarget>)x.Children;
+        Expression<Func<HasManyObjectNavSource, ICollection<HasManyTarget>>> nav = x => (ICollection<HasManyTarget>)x.Children;
 
         var ex = Should.Throw<NotSupportedException>(() => entity.HasMany(nav));
         ex.Message.ShouldContain("Navigation type mismatch");
@@ -220,12 +221,12 @@ public sealed class Db2NavigationBuilderGuardTests
 
     private sealed class HasManyFieldSource
     {
-        public readonly IEnumerable<HasManyTarget?> Children = Array.Empty<HasManyTarget?>();
+        public readonly ICollection<HasManyTarget> Children = [];
     }
 
     private sealed class HasManyInner
     {
-        public IEnumerable<HasManyTarget?> Children { get; set; } = Array.Empty<HasManyTarget?>();
+        public ICollection<HasManyTarget> Children { get; set; } = [];
     }
 
     private sealed class HasManyNestedSource
@@ -235,12 +236,12 @@ public sealed class Db2NavigationBuilderGuardTests
 
     private sealed class HasManyPrivateGetterSource
     {
-        public IEnumerable<HasManyTarget?> Children { private get; set; } = Array.Empty<HasManyTarget?>();
+        public ICollection<HasManyTarget> Children { private get; set; } = [];
     }
 
     private sealed class HasManyMismatchSource
     {
-        public IEnumerable<HasManyTarget?> Children { get; set; } = Array.Empty<HasManyTarget?>();
+        public ICollection<HasManyTarget> Children { get; set; } = [];
     }
 
     private sealed class HasManyObjectNavSource
@@ -289,7 +290,7 @@ public sealed class Db2NavigationBuilderGuardTests
 
         public CollNavInner Inner { get; set; } = new();
 
-        public IEnumerable<CollNavTarget> Children { get; set; } = Array.Empty<CollNavTarget>();
+        public ICollection<CollNavTarget> Children { get; set; } = [];
     }
 
     private sealed class HasManyMismatchSource2

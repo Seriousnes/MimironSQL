@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations.Schema;
 using System.Linq.Expressions;
 using System.Reflection;
@@ -201,7 +202,7 @@ internal sealed class MimironDb2Db2ModelProvider(
         var db2EntityBuilder = InvokeEntity(builder, sourceClr);
         var method = db2EntityBuilder.GetType().GetMethod(nameof(Db2EntityTypeBuilder<object>.HasMany))!;
         var generic = method.MakeGenericMethod(targetClr);
-        return generic.Invoke(db2EntityBuilder, [BuildEnumerableNavigationLambda(sourceClr, targetClr, navigation)])!;
+        return generic.Invoke(db2EntityBuilder, [BuildCollectionNavigationLambda(sourceClr, targetClr, navigation)])!;
     }
 
     private static LambdaExpression BuildPropertyLambda(Type parameterType, PropertyInfo property)
@@ -212,16 +213,16 @@ internal sealed class MimironDb2Db2ModelProvider(
         return Expression.Lambda(delegateType, body, param);
     }
 
-    private static LambdaExpression BuildEnumerableNavigationLambda(Type sourceClr, Type targetClr, PropertyInfo navigation)
+    private static LambdaExpression BuildCollectionNavigationLambda(Type sourceClr, Type targetClr, PropertyInfo navigation)
     {
         var param = Expression.Parameter(sourceClr, "x");
         Expression body = Expression.Property(param, navigation);
 
-        var enumerableTargetType = typeof(IEnumerable<>).MakeGenericType(targetClr);
-        if (body.Type != enumerableTargetType)
-            body = Expression.Convert(body, enumerableTargetType);
+        var collectionTargetType = typeof(ICollection<>).MakeGenericType(targetClr);
+        if (body.Type != collectionTargetType)
+            body = Expression.Convert(body, collectionTargetType);
 
-        var delegateType = typeof(Func<,>).MakeGenericType(sourceClr, enumerableTargetType);
+        var delegateType = typeof(Func<,>).MakeGenericType(sourceClr, collectionTargetType);
         return Expression.Lambda(delegateType, body, param);
     }
 }

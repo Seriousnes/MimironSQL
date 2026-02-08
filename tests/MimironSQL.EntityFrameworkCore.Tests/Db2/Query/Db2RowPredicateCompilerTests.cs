@@ -9,7 +9,7 @@ using MimironSQL.Formats;
 
 using Shouldly;
 
-namespace MimironSQL.Tests;
+namespace MimironSQL.EntityFrameworkCore.Tests;
 
 public sealed class Db2RowPredicateCompilerTests
 {

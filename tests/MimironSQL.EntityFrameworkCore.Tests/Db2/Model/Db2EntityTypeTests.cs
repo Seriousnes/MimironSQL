@@ -8,7 +8,7 @@ using MimironSQL.Db2.Schema;
 
 using Shouldly;
 
-namespace MimironSQL.Tests;
+namespace MimironSQL.EntityFrameworkCore.Tests;
 
 public sealed class Db2EntityTypeTests
 {

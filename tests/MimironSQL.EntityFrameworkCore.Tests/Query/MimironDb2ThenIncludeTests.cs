@@ -36,10 +36,9 @@ public sealed class MimironDb2ThenIncludeTests
 			.ThenInclude(x => x.Map)
 			.Single();
 
-		map.MapChallengeModes.Length.ShouldBeGreaterThan(0);
-		for (var i = 0; i < map.MapChallengeModes.Length; i++)
+		map.MapChallengeModes.Count.ShouldBeGreaterThan(0);
+		foreach (var mode in map.MapChallengeModes)
 		{
-			var mode = map.MapChallengeModes[i];
 			var modeMap = mode.Map ?? throw new InvalidOperationException("Expected ThenInclude to populate MapChallengeMode.Map.");
 			modeMap.Id.ShouldBe(map.Id);
 		}
@@ -67,7 +66,7 @@ public sealed class MimironDb2ThenIncludeTests
 			.First();
 
 		var map = entity.Map ?? throw new InvalidOperationException("Expected Include to populate MapChallengeMode.Map.");
-		map.MapChallengeModes.Length.ShouldBeGreaterThan(0);
+		map.MapChallengeModes.Count.ShouldBeGreaterThan(0);
 		map.MapChallengeModes.Any(x => x.Id == entity.Id).ShouldBeTrue();
 	}
 
@@ -93,7 +92,7 @@ public sealed class MimironDb2ThenIncludeTests
 	{
 		public int Id { get; set; }
 
-		public MapChallengeMode[] MapChallengeModes { get; set; } = [];
+		public ICollection<MapChallengeMode> MapChallengeModes { get; set; } = new List<MapChallengeMode>();
 	}
 
 	public class MapChallengeMode

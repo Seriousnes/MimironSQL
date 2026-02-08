@@ -442,6 +442,8 @@ internal sealed class Db2ModelBuilder
                 if (nav.Kind is not { } kind)
                     throw new NotSupportedException($"Collection navigation '{nav.NavigationMember.Name}' on '{clrType.FullName}' must be configured (e.g., WithForeignKeyArray). ");
 
+                ValidateCollectionNavigationMemberType(clrType, nav.NavigationMember, nav.TargetClrType);
+
                 switch (kind)
                 {
                     case Db2CollectionNavigationKind.ForeignKeyArrayToPrimaryKey:
@@ -511,6 +513,25 @@ internal sealed class Db2ModelBuilder
         }
 
         return new Db2Model(built, navigations, collectionNavigations, autoIncludes);
+    }
+
+    private static void ValidateCollectionNavigationMemberType(Type sourceClrType, MemberInfo navigationMember, Type targetClrType)
+    {
+        if (navigationMember is not PropertyInfo p)
+            throw new NotSupportedException($"Collection navigation '{sourceClrType.FullName}.{navigationMember.Name}' must be a property.");
+
+        if (p.GetMethod is not { IsPublic: true })
+            throw new NotSupportedException($"Collection navigation '{sourceClrType.FullName}.{p.Name}' must have a public getter.");
+
+        if (p.SetMethod is not { IsPublic: true })
+            throw new NotSupportedException($"Collection navigation '{sourceClrType.FullName}.{p.Name}' must have a public setter.");
+
+        var expectedType = typeof(ICollection<>).MakeGenericType(targetClrType);
+        if (p.PropertyType != expectedType)
+        {
+            throw new NotSupportedException(
+                $"Collection navigation '{sourceClrType.FullName}.{p.Name}' must be declared as '{expectedType.FullName}' but found '{p.PropertyType.FullName}'.");
+        }
     }
 
     private static bool IsIntKeyEnumerableType(Type type)

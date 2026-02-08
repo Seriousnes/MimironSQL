@@ -36,7 +36,7 @@ internal sealed record Db2QueryPipeline(
     LambdaExpression? FinalPredicate,
     bool IgnoreAutoIncludes)
 {
-    private const string EfQueryableExtensionsFullName = "Microsoft.EntityFrameworkCore.EntityFrameworkQueryableExtensions";
+    private static readonly Type IQueryableType = typeof(IQueryable);
 
     public static Db2QueryPipeline Parse(Expression expression)
     {
@@ -137,8 +137,7 @@ internal sealed record Db2QueryPipeline(
                 }
             }
 
-            if (m.Method.DeclaringType?.FullName == EfQueryableExtensionsFullName &&
-                name is "Include" or "ThenInclude")
+            if (LooksLikeEfIncludeMethod(m.Method))
             {
                 var (source, members) = ExtractEfIncludeChain(m);
                 opsReversed.Add(new Db2IncludeOperation(members));
@@ -146,14 +145,7 @@ internal sealed record Db2QueryPipeline(
                 continue;
             }
 
-            if (m.Method.DeclaringType?.FullName == EfQueryableExtensionsFullName &&
-                name is "AsNoTracking" or
-                       "AsNoTrackingWithIdentityResolution" or
-                       "AsTracking" or
-                       "IgnoreAutoIncludes" or
-                       "IgnoreQueryFilters" or
-                       "TagWith" or
-                       "TagWithCallSite")
+            if (LooksLikeEfQueryModifierMethod(m.Method))
             {
                 if (name == "IgnoreAutoIncludes")
                     ignoreAutoIncludes = true;
@@ -211,9 +203,6 @@ internal sealed record Db2QueryPipeline(
 
     private static (Expression Source, MemberInfo[] Members) ExtractEfIncludeChain(MethodCallExpression call)
     {
-        if (call.Method.DeclaringType?.FullName != EfQueryableExtensionsFullName)
-            throw new InvalidOperationException("Expected EF Core Include/ThenInclude method call.");
-
         if (call.Method.Name == "Include")
         {
             var navigation = UnquoteLambda(call.Arguments[1]);
@@ -231,6 +220,68 @@ internal sealed record Db2QueryPipeline(
         }
 
         throw new InvalidOperationException($"Unexpected EF include method: {call.Method.Name}");
+    }
+
+    private static bool LooksLikeEfIncludeMethod(MethodInfo method)
+    {
+        if (method is not { IsStatic: true })
+            return false;
+
+        if (method.Name is not ("Include" or "ThenInclude"))
+            return false;
+
+        // Match by signature shape instead of declaring type; this provider only needs to
+        // recognize the expression trees produced by EF's Include/ThenInclude extensions.
+        var parameters = method.GetParameters();
+        if (parameters.Length != 2)
+            return false;
+
+        if (!IQueryableType.IsAssignableFrom(parameters[0].ParameterType))
+            return false;
+
+        return IsExpressionOfLambda(parameters[1].ParameterType);
+    }
+
+    private static bool LooksLikeEfQueryModifierMethod(MethodInfo method)
+    {
+        if (method is not { IsStatic: true })
+            return false;
+
+        if (method.Name is not (
+            "AsNoTracking" or
+            "AsNoTrackingWithIdentityResolution" or
+            "AsTracking" or
+            "IgnoreAutoIncludes" or
+            "IgnoreQueryFilters" or
+            "TagWith" or
+            "TagWithCallSite"))
+        {
+            return false;
+        }
+
+        var parameters = method.GetParameters();
+
+        // Most EF query modifiers are (IQueryable<T>) -> IQueryable<T>.
+        if (method.Name is "TagWith" or "TagWithCallSite")
+        {
+            return parameters is [{ ParameterType: { } firstParamType }, { ParameterType: { } secondParamType }] &&
+                   IQueryableType.IsAssignableFrom(firstParamType) &&
+                   secondParamType == typeof(string);
+        }
+
+        return parameters is [{ ParameterType: { } onlyParamType }] && IQueryableType.IsAssignableFrom(onlyParamType);
+    }
+
+    private static bool IsExpressionOfLambda(Type type)
+    {
+        if (!type.IsGenericType)
+            return false;
+
+        if (type.GetGenericTypeDefinition() != typeof(Expression<>))
+            return false;
+
+        // Expression<TDelegate> where TDelegate is a delegate type, e.g. Func<...>.
+        return typeof(Delegate).IsAssignableFrom(type.GetGenericArguments()[0]);
     }
 
     private static LambdaExpression UnquoteLambda(Expression expression)

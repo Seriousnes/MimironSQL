@@ -997,7 +997,7 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
     {
         if ((uint)fieldIndex >= (uint)Header.FieldsCount)
             throw new ArgumentOutOfRangeException(nameof(fieldIndex));
-        return TryGetDenseString(section, globalRowIndex, readerAtStart, id, fieldIndex, out value) || 
+        return TryGetDenseString(section, globalRowIndex, readerAtStart, id, fieldIndex, out value) ||
                TryGetInlineString(readerAtStart, recordBytes, rowEndExclusive, id, fieldIndex, out value);
     }
 

@@ -152,7 +152,7 @@ internal sealed partial class CascLocalArchiveReader
 
         var shmemVersions = TryReadShmemVersions(Path.Combine(dataDataDirectory, "shmem"));
 
-        var candidatesByBucket = new Dictionary<byte, List<(uint? nameVersion, string path)>>() ;
+        var candidatesByBucket = new Dictionary<byte, List<(uint? nameVersion, string path)>>();
         foreach (var path in idxPaths)
         {
             var fileName = Path.GetFileNameWithoutExtension(path);
@@ -251,5 +251,5 @@ internal sealed partial class CascLocalArchiveReader
                 throw new EndOfStreamException();
             readTotal += read;
         }
-    }    
+    }
 }

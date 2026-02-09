@@ -11,7 +11,7 @@ internal static class TestHelpers
         var dbdFile = Substitute.For<IDbdFile>();
         var layout = Substitute.For<IDbdLayout>();
         var buildBlock = Substitute.For<IDbdBuildBlock>();
-        
+
         var entries = new List<IDbdLayoutEntry>
         {
             CreateLayoutEntry("Id", Db2ValueType.Int64, isId: true, isNonInline: true),

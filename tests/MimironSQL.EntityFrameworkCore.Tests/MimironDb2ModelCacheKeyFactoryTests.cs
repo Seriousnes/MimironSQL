@@ -21,7 +21,7 @@ public class MimironDb2ModelCacheKeyFactoryTests
             Substitute.For<IDb2StreamProvider>(),
             Substitute.For<IDbdProvider>(),
             Substitute.For<ITactKeyProvider>());
-        
+
         var key1 = CreateKeyFromExtension(factory, extension, typeof(TestContext), designTime: false);
         var key2 = CreateKeyFromExtension(factory, extension, typeof(TestContext), designTime: false);
 
@@ -44,7 +44,7 @@ public class MimironDb2ModelCacheKeyFactoryTests
             Substitute.For<IDb2StreamProvider>(),
             sharedDbd,
             sharedTact);
-        
+
         var key1 = CreateKeyFromExtension(factory, extension1, typeof(TestContext), designTime: false);
         var key2 = CreateKeyFromExtension(factory, extension2, typeof(TestContext), designTime: false);
 
@@ -67,7 +67,7 @@ public class MimironDb2ModelCacheKeyFactoryTests
             sharedDb2,
             Substitute.For<IDbdProvider>(),
             sharedTact);
-        
+
         var key1 = CreateKeyFromExtension(factory, extension1, typeof(TestContext), designTime: false);
         var key2 = CreateKeyFromExtension(factory, extension2, typeof(TestContext), designTime: false);
 
@@ -90,7 +90,7 @@ public class MimironDb2ModelCacheKeyFactoryTests
             sharedDb2,
             sharedDbd,
             Substitute.For<ITactKeyProvider>());
-        
+
         var key1 = CreateKeyFromExtension(factory, extension1, typeof(TestContext), designTime: false);
         var key2 = CreateKeyFromExtension(factory, extension2, typeof(TestContext), designTime: false);
 
@@ -105,7 +105,7 @@ public class MimironDb2ModelCacheKeyFactoryTests
             Substitute.For<IDb2StreamProvider>(),
             Substitute.For<IDbdProvider>(),
             Substitute.For<ITactKeyProvider>());
-        
+
         var key1 = CreateKeyFromExtension(factory, extension, typeof(TestContext), designTime: false);
         var key2 = CreateKeyFromExtension(factory, extension, typeof(AnotherTestContext), designTime: false);
 
@@ -120,7 +120,7 @@ public class MimironDb2ModelCacheKeyFactoryTests
             Substitute.For<IDb2StreamProvider>(),
             Substitute.For<IDbdProvider>(),
             Substitute.For<ITactKeyProvider>());
-        
+
         var key1 = CreateKeyFromExtension(factory, extension, typeof(TestContext), designTime: false);
         var key2 = CreateKeyFromExtension(factory, extension, typeof(TestContext), designTime: true);
 
@@ -131,7 +131,7 @@ public class MimironDb2ModelCacheKeyFactoryTests
     public void Create_WithoutExtension_ShouldUseContextTypeAndDesignTimeOnly()
     {
         var factory = new MimironDb2ModelCacheKeyFactory();
-        
+
         var key = CreateKeyWithoutExtension(factory, typeof(TestContext), designTime: false);
 
         key.ShouldBe((typeof(TestContext), false));
@@ -162,8 +162,8 @@ public class MimironDb2ModelCacheKeyFactoryTests
     }
 
     private static object CreateKeyFromExtension(
-        MimironDb2ModelCacheKeyFactory factory, 
-        MimironDb2OptionsExtension extension, 
+        MimironDb2ModelCacheKeyFactory factory,
+        MimironDb2OptionsExtension extension,
         Type contextType,
         bool designTime)
     {

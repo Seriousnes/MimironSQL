@@ -38,7 +38,7 @@ public static class MimironDb2ServiceCollectionExtensions
 
         services.TryAddSingleton<ITypeMappingSource, MimironDb2TypeMappingSource>();
 
-    services.AddSingleton<IDb2Format, Wdc5Format>();
+        services.AddSingleton<IDb2Format, Wdc5Format>();
         services.AddSingleton<IMimironDb2Store, MimironDb2Store>();
 
         services.TryAddScoped<IMimironDb2Db2ModelProvider, MimironDb2Db2ModelProvider>();

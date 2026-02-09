@@ -14,7 +14,7 @@ internal static class Db2NavigationQueryCompiler
 {
     public static bool TryCompileSemiJoinPredicate<TEntity, TRow>(
         Db2Model model,
-        IDb2File<TRow> rootFile,        
+        IDb2File<TRow> rootFile,
         Func<string, (IDb2File<TRow> File, Db2TableSchema Schema)> tableResolver,
         Expression<Func<TEntity, bool>> predicate,
         out Func<TRow, bool> rowPredicate)

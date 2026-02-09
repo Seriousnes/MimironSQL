@@ -63,7 +63,7 @@ internal sealed class MimironDb2Store : IMimironDb2Store
     public (IDb2File<TRow> File, Db2TableSchema Schema) OpenTableWithSchema<TRow>(string tableName) where TRow : struct
     {
         var (file, schema) = OpenTableWithSchema(tableName);
-        
+
         if (file is IDb2File<TRow> typedFile)
             return (typedFile, schema);
 

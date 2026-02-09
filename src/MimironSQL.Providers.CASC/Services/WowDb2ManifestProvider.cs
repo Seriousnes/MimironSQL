@@ -22,7 +22,7 @@ public sealed class WowDb2ManifestProvider : IWowDb2ManifestProvider, IManifestP
     {
         _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
         _options = options?.Value ?? throw new ArgumentNullException(nameof(options));
-        
+
         if (_httpClient.DefaultRequestHeaders.UserAgent.Count == 0)
             _httpClient.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("MimironSQL", "1.0"));
 

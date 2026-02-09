@@ -145,8 +145,8 @@ internal sealed class EfLazyLoadingProxyDb2EntityFactory(DbContext context, IDb2
                     if (pType == typeof(DbContext))
                     {
                         args[pIndex] = _context;
-						continue;
-					}
+                        continue;
+                    }
 
                     if (typeof(IEntityType).IsAssignableFrom(pType))
                     {
@@ -157,8 +157,8 @@ internal sealed class EfLazyLoadingProxyDb2EntityFactory(DbContext context, IDb2
                     if (pType == typeof(ILazyLoader))
                     {
                         args[pIndex] = lazyLoader;
-						continue;
-					}
+                        continue;
+                    }
 
                     if (pType == typeof(object[]))
                     {

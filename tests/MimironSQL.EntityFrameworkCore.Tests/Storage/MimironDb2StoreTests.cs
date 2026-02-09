@@ -246,7 +246,7 @@ public class MimironDb2StoreTests
 
         file1.ShouldBe(file2);
         schema1.ShouldBe(schema2);
-        
+
         db2StreamProvider.Received(1).OpenDb2Stream(tableName);
         dbdProvider.Received(1).Open(tableName);
         format.Received(1).OpenFile(stream);
@@ -281,7 +281,7 @@ public class MimironDb2StoreTests
         file1.ShouldBe(file3);
         schema1.ShouldBe(schema2);
         schema1.ShouldBe(schema3);
-        
+
         db2StreamProvider.Received(1).OpenDb2Stream(Arg.Any<string>());
     }
 

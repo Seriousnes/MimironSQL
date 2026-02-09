@@ -21,6 +21,7 @@ for project in "${csprojs[@]}"; do
 done
 
 declare -A referenced_by
+declare -A references
 for project in "${csprojs[@]}"; do
   project_dir="$(dirname "$project")"
 
@@ -30,6 +31,7 @@ for project in "${csprojs[@]}"; do
     include="${include//\\//}"
     referenced_project="$(realpath --relative-to="$repo_root" "$project_dir/$include")"
     referenced_by["$referenced_project"]+="$project"$'\n'
+    references["$project"]+="$referenced_project"$'\n'
   done < <(sed -n 's/.*<ProjectReference Include="\([^"]*\)".*/\1/p' "$project")
 done
 
@@ -67,6 +69,35 @@ for project in "${!visited[@]}"; do
   if [[ -n "${packable[$project]:-}" ]]; then
     selected["$project"]=1
   fi
+done
+
+# Ensure that when we pack a project, we also pack any referenced packable projects.
+# This avoids publishing a package that depends on a version-bumped dependency that
+# wasn't packed/published in the same workflow run.
+queue=()
+declare -A selected_visited
+for project in "${!selected[@]}"; do
+  selected_visited["$project"]=1
+  queue+=("$project")
+done
+
+while [[ ${#queue[@]} -ne 0 ]]; do
+  project="${queue[0]}"
+  queue=("${queue[@]:1}")
+
+  while IFS= read -r referenced; do
+    [[ -z "$referenced" ]] && continue
+
+    if [[ -z "${packable[$referenced]:-}" ]]; then
+      continue
+    fi
+
+    if [[ -z "${selected_visited[$referenced]:-}" ]]; then
+      selected_visited["$referenced"]=1
+      selected["$referenced"]=1
+      queue+=("$referenced")
+    fi
+  done < <(printf '%s' "${references[$project]:-}")
 done
 
 if [[ ${#selected[@]} -eq 0 ]]; then

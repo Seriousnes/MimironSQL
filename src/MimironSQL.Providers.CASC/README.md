@@ -2,7 +2,13 @@
 
 Reads DB2 files directly from a World of Warcraft installation via the CASC (Content Addressable Storage Container) archive system. Provides `IDb2StreamProvider` and supporting services for CASC archive access, encoding/index resolution, and BLTE decoding.
 
-This is an internal library — not published as a standalone package.
+## Installation
+
+Packages are published to GitHub Packages. See the repository README for feed setup, then install:
+
+```shell
+dotnet add package MimironSQL.Providers.CASC
+```
 
 ## DI Registration
 

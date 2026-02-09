@@ -27,8 +27,14 @@
 
   <ItemGroup>
     <ProjectReference Include="..\MimironSQL.Contracts\MimironSQL.Contracts.csproj" />
-    <ProjectReference Include="..\MimironSQL.Dbd\MimironSQL.Dbd.csproj" />
+    <ProjectReference Include="..\MimironSQL.Dbd\MimironSQL.Dbd.csproj" PrivateAssets="all" />
     <ProjectReference Include="..\MimironSQL.Formats.Wdc5\MimironSQL.Formats.Wdc5.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="$(TargetDir)MimironSQL.Dbd.dll"
+          Pack="true"
+          PackagePath="lib/net10.0/" />
   </ItemGroup>
 
 </Project>

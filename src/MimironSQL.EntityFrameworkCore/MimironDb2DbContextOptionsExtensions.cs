@@ -9,7 +9,7 @@ public static class MimironDb2DbContextOptionsExtensions
 {
     public static DbContextOptionsBuilder UseMimironDb2(
         this DbContextOptionsBuilder optionsBuilder,
-        Action<MimironDb2DbContextOptionsBuilder> configureOptions)
+        Action<IMimironDb2DbContextOptionsBuilder> configureOptions)
     {
         ArgumentNullException.ThrowIfNull(optionsBuilder);
         ArgumentNullException.ThrowIfNull(configureOptions);

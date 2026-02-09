@@ -4,6 +4,8 @@ Parser for WoWDBDefs `.dbd` definition files. Produces the typed model (`DbdFile
 
 This is an internal library — not published as a standalone package. It is referenced by `MimironSQL.EntityFrameworkCore` and `MimironSQL.DbContextGenerator`.
 
+The `MimironSQL.Dbd` implementation assembly is shipped as an embedded dependency (e.g. included under `lib/...` for the EF Core provider and under `analyzers/...` for the source generator).
+
 ## Key Types
 
 | Type | Purpose |

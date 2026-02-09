@@ -6,11 +6,20 @@
 		<Nullable>enable</Nullable>		
 		<RootNamespace>MimironSQL.Providers</RootNamespace>
 		<IsPackable>true</IsPackable>
+		<PackageId>MimironSQL.Providers.FileSystem</PackageId>
+		<Version>0.1.0</Version>
+		<Authors>Seriousnes</Authors>
+		<Company>Seriousnes</Company>
+		<Description>File system-based implementations of MimironSQL provider interfaces (DB2 streams, DBD definitions, and TACT keys)</Description>
+		<PackageProjectUrl>https://github.com/Seriousnes/MimironSQL</PackageProjectUrl>
+		<RepositoryUrl>https://github.com/Seriousnes/MimironSQL</RepositoryUrl>
+		<RepositoryType>git</RepositoryType>
+		<PackageLicenseExpression>MIT</PackageLicenseExpression>
+		<PackageTags>warcraft;wow;db2;providers;filesystem;dbd;tactkeys</PackageTags>
 	</PropertyGroup>
 
 	<ItemGroup>
 	  <ProjectReference Include="..\MimironSQL.Contracts\MimironSQL.Contracts.csproj" />
-	  <ProjectReference Include="..\MimironSQL.EntityFrameworkCore\MimironSQL.EntityFrameworkCore.csproj" />
 	</ItemGroup>
 	
 </Project>

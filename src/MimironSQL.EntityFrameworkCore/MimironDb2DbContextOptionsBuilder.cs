@@ -6,7 +6,7 @@ using MimironSQL.EntityFrameworkCore.Infrastructure;
 
 namespace MimironSQL.EntityFrameworkCore;
 
-public class MimironDb2DbContextOptionsBuilder
+public class MimironDb2DbContextOptionsBuilder : IMimironDb2DbContextOptionsBuilder
 {
     public MimironDb2DbContextOptionsBuilder(DbContextOptionsBuilder optionsBuilder)
     {
@@ -16,7 +16,7 @@ public class MimironDb2DbContextOptionsBuilder
 
     public DbContextOptionsBuilder OptionsBuilder { get; }
 
-    public virtual MimironDb2DbContextOptionsBuilder ConfigureProvider(
+    public virtual IMimironDb2DbContextOptionsBuilder ConfigureProvider(
         string providerKey,
         int providerConfigHash,
         Action<IServiceCollection> applyProviderServices)

@@ -2,7 +2,13 @@
 
 File system-based implementations of the three provider interfaces from `MimironSQL.Contracts`. Reads DB2 files, DBD definitions, and TACT keys from local disk.
 
-This is an internal library — not published as a standalone package.
+## Installation
+
+Packages are published to GitHub Packages. See the repository README for feed setup, then install:
+
+```shell
+dotnet add package MimironSQL.Providers.FileSystem
+```
 
 ## Providers
 

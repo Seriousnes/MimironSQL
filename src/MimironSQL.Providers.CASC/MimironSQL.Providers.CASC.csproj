@@ -5,7 +5,17 @@
 		<ImplicitUsings>enable</ImplicitUsings>
 		<Nullable>enable</Nullable>		
 		<RootNamespace>MimironSQL.Providers</RootNamespace>
-		<IsPackable>false</IsPackable>
+		<IsPackable>true</IsPackable>
+		<PackageId>MimironSQL.Providers.CASC</PackageId>
+		<Version>0.1.0</Version>
+		<Authors>Seriousnes</Authors>
+		<Company>Seriousnes</Company>
+		<Description>CASC-based implementations of MimironSQL provider interfaces for reading DB2 files from a WoW installation</Description>
+		<PackageProjectUrl>https://github.com/Seriousnes/MimironSQL</PackageProjectUrl>
+		<RepositoryUrl>https://github.com/Seriousnes/MimironSQL</RepositoryUrl>
+		<RepositoryType>git</RepositoryType>
+		<PackageLicenseExpression>MIT</PackageLicenseExpression>
+		<PackageTags>warcraft;wow;db2;providers;casc;blte;tact</PackageTags>
 	</PropertyGroup>
 
 	<ItemGroup>
@@ -19,7 +29,6 @@
 
 	<ItemGroup>
 	  <ProjectReference Include="..\MimironSQL.Contracts\MimironSQL.Contracts.csproj" />
-	  <ProjectReference Include="..\MimironSQL.EntityFrameworkCore\MimironSQL.EntityFrameworkCore.csproj" />
 	  <ProjectReference Include="..\MimironSQL.Providers.FileSystem\MimironSQL.Providers.FileSystem.csproj" />
 	</ItemGroup>
 

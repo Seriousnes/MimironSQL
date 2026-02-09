@@ -6,8 +6,8 @@ namespace MimironSQL.Providers;
 
 public static class MimironDb2CascOptionsBuilderExtensions
 {
-    public static MimironDb2DbContextOptionsBuilder UseCascNet(
-        this MimironDb2DbContextOptionsBuilder builder,
+    public static IMimironDb2DbContextOptionsBuilder UseCascNet(
+        this IMimironDb2DbContextOptionsBuilder builder,
         string wowInstallRoot,
         string dbdDefinitionsDirectory,
         Action<CascStorageOptions>? configureStorage = null,
@@ -20,8 +20,8 @@ public static class MimironDb2CascOptionsBuilderExtensions
             configureWowDb2Manifest,
             configureCascNet);
 
-    public static MimironDb2DbContextOptionsBuilder UseCascNet(
-        this MimironDb2DbContextOptionsBuilder builder,
+    public static IMimironDb2DbContextOptionsBuilder UseCascNet(
+        this IMimironDb2DbContextOptionsBuilder builder,
         string wowInstallRoot,
         FileSystemDbdProviderOptions dbdOptions,
         Action<CascStorageOptions>? configureStorage = null,

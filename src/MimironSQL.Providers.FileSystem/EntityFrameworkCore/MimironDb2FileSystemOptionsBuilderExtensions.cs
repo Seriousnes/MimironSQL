@@ -6,16 +6,16 @@ namespace MimironSQL.Providers;
 
 public static class MimironDb2FileSystemOptionsBuilderExtensions
 {
-    public static MimironDb2DbContextOptionsBuilder UseFileSystem(
-        this MimironDb2DbContextOptionsBuilder builder,
+    public static IMimironDb2DbContextOptionsBuilder UseFileSystem(
+        this IMimironDb2DbContextOptionsBuilder builder,
         string db2DirectoryPath,
         string dbdDefinitionsDirectory)
         => builder.UseFileSystem(
             new FileSystemDb2StreamProviderOptions(db2DirectoryPath),
             new FileSystemDbdProviderOptions(dbdDefinitionsDirectory));
 
-    public static MimironDb2DbContextOptionsBuilder UseFileSystem(
-        this MimironDb2DbContextOptionsBuilder builder,
+    public static IMimironDb2DbContextOptionsBuilder UseFileSystem(
+        this IMimironDb2DbContextOptionsBuilder builder,
         FileSystemDb2StreamProviderOptions db2Options,
         FileSystemDbdProviderOptions dbdOptions)
     {

@@ -18,6 +18,8 @@ A read-only Entity Framework Core database provider for World of Warcraft DB2 fi
 | `MimironSQL.DbContextGenerator` | Source generator that emits entities and DbContext from `.dbd` definitions |
 | `MimironSQL.Contracts` | Public interfaces and types for extending MimironSQL |
 | `MimironSQL.Formats.Wdc5` | WDC5 binary format reader |
+| `MimironSQL.Providers.FileSystem` | File system-based implementations of `IDb2StreamProvider`, `IDbdProvider`, and `ITactKeyProvider` |
+| `MimironSQL.Providers.CASC` | CASC-based `IDb2StreamProvider` and related CASC services |
 | `Salsa20` | Salsa20 stream cipher used for encrypted DB2 sections |
 
 ## Installation
@@ -35,6 +37,8 @@ Then install the packages you need:
 
 ```shell
 dotnet add package MimironSQL.EntityFrameworkCore
+dotnet add package MimironSQL.Providers.FileSystem
+dotnet add package MimironSQL.Providers.CASC
 dotnet add package MimironSQL.DbContextGenerator
 ```
 

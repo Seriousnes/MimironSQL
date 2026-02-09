@@ -1,8 +1,8 @@
 ﻿namespace MimironSQL.Providers;
 
-public sealed class CascDBCProvider(CascStorage storage, IManifestProvider manifestProvider) : IDb2StreamProvider
+public sealed class CascDBCProvider(ICascStorage storage, IManifestProvider manifestProvider) : IDb2StreamProvider
 {
-    private readonly CascStorage _storage = storage ?? throw new ArgumentNullException(nameof(storage));
+    private readonly ICascStorage _storage = storage ?? throw new ArgumentNullException(nameof(storage));
     private readonly IManifestProvider _manifestProvider = manifestProvider ?? throw new ArgumentNullException(nameof(manifestProvider));
 
     public Stream OpenDb2Stream(string tableName)

@@ -15,13 +15,10 @@ public sealed class MimironDb2AutoIncludeAndLazyLoadingTests
     {
         var testDataDir = TestDataPaths.GetIntegrationTestDataDirectory();
 
-        var db2Provider = new FileSystemDb2StreamProvider(new FileSystemDb2StreamProviderOptions(testDataDir));
-        var dbdProvider = new FileSystemDbdProvider(new FileSystemDbdProviderOptions(testDataDir));
-        var tactKeyProvider = Substitute.For<ITactKeyProvider>();
-        tactKeyProvider.TryGetKey(Arg.Any<ulong>(), out Arg.Any<ReadOnlyMemory<byte>>()).Returns(false);
-
         var optionsBuilder = new DbContextOptionsBuilder<AutoIncludeContext>();
-        optionsBuilder.UseMimironDb2(db2Provider, dbdProvider, tactKeyProvider);
+        optionsBuilder.UseMimironDb2(o => o.UseFileSystem(
+            db2DirectoryPath: testDataDir,
+            dbdDefinitionsDirectory: testDataDir));
 
         using var context = new AutoIncludeContext(optionsBuilder.Options);
 
@@ -38,13 +35,10 @@ public sealed class MimironDb2AutoIncludeAndLazyLoadingTests
     {
         var testDataDir = TestDataPaths.GetIntegrationTestDataDirectory();
 
-        var db2Provider = new FileSystemDb2StreamProvider(new FileSystemDb2StreamProviderOptions(testDataDir));
-        var dbdProvider = new FileSystemDbdProvider(new FileSystemDbdProviderOptions(testDataDir));
-        var tactKeyProvider = Substitute.For<ITactKeyProvider>();
-        tactKeyProvider.TryGetKey(Arg.Any<ulong>(), out Arg.Any<ReadOnlyMemory<byte>>()).Returns(false);
-
         var optionsBuilder = new DbContextOptionsBuilder<AutoIncludeContext>();
-        optionsBuilder.UseMimironDb2(db2Provider, dbdProvider, tactKeyProvider);
+        optionsBuilder.UseMimironDb2(o => o.UseFileSystem(
+            db2DirectoryPath: testDataDir,
+            dbdDefinitionsDirectory: testDataDir));
 
         using var context = new AutoIncludeContext(optionsBuilder.Options);
 
@@ -61,14 +55,11 @@ public sealed class MimironDb2AutoIncludeAndLazyLoadingTests
     {
         var testDataDir = TestDataPaths.GetIntegrationTestDataDirectory();
 
-        var db2Provider = new FileSystemDb2StreamProvider(new FileSystemDb2StreamProviderOptions(testDataDir));
-        var dbdProvider = new FileSystemDbdProvider(new FileSystemDbdProviderOptions(testDataDir));
-        var tactKeyProvider = Substitute.For<ITactKeyProvider>();
-        tactKeyProvider.TryGetKey(Arg.Any<ulong>(), out Arg.Any<ReadOnlyMemory<byte>>()).Returns(false);
-
         var optionsBuilder = new DbContextOptionsBuilder<LazyLoadingContext>();
         optionsBuilder.UseLazyLoadingProxies();
-        optionsBuilder.UseMimironDb2(db2Provider, dbdProvider, tactKeyProvider);
+        optionsBuilder.UseMimironDb2(o => o.UseFileSystem(
+            db2DirectoryPath: testDataDir,
+            dbdDefinitionsDirectory: testDataDir));
 
         using var context = new LazyLoadingContext(optionsBuilder.Options);
 

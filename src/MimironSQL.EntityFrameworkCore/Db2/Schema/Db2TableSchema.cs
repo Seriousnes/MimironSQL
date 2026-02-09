@@ -2,7 +2,7 @@ namespace MimironSQL.EntityFrameworkCore.Db2.Schema;
 
 internal sealed class Db2TableSchema(string tableName, uint layoutHash, int physicalColumnCount, IReadOnlyList<Db2FieldSchema> fields)
 {
-    private readonly Dictionary<string, Db2FieldSchema> _fieldsByName = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, Db2FieldSchema> _fieldsByName = fields.ToDictionary(static f => f.Name, static f => f, StringComparer.Ordinal);
 
     public string TableName { get; } = tableName;
     public uint LayoutHash { get; } = layoutHash;
@@ -11,12 +11,6 @@ internal sealed class Db2TableSchema(string tableName, uint layoutHash, int phys
 
     public bool TryGetField(string name, out Db2FieldSchema field)
     {
-        if (_fieldsByName is { Count: 0 })
-        {
-            foreach (var f in Fields)
-                _fieldsByName.TryAdd(f.Name, f);
-        }
-
         return _fieldsByName.TryGetValue(name, out field);
     }
 

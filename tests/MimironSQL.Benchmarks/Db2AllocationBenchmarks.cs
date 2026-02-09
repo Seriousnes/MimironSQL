@@ -86,21 +86,11 @@ public class Db2AllocationBenchmarks
 
     private static BenchmarkDb2Context CreateContext(string testDataDir)
     {
-        var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
-        var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
-
         var optionsBuilder = new DbContextOptionsBuilder<BenchmarkDb2Context>();
-        optionsBuilder.UseMimironDb2(db2Provider, dbdProvider, new NullTactKeyProvider());
+        optionsBuilder.UseMimironDb2(o => o.UseFileSystem(
+            db2DirectoryPath: testDataDir,
+            dbdDefinitionsDirectory: testDataDir));
 
         return new BenchmarkDb2Context(optionsBuilder.Options);
-    }
-
-    private sealed class NullTactKeyProvider : ITactKeyProvider
-    {
-        public bool TryGetKey(ulong keyName, out ReadOnlyMemory<byte> key)
-        {
-            key = default;
-            return false;
-        }
     }
 }

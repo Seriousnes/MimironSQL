@@ -1,11 +1,8 @@
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Options;
 
 using MimironSQL.EntityFrameworkCore;
 using MimironSQL.IntegrationTests.Helpers;
 using MimironSQL.Providers;
-
-using NSubstitute;
 
 using Shouldly;
 
@@ -25,27 +22,15 @@ public sealed class CascDb2ContextIntegrationLocalTests
         var manifestPath = Path.Combine(testDataDir, "manifest.json");
         File.Exists(manifestPath).ShouldBeTrue();
 
-        var options = new WowDb2ManifestOptions
-        {
-            CacheDirectory = testDataDir,
-            AssetName = "manifest.json",
-        };
-
-        using var httpClient = new HttpClient();
-        var wowDb2ManifestProvider = new WowDb2ManifestProvider(httpClient, Options.Create(options));
-        var manifestProvider = new LocalFirstManifestProvider(wowDb2ManifestProvider, Options.Create(options));
-
-        await manifestProvider.EnsureManifestExistsAsync();
-
-        var storage = await CascStorage.OpenInstallRootAsync(wowInstallRoot);
-        var db2Provider = new CascDBCProvider(storage, manifestProvider);
-
-        var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
-        var tactKeyProvider = Substitute.For<ITactKeyProvider>();
-        tactKeyProvider.TryGetKey(Arg.Any<ulong>(), out Arg.Any<ReadOnlyMemory<byte>>()).Returns(false);
-
         var optionsBuilder = new DbContextOptionsBuilder<WoWDb2Context>();
-        optionsBuilder.UseMimironDb2(db2Provider, dbdProvider, tactKeyProvider);
+        optionsBuilder.UseMimironDb2(o => o.UseCascNet(
+            wowInstallRoot: wowInstallRoot,
+            dbdDefinitionsDirectory: testDataDir,
+            configureWowDb2Manifest: m =>
+            {
+                m.CacheDirectory = testDataDir;
+                m.AssetName = "manifest.json";
+            }));
 
         using var context = new WoWDb2Context(optionsBuilder.Options);
 

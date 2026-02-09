@@ -51,9 +51,8 @@ public sealed class FileSystemProviderTests
         {
             File.WriteAllText(Path.Combine(dir, "Spell.dbd"), "COLUMNS\nint ID\n");
 
-            var provider = new FileSystemDbdProvider(new FileSystemDbdProviderOptions(dir));
+            var provider = new FileSystemDbdProvider(new FileSystemDbdProviderOptions(dir), new DbdParser());
             var file = provider.Open("Spell");
-            file.ShouldBeOfType<DbdFile>();
             file.ColumnsByName.ContainsKey("ID").ShouldBeTrue();
         }
         finally

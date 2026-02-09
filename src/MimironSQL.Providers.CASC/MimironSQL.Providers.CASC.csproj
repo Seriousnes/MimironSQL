@@ -19,6 +19,8 @@
 
 	<ItemGroup>
 	  <ProjectReference Include="..\MimironSQL.Contracts\MimironSQL.Contracts.csproj" />
+	  <ProjectReference Include="..\MimironSQL.EntityFrameworkCore\MimironSQL.EntityFrameworkCore.csproj" />
+	  <ProjectReference Include="..\MimironSQL.Providers.FileSystem\MimironSQL.Providers.FileSystem.csproj" />
 	</ItemGroup>
 
 </Project>

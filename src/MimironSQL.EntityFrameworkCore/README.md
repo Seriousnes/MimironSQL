@@ -6,20 +6,18 @@ Read-only Entity Framework Core database provider for World of Warcraft DB2 file
 
 ```csharp
 services.AddDbContext<WoWDb2Context>(options =>
-    options.UseMimironDb2(db2StreamProvider, dbdProvider, tactKeyProvider));
+    options.UseMimironDb2(o => o.UseFileSystem(
+        db2DirectoryPath: "path/to/db2/files",
+        dbdDefinitionsDirectory: "path/to/dbd/definitions")));
 ```
 
-`UseMimironDb2` requires three provider instances:
+Provider configuration is done via the `Action<MimironDb2DbContextOptionsBuilder>` callback. Provider-specific extension methods live in their provider packages (for example, `UseFileSystem(...)` and `UseCascNet(...)`). Only one provider may be configured.
 
-| Parameter | Type | Purpose |
-|-----------|------|---------|
-| `db2StreamProvider` | `IDb2StreamProvider` | Opens raw DB2 byte streams |
-| `dbdProvider` | `IDbdProvider` | Provides parsed DBD schema metadata |
-| `tactKeyProvider` | `ITactKeyProvider` | Resolves TACT encryption keys |
+If you need to register core MimironSQL services outside of EF Core, you can use:
 
-See `MimironSQL.Providers.FileSystem` and `MimironSQL.Providers.CASC` for built-in implementations.
-
-An optional `Action<MimironDb2DbContextOptionsBuilder>` callback is accepted for future configuration extensibility.
+```csharp
+services.AddMimironSQLServices();
+```
 
 ## Querying
 
@@ -48,10 +46,7 @@ public static class MimironDb2DbContextOptionsExtensions
 {
     public static DbContextOptionsBuilder UseMimironDb2(
         this DbContextOptionsBuilder optionsBuilder,
-        IDb2StreamProvider db2Provider,
-        IDbdProvider dbdProvider,
-        ITactKeyProvider tactKeyProvider,
-        Action<MimironDb2DbContextOptionsBuilder>? configureOptions = null);
+    Action<MimironDb2DbContextOptionsBuilder> configureOptions);
 }
 ```
 
@@ -66,19 +61,13 @@ public class MimironDb2DbContextOptionsBuilder
 
 ### `MimironDb2OptionsExtension`
 
-Implements `IDbContextOptionsExtension`. Carries the three provider instances and registers all internal services during `ApplyServices`.
+Implements `IDbContextOptionsExtension`. Carries provider selection and registers all internal services during `ApplyServices`.
 
 ```csharp
 public class MimironDb2OptionsExtension : IDbContextOptionsExtension
 {
-    public IDb2StreamProvider? Db2StreamProvider { get; }
-    public IDbdProvider? DbdProvider { get; }
-    public ITactKeyProvider? TactKeyProvider { get; }
-
-    public MimironDb2OptionsExtension WithProviders(
-        IDb2StreamProvider db2StreamProvider,
-        IDbdProvider dbdProvider,
-        ITactKeyProvider tactKeyProvider);
+    public string? ProviderKey { get; }
+    public int ProviderConfigHash { get; }
 }
 ```
 

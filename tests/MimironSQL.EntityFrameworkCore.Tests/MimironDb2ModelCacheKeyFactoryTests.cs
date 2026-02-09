@@ -1,13 +1,13 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+
+using MimironSQL.EntityFrameworkCore;
+using MimironSQL.EntityFrameworkCore.Infrastructure;
+using MimironSQL.Providers;
 
 using NSubstitute;
 
 using Shouldly;
-
-using MimironSQL.Providers;
-
-using System.Runtime.CompilerServices;
-using MimironSQL.EntityFrameworkCore.Infrastructure;
 
 namespace MimironSQL.EntityFrameworkCore.Tests;
 
@@ -17,82 +17,28 @@ public class MimironDb2ModelCacheKeyFactoryTests
     public void Create_WithSameConfiguration_ShouldProduceSameKey()
     {
         var factory = new MimironDb2ModelCacheKeyFactory();
-        var extension = new MimironDb2OptionsExtension().WithProviders(
-            Substitute.For<IDb2StreamProvider>(),
-            Substitute.For<IDbdProvider>(),
-            Substitute.For<ITactKeyProvider>());
-
-        var key1 = CreateKeyFromExtension(factory, extension, typeof(TestContext), designTime: false);
-        var key2 = CreateKeyFromExtension(factory, extension, typeof(TestContext), designTime: false);
+        var key1 = CreateKey<TestContext>(factory, providerKey: "Test", providerConfigHash: 1, designTime: false);
+        var key2 = CreateKey<TestContext>(factory, providerKey: "Test", providerConfigHash: 1, designTime: false);
 
         key1.ShouldBe(key2);
     }
 
     [Fact]
-    public void Create_WithDifferentDb2Providers_ShouldProduceDifferentKeys()
+    public void Create_WithDifferentProviderKeys_ShouldProduceDifferentKeys()
     {
         var factory = new MimironDb2ModelCacheKeyFactory();
-        var sharedDbd = Substitute.For<IDbdProvider>();
-        var sharedTact = Substitute.For<ITactKeyProvider>();
-
-        var extension1 = new MimironDb2OptionsExtension().WithProviders(
-            Substitute.For<IDb2StreamProvider>(),
-            sharedDbd,
-            sharedTact);
-
-        var extension2 = new MimironDb2OptionsExtension().WithProviders(
-            Substitute.For<IDb2StreamProvider>(),
-            sharedDbd,
-            sharedTact);
-
-        var key1 = CreateKeyFromExtension(factory, extension1, typeof(TestContext), designTime: false);
-        var key2 = CreateKeyFromExtension(factory, extension2, typeof(TestContext), designTime: false);
+        var key1 = CreateKey<TestContext>(factory, providerKey: "ProviderA", providerConfigHash: 1, designTime: false);
+        var key2 = CreateKey<TestContext>(factory, providerKey: "ProviderB", providerConfigHash: 1, designTime: false);
 
         key1.ShouldNotBe(key2);
     }
 
     [Fact]
-    public void Create_WithDifferentDbdProviders_ShouldProduceDifferentKeys()
+    public void Create_WithDifferentProviderConfigHashes_ShouldProduceDifferentKeys()
     {
         var factory = new MimironDb2ModelCacheKeyFactory();
-        var sharedDb2 = Substitute.For<IDb2StreamProvider>();
-        var sharedTact = Substitute.For<ITactKeyProvider>();
-
-        var extension1 = new MimironDb2OptionsExtension().WithProviders(
-            sharedDb2,
-            Substitute.For<IDbdProvider>(),
-            sharedTact);
-
-        var extension2 = new MimironDb2OptionsExtension().WithProviders(
-            sharedDb2,
-            Substitute.For<IDbdProvider>(),
-            sharedTact);
-
-        var key1 = CreateKeyFromExtension(factory, extension1, typeof(TestContext), designTime: false);
-        var key2 = CreateKeyFromExtension(factory, extension2, typeof(TestContext), designTime: false);
-
-        key1.ShouldNotBe(key2);
-    }
-
-    [Fact]
-    public void Create_WithDifferentTactKeyProviders_ShouldProduceDifferentKeys()
-    {
-        var factory = new MimironDb2ModelCacheKeyFactory();
-        var sharedDb2 = Substitute.For<IDb2StreamProvider>();
-        var sharedDbd = Substitute.For<IDbdProvider>();
-
-        var extension1 = new MimironDb2OptionsExtension().WithProviders(
-            sharedDb2,
-            sharedDbd,
-            Substitute.For<ITactKeyProvider>());
-
-        var extension2 = new MimironDb2OptionsExtension().WithProviders(
-            sharedDb2,
-            sharedDbd,
-            Substitute.For<ITactKeyProvider>());
-
-        var key1 = CreateKeyFromExtension(factory, extension1, typeof(TestContext), designTime: false);
-        var key2 = CreateKeyFromExtension(factory, extension2, typeof(TestContext), designTime: false);
+        var key1 = CreateKey<TestContext>(factory, providerKey: "Test", providerConfigHash: 1, designTime: false);
+        var key2 = CreateKey<TestContext>(factory, providerKey: "Test", providerConfigHash: 2, designTime: false);
 
         key1.ShouldNotBe(key2);
     }
@@ -101,13 +47,8 @@ public class MimironDb2ModelCacheKeyFactoryTests
     public void Create_WithDifferentContextTypes_ShouldProduceDifferentKeys()
     {
         var factory = new MimironDb2ModelCacheKeyFactory();
-        var extension = new MimironDb2OptionsExtension().WithProviders(
-            Substitute.For<IDb2StreamProvider>(),
-            Substitute.For<IDbdProvider>(),
-            Substitute.For<ITactKeyProvider>());
-
-        var key1 = CreateKeyFromExtension(factory, extension, typeof(TestContext), designTime: false);
-        var key2 = CreateKeyFromExtension(factory, extension, typeof(AnotherTestContext), designTime: false);
+        var key1 = CreateKey<TestContext>(factory, providerKey: "Test", providerConfigHash: 1, designTime: false);
+        var key2 = CreateKey<AnotherTestContext>(factory, providerKey: "Test", providerConfigHash: 1, designTime: false);
 
         key1.ShouldNotBe(key2);
     }
@@ -116,13 +57,8 @@ public class MimironDb2ModelCacheKeyFactoryTests
     public void Create_WithDifferentDesignTimeFlag_ShouldProduceDifferentKeys()
     {
         var factory = new MimironDb2ModelCacheKeyFactory();
-        var extension = new MimironDb2OptionsExtension().WithProviders(
-            Substitute.For<IDb2StreamProvider>(),
-            Substitute.For<IDbdProvider>(),
-            Substitute.For<ITactKeyProvider>());
-
-        var key1 = CreateKeyFromExtension(factory, extension, typeof(TestContext), designTime: false);
-        var key2 = CreateKeyFromExtension(factory, extension, typeof(TestContext), designTime: true);
+        var key1 = CreateKey<TestContext>(factory, providerKey: "Test", providerConfigHash: 1, designTime: false);
+        var key2 = CreateKey<TestContext>(factory, providerKey: "Test", providerConfigHash: 1, designTime: true);
 
         key1.ShouldNotBe(key2);
     }
@@ -161,18 +97,26 @@ public class MimironDb2ModelCacheKeyFactoryTests
         factory.Create(ctx).ShouldBe((typeof(TestContext), false));
     }
 
-    private static object CreateKeyFromExtension(
+    private static object CreateKey<TContext>(
         MimironDb2ModelCacheKeyFactory factory,
-        MimironDb2OptionsExtension extension,
-        Type contextType,
+        string providerKey,
+        int providerConfigHash,
         bool designTime)
+        where TContext : DbContext
     {
-        return (
-            contextType,
-            extension.Db2StreamProvider is null ? 0 : RuntimeHelpers.GetHashCode(extension.Db2StreamProvider),
-            extension.DbdProvider is null ? 0 : RuntimeHelpers.GetHashCode(extension.DbdProvider),
-            extension.TactKeyProvider is null ? 0 : RuntimeHelpers.GetHashCode(extension.TactKeyProvider),
-            designTime);
+        var options = new DbContextOptionsBuilder<TContext>()
+            .UseMimironDb2(o => o.ConfigureProvider(
+                providerKey: providerKey,
+                providerConfigHash: providerConfigHash,
+                applyProviderServices: services =>
+                {
+                    services.AddSingleton(Substitute.For<IDb2StreamProvider>());
+                    services.AddSingleton(Substitute.For<IDbdProvider>());
+                }))
+            .Options;
+
+        using var context = (TContext)Activator.CreateInstance(typeof(TContext), options)!;
+        return factory.Create(context, designTime);
     }
 
     private static object CreateKeyWithoutExtension(

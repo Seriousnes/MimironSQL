@@ -18,14 +18,13 @@ public sealed class MimironDb2QueryExecutionTests
         var testDataDir = TestDataPaths.GetIntegrationTestDataDirectory();
 
         var db2Provider = new FileSystemDb2StreamProvider(new FileSystemDb2StreamProviderOptions(testDataDir));
-        var dbdProvider = new FileSystemDbdProvider(new FileSystemDbdProviderOptions(testDataDir));
-        var tactKeyProvider = Substitute.For<ITactKeyProvider>();
-        tactKeyProvider.TryGetKey(Arg.Any<ulong>(), out Arg.Any<ReadOnlyMemory<byte>>()).Returns(false);
 
         var expectedId = ReadFirstRowId(db2Provider, tableName: "GarrType");
 
         var optionsBuilder = new DbContextOptionsBuilder<GarrTypeContext>();
-        optionsBuilder.UseMimironDb2(db2Provider, dbdProvider, tactKeyProvider);
+        optionsBuilder.UseMimironDb2(o => o.UseFileSystem(
+            db2DirectoryPath: testDataDir,
+            dbdDefinitionsDirectory: testDataDir));
         var options = optionsBuilder.Options;
 
         using var context = new GarrTypeContext(options);
@@ -43,13 +42,10 @@ public sealed class MimironDb2QueryExecutionTests
     {
         var testDataDir = TestDataPaths.GetIntegrationTestDataDirectory();
 
-        var db2Provider = new FileSystemDb2StreamProvider(new FileSystemDb2StreamProviderOptions(testDataDir));
-        var dbdProvider = new FileSystemDbdProvider(new FileSystemDbdProviderOptions(testDataDir));
-        var tactKeyProvider = Substitute.For<ITactKeyProvider>();
-        tactKeyProvider.TryGetKey(Arg.Any<ulong>(), out Arg.Any<ReadOnlyMemory<byte>>()).Returns(false);
-
         var optionsBuilder = new DbContextOptionsBuilder<GarrTypeContext>();
-        optionsBuilder.UseMimironDb2(db2Provider, dbdProvider, tactKeyProvider);
+        optionsBuilder.UseMimironDb2(o => o.UseFileSystem(
+            db2DirectoryPath: testDataDir,
+            dbdDefinitionsDirectory: testDataDir));
         var options = optionsBuilder.Options;
 
         using var context = new GarrTypeContext(options);

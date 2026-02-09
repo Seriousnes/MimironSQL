@@ -78,6 +78,14 @@ public static class ServiceCollectionExtensions
 
         services.TryAddSingleton<ICascStorageService, CascStorageService>();
 
+        // CascDBCProvider requires an opened storage instance.
+        services.TryAddSingleton(sp =>
+        {
+            var installRoot = sp.GetRequiredService<IOptions<CascNetOptions>>().Value.WowInstallRoot;
+            var storageService = sp.GetRequiredService<ICascStorageService>();
+            return storageService.OpenInstallRootAsync(installRoot).GetAwaiter().GetResult();
+        });
+
         services.TryAddSingleton<CascDBCProvider>();
         services.TryAddSingleton<IDb2StreamProvider>(sp => sp.GetRequiredService<CascDBCProvider>());
 

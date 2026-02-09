@@ -10,6 +10,7 @@
 
 	<ItemGroup>
 	  <ProjectReference Include="..\MimironSQL.Contracts\MimironSQL.Contracts.csproj" />
+	  <ProjectReference Include="..\MimironSQL.EntityFrameworkCore\MimironSQL.EntityFrameworkCore.csproj" />
 	</ItemGroup>
 	
 </Project>

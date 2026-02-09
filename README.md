@@ -8,7 +8,7 @@ A read-only Entity Framework Core database provider for World of Warcraft DB2 fi
 - **Source-generated DbContext** — a Roslyn source generator reads WoWDBDefs `.dbd` files at compile time and emits entity classes, configurations, and a typed `WoWDb2Context`
 - **File system & CASC providers** — load DB2 data from extracted files on disk or directly from a World of Warcraft installation via CASC
 - **Encrypted section support** — transparent Salsa20 decryption for TACT-encrypted DB2 sections
-- **Extensible format & provider model** — implement `IDb2Format`, `IDb2StreamProvider`, `IDbdProvider`, or `ITactKeyProvider` from the Contracts package to add new formats or data sources
+- **Extensible format & provider model** — implement `IDb2Format`, `IDb2StreamProvider`, `IDbdProvider`, `IDbdParser`, or `ITactKeyProvider` from the Contracts package to add new formats or data sources
 
 ## Packages
 
@@ -63,38 +63,22 @@ public partial class WoWDb2Context;
 #### File system provider
 
 ```csharp
-services.AddSingleton<IDb2StreamProvider>(
-    new FileSystemDb2StreamProvider(new("path/to/db2/files")));
-services.AddSingleton<IDbdProvider>(
-    new FileSystemDbdProvider(new("path/to/dbd/definitions")));
-services.AddSingleton<ITactKeyProvider>(
-    new FileSystemTactKeyProvider(new("path/to/tactkeys.csv")));
-
-services.AddDbContext<WoWDb2Context>((sp, options) =>
-    options.UseMimironDb2(
-        sp.GetRequiredService<IDb2StreamProvider>(),
-        sp.GetRequiredService<IDbdProvider>(),
-        sp.GetRequiredService<ITactKeyProvider>()));
+services.AddDbContext<WoWDb2Context>(options =>
+    options.UseMimironDb2(o => o.UseFileSystem(
+        db2DirectoryPath: "path/to/db2/files",
+        dbdDefinitionsDirectory: "path/to/dbd/definitions")));
 ```
 
 #### CASC provider
 
 ```csharp
-services.AddCascNet(configuration);
-
-services.AddSingleton<IDbdProvider>(
-    new FileSystemDbdProvider(new("path/to/dbd/definitions")));
-services.AddSingleton<ITactKeyProvider>(
-    new FileSystemTactKeyProvider(new("path/to/tactkeys.csv")));
-
-services.AddDbContext<WoWDb2Context>((sp, options) =>
-    options.UseMimironDb2(
-        sp.GetRequiredService<IDb2StreamProvider>(),
-        sp.GetRequiredService<IDbdProvider>(),
-        sp.GetRequiredService<ITactKeyProvider>()));
+services.AddDbContext<WoWDb2Context>(options =>
+    options.UseMimironDb2(o => o.UseCascNet(
+        wowInstallRoot: "path/to/World of Warcraft",
+        dbdDefinitionsDirectory: "path/to/dbd/definitions")));
 ```
 
-`AddCascNet` registers `IDb2StreamProvider` and related CASC services. `IDbdProvider` and `ITactKeyProvider` still need to be registered separately.
+`UseCascNet` configures CASC for DB2 streams and uses the file system for `.dbd` definitions.
 
 ### 4. Query
 
@@ -115,10 +99,17 @@ The `MimironSQL.Contracts` package defines the extension points:
 |-----------|---------|
 | `IDb2StreamProvider` | Opens a `Stream` for a named DB2 table |
 | `IDbdProvider` | Opens a parsed `IDbdFile` for a named table |
+| `IDbdParser` | Parses a `.dbd` stream or file path into an `IDbdFile` |
 | `ITactKeyProvider` | Resolves TACT encryption keys by lookup ID |
 | `IDb2Format` | Reads a DB2 binary stream into an `IDb2File` |
 
-Implement any of these interfaces and pass your implementation to `UseMimironDb2()` or register it with the `Db2FormatRegistry` to plug in new data sources or file format versions.
+Implement any of these interfaces to plug in new data sources or file format versions.
+
+If you're composing pieces outside of EF Core, you can register core services with:
+
+```csharp
+services.AddMimironSQLServices();
+```
 
 ## Acknowledgments
 

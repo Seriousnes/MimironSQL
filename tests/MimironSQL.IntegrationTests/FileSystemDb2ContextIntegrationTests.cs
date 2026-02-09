@@ -17,14 +17,10 @@ public sealed class FileSystemDb2ContextIntegrationTests
         var testDataDir = TestDataPaths.GetTestDataDirectory();
         Directory.Exists(testDataDir).ShouldBeTrue();
 
-        var dbdProvider = new FileSystemDbdProvider(new(testDataDir));
-        var db2Provider = new FileSystemDb2StreamProvider(new(testDataDir));
-
-        var tactKeyProvider = Substitute.For<ITactKeyProvider>();
-        tactKeyProvider.TryGetKey(Arg.Any<ulong>(), out Arg.Any<ReadOnlyMemory<byte>>()).Returns(false);
-
         var optionsBuilder = new DbContextOptionsBuilder<WoWDb2Context>();
-        optionsBuilder.UseMimironDb2(db2Provider, dbdProvider, tactKeyProvider);
+        optionsBuilder.UseMimironDb2(o => o.UseFileSystem(
+            db2DirectoryPath: testDataDir,
+            dbdDefinitionsDirectory: testDataDir));
 
         return new WoWDb2Context(optionsBuilder.Options);
     }

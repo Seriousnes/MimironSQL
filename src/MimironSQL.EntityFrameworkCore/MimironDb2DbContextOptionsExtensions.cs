@@ -2,7 +2,6 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 
 using MimironSQL.EntityFrameworkCore.Infrastructure;
-using MimironSQL.Providers;
 
 namespace MimironSQL.EntityFrameworkCore;
 
@@ -10,25 +9,25 @@ public static class MimironDb2DbContextOptionsExtensions
 {
     public static DbContextOptionsBuilder UseMimironDb2(
         this DbContextOptionsBuilder optionsBuilder,
-        IDb2StreamProvider db2Provider,
-        IDbdProvider dbdProvider,
-        ITactKeyProvider tactKeyProvider,
-        Action<MimironDb2DbContextOptionsBuilder>? configureOptions = null)
+        Action<MimironDb2DbContextOptionsBuilder> configureOptions)
     {
         ArgumentNullException.ThrowIfNull(optionsBuilder);
-        ArgumentNullException.ThrowIfNull(db2Provider);
-        ArgumentNullException.ThrowIfNull(dbdProvider);
-        ArgumentNullException.ThrowIfNull(tactKeyProvider);
+        ArgumentNullException.ThrowIfNull(configureOptions);
 
         var extension = GetOrCreateExtension(optionsBuilder);
-        extension = extension.WithProviders(db2Provider, dbdProvider, tactKeyProvider);
-
         ((IDbContextOptionsBuilderInfrastructure)optionsBuilder).AddOrUpdateExtension(extension);
 
         // Provider default: tracking enabled for EF-like behaviors (e.g., lazy loading).
         optionsBuilder.UseQueryTrackingBehavior(QueryTrackingBehavior.TrackAll);
 
-        configureOptions?.Invoke(new MimironDb2DbContextOptionsBuilder(optionsBuilder));
+        configureOptions(new MimironDb2DbContextOptionsBuilder(optionsBuilder));
+
+        extension = GetOrCreateExtension(optionsBuilder);
+        if (extension.ProviderKey is null)
+        {
+            throw new InvalidOperationException(
+                "MimironDb2 providers must be configured. Call UseFileSystem(...), UseCascNet(...), or another provider method inside UseMimironDb2(...). ");
+        }
 
         return optionsBuilder;
     }

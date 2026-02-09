@@ -7,7 +7,7 @@ public sealed class CascStorageService(IManifestProvider manifestProvider, IOpti
     private readonly IManifestProvider _manifestProvider = manifestProvider ?? throw new ArgumentNullException(nameof(manifestProvider));
     private readonly CascStorageOptions _storageOptions = storageOptions?.Value ?? throw new ArgumentNullException(nameof(storageOptions));
 
-    public async Task<CascStorage> OpenInstallRootAsync(string installRoot, CancellationToken cancellationToken = default)
+    public async Task<ICascStorage> OpenInstallRootAsync(string installRoot, CancellationToken cancellationToken = default)
     {
         if (_storageOptions.EnsureManifestOnOpenInstallRoot)
             await _manifestProvider.EnsureManifestExistsAsync(cancellationToken).ConfigureAwait(false);

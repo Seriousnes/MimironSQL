@@ -1,8 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 
-using System.Runtime.CompilerServices;
-
 namespace MimironSQL.EntityFrameworkCore.Infrastructure;
 
 public class MimironDb2ModelCacheKeyFactory : IModelCacheKeyFactory
@@ -17,9 +15,8 @@ public class MimironDb2ModelCacheKeyFactory : IModelCacheKeyFactory
 
         return (
             context.GetType(),
-            extension.Db2StreamProvider is null ? 0 : RuntimeHelpers.GetHashCode(extension.Db2StreamProvider),
-            extension.DbdProvider is null ? 0 : RuntimeHelpers.GetHashCode(extension.DbdProvider),
-            extension.TactKeyProvider is null ? 0 : RuntimeHelpers.GetHashCode(extension.TactKeyProvider),
+            extension.ProviderKey ?? string.Empty,
+            extension.ProviderConfigHash,
             designTime);
     }
 

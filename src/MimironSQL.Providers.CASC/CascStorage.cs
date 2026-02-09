@@ -1,6 +1,6 @@
 namespace MimironSQL.Providers;
 
-public sealed class CascStorage
+public sealed class CascStorage : ICascStorage
 {
     private readonly CascLocalArchiveReader? _archiveReader;
     private readonly CascEncodingIndex? _encoding;

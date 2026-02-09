@@ -3,7 +3,9 @@ using System.Text;
 
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
+using MimironSQL.Dbd;
 using MimironSQL.Providers;
 
 namespace MimironSQL.EntityFrameworkCore.Infrastructure;
@@ -18,30 +20,29 @@ public class MimironDb2OptionsExtension : IDbContextOptionsExtension
 
     protected MimironDb2OptionsExtension(MimironDb2OptionsExtension copyFrom)
     {
-        Db2StreamProvider = copyFrom.Db2StreamProvider;
-        DbdProvider = copyFrom.DbdProvider;
-        TactKeyProvider = copyFrom.TactKeyProvider;
+        ProviderKey = copyFrom.ProviderKey;
+        ProviderConfigHash = copyFrom.ProviderConfigHash;
+        ApplyProviderServices = copyFrom.ApplyProviderServices;
     }
 
     public virtual DbContextOptionsExtensionInfo Info => _info ??= new ExtensionInfo(this);
 
-    public IDb2StreamProvider? Db2StreamProvider { get; private set; }
-    public IDbdProvider? DbdProvider { get; private set; }
-    public ITactKeyProvider? TactKeyProvider { get; private set; }
+    public string? ProviderKey { get; private set; }
+    public int ProviderConfigHash { get; private set; }
+    public Action<IServiceCollection>? ApplyProviderServices { get; private set; }
 
-    public MimironDb2OptionsExtension WithProviders(
-        IDb2StreamProvider db2StreamProvider,
-        IDbdProvider dbdProvider,
-        ITactKeyProvider tactKeyProvider)
+    public MimironDb2OptionsExtension WithProvider(
+        string providerKey,
+        int providerConfigHash,
+        Action<IServiceCollection> applyProviderServices)
     {
-        ArgumentNullException.ThrowIfNull(db2StreamProvider);
-        ArgumentNullException.ThrowIfNull(dbdProvider);
-        ArgumentNullException.ThrowIfNull(tactKeyProvider);
+        ArgumentException.ThrowIfNullOrWhiteSpace(providerKey);
+        ArgumentNullException.ThrowIfNull(applyProviderServices);
 
         var clone = Clone();
-        clone.Db2StreamProvider = db2StreamProvider;
-        clone.DbdProvider = dbdProvider;
-        clone.TactKeyProvider = tactKeyProvider;
+        clone.ProviderKey = providerKey;
+        clone.ProviderConfigHash = providerConfigHash;
+        clone.ApplyProviderServices = applyProviderServices;
         return clone;
     }
 
@@ -51,23 +52,29 @@ public class MimironDb2OptionsExtension : IDbContextOptionsExtension
     {
         services.AddSingleton<IModelCacheKeyFactory, MimironDb2ModelCacheKeyFactory>();
         services.AddSingleton<IModelCustomizer, MimironDb2ModelCustomizer>();
-        if (Db2StreamProvider is not null)
-            services.AddSingleton(Db2StreamProvider);
 
-        if (DbdProvider is not null)
-            services.AddSingleton(DbdProvider);
+        // Contracts-level defaults that are safe to override.
+        services.TryAddSingleton<IDbdParser, DbdParser>();
+        services.TryAddSingleton<ITactKeyProvider, NullTactKeyProvider>();
 
-        if (TactKeyProvider is not null)
-            services.AddSingleton(TactKeyProvider);
-
+        ApplyProviderServices?.Invoke(services);
         MimironDb2ServiceCollectionExtensions.AddCoreServices(services);
     }
 
     public void Validate(IDbContextOptions options)
     {
-        if (Db2StreamProvider is null || DbdProvider is null || TactKeyProvider is null)
+        if (ProviderKey is null || ApplyProviderServices is null)
             throw new InvalidOperationException(
                 $"MimironDb2 providers must be configured. Call {nameof(MimironDb2DbContextOptionsExtensions.UseMimironDb2)} to configure the provider.");
+    }
+
+    private sealed class NullTactKeyProvider : ITactKeyProvider
+    {
+        public bool TryGetKey(ulong tactKeyLookup, out ReadOnlyMemory<byte> key)
+        {
+            key = default;
+            return false;
+        }
     }
 
     private sealed class ExtensionInfo(IDbContextOptionsExtension extension) : DbContextOptionsExtensionInfo(extension)
@@ -88,22 +95,10 @@ public class MimironDb2OptionsExtension : IDbContextOptionsExtension
                     var builder = new StringBuilder();
                     builder.Append("MimironDb2");
 
-                    if (Extension.Db2StreamProvider is not null)
+                    if (Extension.ProviderKey is not null)
                     {
-                        builder.Append(":Db2=");
-                        builder.Append(Extension.Db2StreamProvider.GetType().Name);
-                    }
-
-                    if (Extension.DbdProvider is not null)
-                    {
-                        builder.Append(":Dbd=");
-                        builder.Append(Extension.DbdProvider.GetType().Name);
-                    }
-
-                    if (Extension.TactKeyProvider is not null)
-                    {
-                        builder.Append(":TactKeys=");
-                        builder.Append(Extension.TactKeyProvider.GetType().Name);
+                        builder.Append(":Provider=");
+                        builder.Append(Extension.ProviderKey);
                     }
 
                     _logFragment = builder.ToString();
@@ -115,28 +110,22 @@ public class MimironDb2OptionsExtension : IDbContextOptionsExtension
         public override int GetServiceProviderHashCode()
         {
             var hashCode = new HashCode();
-            hashCode.Add(Extension.Db2StreamProvider is null ? 0 : RuntimeHelpers.GetHashCode(Extension.Db2StreamProvider));
-            hashCode.Add(Extension.DbdProvider is null ? 0 : RuntimeHelpers.GetHashCode(Extension.DbdProvider));
-            hashCode.Add(Extension.TactKeyProvider is null ? 0 : RuntimeHelpers.GetHashCode(Extension.TactKeyProvider));
+            hashCode.Add(Extension.ProviderKey, StringComparer.Ordinal);
+            hashCode.Add(Extension.ProviderConfigHash);
             return hashCode.ToHashCode();
         }
 
         public override bool ShouldUseSameServiceProvider(DbContextOptionsExtensionInfo other)
             => other is ExtensionInfo otherInfo
-                && ReferenceEquals(Extension.Db2StreamProvider, otherInfo.Extension.Db2StreamProvider)
-                && ReferenceEquals(Extension.DbdProvider, otherInfo.Extension.DbdProvider)
-                && ReferenceEquals(Extension.TactKeyProvider, otherInfo.Extension.TactKeyProvider);
+                && string.Equals(Extension.ProviderKey, otherInfo.Extension.ProviderKey, StringComparison.Ordinal)
+                && Extension.ProviderConfigHash == otherInfo.Extension.ProviderConfigHash;
 
         public override void PopulateDebugInfo(IDictionary<string, string> debugInfo)
         {
-            if (Extension.Db2StreamProvider is not null)
-                debugInfo["MimironDb2:Db2StreamProvider"] = Extension.Db2StreamProvider.GetType().FullName ?? Extension.Db2StreamProvider.GetType().Name;
+            if (Extension.ProviderKey is not null)
+                debugInfo["MimironDb2:Provider"] = Extension.ProviderKey;
 
-            if (Extension.DbdProvider is not null)
-                debugInfo["MimironDb2:DbdProvider"] = Extension.DbdProvider.GetType().FullName ?? Extension.DbdProvider.GetType().Name;
-
-            if (Extension.TactKeyProvider is not null)
-                debugInfo["MimironDb2:TactKeyProvider"] = Extension.TactKeyProvider.GetType().FullName ?? Extension.TactKeyProvider.GetType().Name;
+            debugInfo["MimironDb2:ProviderConfigHash"] = Extension.ProviderConfigHash.ToString();
         }
     }
 }

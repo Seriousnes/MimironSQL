@@ -22,8 +22,11 @@ using var stream = provider.OpenDb2Stream("Map");
 Parses a `.dbd` file from a directory on disk. Expects files named `{tableName}.dbd`.
 
 ```csharp
+var parser = new DbdParser();
+
 var provider = new FileSystemDbdProvider(
-    new FileSystemDbdProviderOptions("path/to/dbd/definitions"));
+    new FileSystemDbdProviderOptions("path/to/dbd/definitions"),
+    parser);
 
 IDbdFile dbd = provider.Open("Map");
 ```

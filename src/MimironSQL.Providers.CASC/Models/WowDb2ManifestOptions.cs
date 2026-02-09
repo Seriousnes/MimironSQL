@@ -4,21 +4,21 @@ namespace MimironSQL.Providers;
 
 public sealed record WowDb2ManifestOptions
 {
-    public string Owner { get; init; } = "wowdev";
+    public string Owner { get; set; } = "wowdev";
 
-    public string Repository { get; init; } = "WoWDBDefs";
+    public string Repository { get; set; } = "WoWDBDefs";
 
-    public string AssetName { get; init; } = "manifest.json";
+    public string AssetName { get; set; } = "manifest.json";
 
     /// <summary>
     /// Directory where the manifest and metadata are cached.
     /// When present, a local <see cref="AssetName"/> in this directory is preferred over downloading.
     /// Defaults to %LOCALAPPDATA%\CASC.Net\wowdbdefs.
     /// </summary>
-    public string? CacheDirectory { get; init; }
+    public string? CacheDirectory { get; set; }
 
     [Range(1, int.MaxValue)]
-    public int HttpTimeoutSeconds { get; init; } = 60;
+    public int HttpTimeoutSeconds { get; set; } = 60;
 
     public string GetCacheDirectoryOrDefault()
     {

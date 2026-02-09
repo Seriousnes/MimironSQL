@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations.Schema;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.EntityFrameworkCore;
 using MimironSQL.EntityFrameworkCore;
 using MimironSQL.Providers;
@@ -17,11 +18,15 @@ public sealed class MimironDb2ModelCustomizerTests
         var db2Provider = Substitute.For<IDb2StreamProvider>();
         var dbdProvider = Substitute.For<IDbdProvider>();
 
-        var tactKeyProvider = Substitute.For<ITactKeyProvider>();
-        tactKeyProvider.TryGetKey(Arg.Any<ulong>(), out Arg.Any<ReadOnlyMemory<byte>>()).Returns(false);
-
         var options = new DbContextOptionsBuilder<TestContext>()
-            .UseMimironDb2(db2Provider, dbdProvider, tactKeyProvider)
+            .UseMimironDb2(o => o.ConfigureProvider(
+                providerKey: "Test",
+                providerConfigHash: 1,
+                applyProviderServices: services =>
+                {
+                    services.AddSingleton<IDb2StreamProvider>(db2Provider);
+                    services.AddSingleton<IDbdProvider>(dbdProvider);
+                }))
             .Options;
 
         using var context = new TestContext(options);

@@ -29,8 +29,6 @@
     <ProjectReference Include="..\MimironSQL.Contracts\MimironSQL.Contracts.csproj" />
     <ProjectReference Include="..\MimironSQL.Dbd\MimironSQL.Dbd.csproj" />
     <ProjectReference Include="..\MimironSQL.Formats.Wdc5\MimironSQL.Formats.Wdc5.csproj" />
-    <ProjectReference Include="..\MimironSQL.Providers.FileSystem\MimironSQL.Providers.FileSystem.csproj" />
-    <ProjectReference Include="..\MimironSQL.Providers.CASC\MimironSQL.Providers.CASC.csproj" />
   </ItemGroup>
 
 </Project>

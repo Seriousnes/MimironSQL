@@ -26,6 +26,18 @@ public interface IDbdProvider
 }
 ```
 
+### `IDbdParser`
+
+Parses WoWDBDefs `.dbd` content into the contracts-level DBD model.
+
+```csharp
+public interface IDbdParser
+{
+    IDbdFile Parse(Stream stream);
+    IDbdFile Parse(string path);
+}
+```
+
 ### `ITactKeyProvider`
 
 Resolves TACT encryption keys by their 8-byte lookup ID.

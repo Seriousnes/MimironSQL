@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.Extensions.DependencyInjection;
 
 using MimironSQL.EntityFrameworkCore.ChangeTracking;
 using MimironSQL.EntityFrameworkCore.Query;
@@ -15,12 +16,15 @@ public sealed class MimironDb2LazyLoaderTests
     [Fact]
     public async Task LoadAsync_WhenEntityNotInModel_CompletesWithoutThrowing()
     {
-        var db2Provider = Substitute.For<IDb2StreamProvider>();
-        var dbdProvider = Substitute.For<IDbdProvider>();
-        var tactKeyProvider = Substitute.For<ITactKeyProvider>();
-
         var optionsBuilder = new DbContextOptionsBuilder<TestContext>();
-        optionsBuilder.UseMimironDb2(db2Provider, dbdProvider, tactKeyProvider);
+        optionsBuilder.UseMimironDb2(o => o.ConfigureProvider(
+            providerKey: "Test",
+            providerConfigHash: 1,
+            applyProviderServices: services =>
+            {
+                services.AddSingleton(Substitute.For<IDb2StreamProvider>());
+                services.AddSingleton(Substitute.For<IDbdProvider>());
+            }));
         var options = optionsBuilder.Options;
 
         await using var ctx = new TestContext(options);

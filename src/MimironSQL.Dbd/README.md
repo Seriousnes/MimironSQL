@@ -2,7 +2,7 @@
 
 Parser for WoWDBDefs `.dbd` definition files. Produces the typed model (`DbdFile`, `DbdLayout`, `DbdBuildBlock`, `DbdLayoutEntry`, `DbdColumn`) that implements the interfaces defined in `MimironSQL.Contracts`.
 
-This is an internal library — not published as a standalone package. It is referenced by `MimironSQL.EntityFrameworkCore`, `MimironSQL.DbContextGenerator`, and `MimironSQL.Providers.FileSystem`.
+This is an internal library — not published as a standalone package. It is referenced by `MimironSQL.EntityFrameworkCore` and `MimironSQL.DbContextGenerator`.
 
 ## Key Types
 

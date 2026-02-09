@@ -17,11 +17,10 @@ public class MimironDb2OptionsExtensionTests
     {
         var optionsBuilder = new DbContextOptionsBuilder();
 
-        var db2Provider = Substitute.For<IDb2StreamProvider>();
-        var dbdProvider = Substitute.For<IDbdProvider>();
-        var tactKeyProvider = Substitute.For<ITactKeyProvider>();
-
-        optionsBuilder.UseMimironDb2(db2Provider, dbdProvider, tactKeyProvider);
+        optionsBuilder.UseMimironDb2(builder => builder.ConfigureProvider(
+            providerKey: "Test",
+            providerConfigHash: 123,
+            applyProviderServices: _ => { }));
 
         optionsBuilder.Options.FindExtension<CoreOptionsExtension>()
             ?.QueryTrackingBehavior
@@ -33,17 +32,15 @@ public class MimironDb2OptionsExtensionTests
     {
         var optionsBuilder = new DbContextOptionsBuilder();
 
-        var db2Provider = Substitute.For<IDb2StreamProvider>();
-        var dbdProvider = Substitute.For<IDbdProvider>();
-        var tactKeyProvider = Substitute.For<ITactKeyProvider>();
-
-        optionsBuilder.UseMimironDb2(db2Provider, dbdProvider, tactKeyProvider);
+        optionsBuilder.UseMimironDb2(builder => builder.ConfigureProvider(
+            providerKey: "Test",
+            providerConfigHash: 123,
+            applyProviderServices: _ => { }));
 
         var extension = optionsBuilder.Options.FindExtension<MimironDb2OptionsExtension>();
         extension.ShouldNotBeNull();
-        extension.Db2StreamProvider.ShouldBeSameAs(db2Provider);
-        extension.DbdProvider.ShouldBeSameAs(dbdProvider);
-        extension.TactKeyProvider.ShouldBeSameAs(tactKeyProvider);
+        extension.ProviderKey.ShouldBe("Test");
+        extension.ProviderConfigHash.ShouldBe(123);
     }
 
     [Fact]
@@ -52,14 +49,15 @@ public class MimironDb2OptionsExtensionTests
         var optionsBuilder = new DbContextOptionsBuilder();
         var callbackInvoked = false;
 
-        var db2Provider = Substitute.For<IDb2StreamProvider>();
-        var dbdProvider = Substitute.For<IDbdProvider>();
-        var tactKeyProvider = Substitute.For<ITactKeyProvider>();
-
-        optionsBuilder.UseMimironDb2(db2Provider, dbdProvider, tactKeyProvider, configureOptions: builder =>
+        optionsBuilder.UseMimironDb2(builder =>
         {
             builder.ShouldNotBeNull();
             callbackInvoked = true;
+
+            builder.ConfigureProvider(
+                providerKey: "Test",
+                providerConfigHash: 1,
+                applyProviderServices: _ => { });
         });
 
         callbackInvoked.ShouldBeTrue();
@@ -70,44 +68,25 @@ public class MimironDb2OptionsExtensionTests
     {
         DbContextOptionsBuilder optionsBuilder = null!;
 
-        var db2Provider = Substitute.For<IDb2StreamProvider>();
-        var dbdProvider = Substitute.For<IDbdProvider>();
-        var tactKeyProvider = Substitute.For<ITactKeyProvider>();
-
-        Should.Throw<ArgumentNullException>(() => optionsBuilder.UseMimironDb2(db2Provider, dbdProvider, tactKeyProvider));
+        Should.Throw<ArgumentNullException>(() => optionsBuilder.UseMimironDb2(_ => { }));
     }
 
     [Fact]
-    public void UseMimironDb2_WithNullDb2Provider_ShouldThrow()
+    public void UseMimironDb2_WithNullConfigureOptions_ShouldThrow()
     {
         var optionsBuilder = new DbContextOptionsBuilder();
 
-        var dbdProvider = Substitute.For<IDbdProvider>();
-        var tactKeyProvider = Substitute.For<ITactKeyProvider>();
-
-        Should.Throw<ArgumentNullException>(() => optionsBuilder.UseMimironDb2(null!, dbdProvider, tactKeyProvider));
+        Action<MimironDb2DbContextOptionsBuilder> configureOptions = null!;
+        Should.Throw<ArgumentNullException>(() => optionsBuilder.UseMimironDb2(configureOptions));
     }
 
     [Fact]
-    public void UseMimironDb2_WithNullDbdProvider_ShouldThrow()
+    public void UseMimironDb2_WithoutProviderConfiguration_ShouldThrow()
     {
         var optionsBuilder = new DbContextOptionsBuilder();
 
-        var db2Provider = Substitute.For<IDb2StreamProvider>();
-        var tactKeyProvider = Substitute.For<ITactKeyProvider>();
-
-        Should.Throw<ArgumentNullException>(() => optionsBuilder.UseMimironDb2(db2Provider, null!, tactKeyProvider));
-    }
-
-    [Fact]
-    public void UseMimironDb2_WithNullTactKeyProvider_ShouldThrow()
-    {
-        var optionsBuilder = new DbContextOptionsBuilder();
-
-        var db2Provider = Substitute.For<IDb2StreamProvider>();
-        var dbdProvider = Substitute.For<IDbdProvider>();
-
-        Should.Throw<ArgumentNullException>(() => optionsBuilder.UseMimironDb2(db2Provider, dbdProvider, null!));
+        Should.Throw<InvalidOperationException>(() => optionsBuilder.UseMimironDb2(_ => { }))
+            .Message.ShouldContain("providers must be configured");
     }
 
     [Fact]
@@ -123,11 +102,10 @@ public class MimironDb2OptionsExtensionTests
     [Fact]
     public void Validate_WithProviders_ShouldNotThrow()
     {
-        var db2Provider = Substitute.For<IDb2StreamProvider>();
-        var dbdProvider = Substitute.For<IDbdProvider>();
-        var tactKeyProvider = Substitute.For<ITactKeyProvider>();
-
-        var extension = new MimironDb2OptionsExtension().WithProviders(db2Provider, dbdProvider, tactKeyProvider);
+        var extension = new MimironDb2OptionsExtension().WithProvider(
+            providerKey: "Test",
+            providerConfigHash: 1,
+            applyProviderServices: _ => { });
         var options = new DbContextOptions<DbContext>();
 
         Should.NotThrow(() => extension.Validate(options));
@@ -136,11 +114,10 @@ public class MimironDb2OptionsExtensionTests
     [Fact]
     public void Info_ShouldReturnExtensionInfo()
     {
-        var db2Provider = Substitute.For<IDb2StreamProvider>();
-        var dbdProvider = Substitute.For<IDbdProvider>();
-        var tactKeyProvider = Substitute.For<ITactKeyProvider>();
-
-        var extension = new MimironDb2OptionsExtension().WithProviders(db2Provider, dbdProvider, tactKeyProvider);
+        var extension = new MimironDb2OptionsExtension().WithProvider(
+            providerKey: "Test",
+            providerConfigHash: 1,
+            applyProviderServices: _ => { });
 
         var info = extension.Info;
 
@@ -151,18 +128,15 @@ public class MimironDb2OptionsExtensionTests
     [Fact]
     public void Info_LogFragment_ShouldContainProviderType()
     {
-        var db2Provider = Substitute.For<IDb2StreamProvider>();
-        var dbdProvider = Substitute.For<IDbdProvider>();
-        var tactKeyProvider = Substitute.For<ITactKeyProvider>();
-
-        var extension = new MimironDb2OptionsExtension().WithProviders(db2Provider, dbdProvider, tactKeyProvider);
+        var extension = new MimironDb2OptionsExtension().WithProvider(
+            providerKey: "Test",
+            providerConfigHash: 1,
+            applyProviderServices: _ => { });
 
         var logFragment = extension.Info.LogFragment;
 
         logFragment.ShouldContain("MimironDb2");
-        logFragment.ShouldContain("Db2=");
-        logFragment.ShouldContain("Dbd=");
-        logFragment.ShouldContain("TactKeys=");
+        logFragment.ShouldContain("Provider=");
     }
 
     [Fact]
@@ -173,20 +147,14 @@ public class MimironDb2OptionsExtensionTests
         var logFragment = extension.Info.LogFragment;
 
         logFragment.ShouldContain("MimironDb2");
-        logFragment.ShouldNotContain("Db2=");
-        logFragment.ShouldNotContain("Dbd=");
-        logFragment.ShouldNotContain("TactKeys=");
+        logFragment.ShouldNotContain("Provider=");
     }
 
     [Fact]
     public void Info_GetServiceProviderHashCode_ShouldBeConsistent()
     {
-        var db2Provider = Substitute.For<IDb2StreamProvider>();
-        var dbdProvider = Substitute.For<IDbdProvider>();
-        var tactKeyProvider = Substitute.For<ITactKeyProvider>();
-
-        var extension1 = new MimironDb2OptionsExtension().WithProviders(db2Provider, dbdProvider, tactKeyProvider);
-        var extension2 = new MimironDb2OptionsExtension().WithProviders(db2Provider, dbdProvider, tactKeyProvider);
+        var extension1 = new MimironDb2OptionsExtension().WithProvider("Test", 1, _ => { });
+        var extension2 = new MimironDb2OptionsExtension().WithProvider("Test", 1, _ => { });
 
         var hash1 = extension1.Info.GetServiceProviderHashCode();
         var hash2 = extension2.Info.GetServiceProviderHashCode();
@@ -197,12 +165,8 @@ public class MimironDb2OptionsExtensionTests
     [Fact]
     public void Info_ShouldUseSameServiceProvider_WithSameConfig_ShouldReturnTrue()
     {
-        var db2Provider = Substitute.For<IDb2StreamProvider>();
-        var dbdProvider = Substitute.For<IDbdProvider>();
-        var tactKeyProvider = Substitute.For<ITactKeyProvider>();
-
-        var extension1 = new MimironDb2OptionsExtension().WithProviders(db2Provider, dbdProvider, tactKeyProvider);
-        var extension2 = new MimironDb2OptionsExtension().WithProviders(db2Provider, dbdProvider, tactKeyProvider);
+        var extension1 = new MimironDb2OptionsExtension().WithProvider("Test", 1, _ => { });
+        var extension2 = new MimironDb2OptionsExtension().WithProvider("Test", 1, _ => { });
 
         var result = extension1.Info.ShouldUseSameServiceProvider(extension2.Info);
 
@@ -212,15 +176,8 @@ public class MimironDb2OptionsExtensionTests
     [Fact]
     public void Info_ShouldUseSameServiceProvider_WithDifferentProviderInstances_ShouldReturnFalse()
     {
-        var extension1 = new MimironDb2OptionsExtension().WithProviders(
-            Substitute.For<IDb2StreamProvider>(),
-            Substitute.For<IDbdProvider>(),
-            Substitute.For<ITactKeyProvider>());
-
-        var extension2 = new MimironDb2OptionsExtension().WithProviders(
-            Substitute.For<IDb2StreamProvider>(),
-            Substitute.For<IDbdProvider>(),
-            Substitute.For<ITactKeyProvider>());
+        var extension1 = new MimironDb2OptionsExtension().WithProvider("Test", 1, _ => { });
+        var extension2 = new MimironDb2OptionsExtension().WithProvider("Test", 2, _ => { });
 
         var result = extension1.Info.ShouldUseSameServiceProvider(extension2.Info);
 
@@ -230,17 +187,13 @@ public class MimironDb2OptionsExtensionTests
     [Fact]
     public void Info_PopulateDebugInfo_ShouldAddProviderTypes()
     {
-        var extension = new MimironDb2OptionsExtension().WithProviders(
-            Substitute.For<IDb2StreamProvider>(),
-            Substitute.For<IDbdProvider>(),
-            Substitute.For<ITactKeyProvider>());
+        var extension = new MimironDb2OptionsExtension().WithProvider("Test", 1, _ => { });
         var debugInfo = new Dictionary<string, string>();
 
         extension.Info.PopulateDebugInfo(debugInfo);
 
-        debugInfo.ShouldContainKey("MimironDb2:Db2StreamProvider");
-        debugInfo.ShouldContainKey("MimironDb2:DbdProvider");
-        debugInfo.ShouldContainKey("MimironDb2:TactKeyProvider");
+        debugInfo.ShouldContainKey("MimironDb2:Provider");
+        debugInfo.ShouldContainKey("MimironDb2:ProviderConfigHash");
     }
 
     [Fact]
@@ -275,22 +228,9 @@ public class MimironDb2OptionsExtensionTests
     {
         var optionsBuilder = new DbContextOptionsBuilder();
 
-        var firstDb2 = Substitute.For<IDb2StreamProvider>();
-        var firstDbd = Substitute.For<IDbdProvider>();
-        var firstTact = Substitute.For<ITactKeyProvider>();
-
-        var secondDb2 = Substitute.For<IDb2StreamProvider>();
-        var secondDbd = Substitute.For<IDbdProvider>();
-        var secondTact = Substitute.For<ITactKeyProvider>();
-
-        optionsBuilder.UseMimironDb2(firstDb2, firstDbd, firstTact);
-        optionsBuilder.UseMimironDb2(secondDb2, secondDbd, secondTact);
-
-        var extension = optionsBuilder.Options.FindExtension<MimironDb2OptionsExtension>();
-        extension.ShouldNotBeNull();
-        extension.Db2StreamProvider.ShouldBeSameAs(secondDb2);
-        extension.DbdProvider.ShouldBeSameAs(secondDbd);
-        extension.TactKeyProvider.ShouldBeSameAs(secondTact);
+        optionsBuilder.UseMimironDb2(b => b.ConfigureProvider("First", 1, _ => { }));
+        Should.Throw<InvalidOperationException>(() =>
+            optionsBuilder.UseMimironDb2(b => b.ConfigureProvider("Second", 2, _ => { })));
     }
 
     [Fact]
@@ -298,11 +238,7 @@ public class MimironDb2OptionsExtensionTests
     {
         var optionsBuilder = new DbContextOptionsBuilder();
 
-        var db2Provider = Substitute.For<IDb2StreamProvider>();
-        var dbdProvider = Substitute.For<IDbdProvider>();
-        var tactKeyProvider = Substitute.For<ITactKeyProvider>();
-
-        var result = optionsBuilder.UseMimironDb2(db2Provider, dbdProvider, tactKeyProvider);
+        var result = optionsBuilder.UseMimironDb2(b => b.ConfigureProvider("Test", 1, _ => { }));
 
         result.ShouldBeSameAs(optionsBuilder);
     }

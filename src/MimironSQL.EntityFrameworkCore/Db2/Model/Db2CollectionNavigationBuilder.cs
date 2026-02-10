@@ -10,6 +10,9 @@ internal sealed class Db2CollectionNavigationBuilder<TSource, TTarget>(Db2ModelB
     private readonly Db2CollectionNavigationMetadata _metadata = metadata;
 
     public Db2CollectionNavigationBuilder<TSource, TTarget> WithForeignKeyArray(Expression<Func<TSource, IEnumerable<int>>> foreignKeyIds)
+        => WithForeignKeyArray<int>(foreignKeyIds);
+
+    public Db2CollectionNavigationBuilder<TSource, TTarget> WithForeignKeyArray<TKey>(Expression<Func<TSource, IEnumerable<TKey>>> foreignKeyIds)
     {
         ArgumentNullException.ThrowIfNull(foreignKeyIds);
 

@@ -2,6 +2,7 @@ using MimironSQL.EntityFrameworkCore.Db2.Model;
 using MimironSQL.EntityFrameworkCore.Db2.Schema;
 using MimironSQL.Formats;
 
+using System.Collections;
 using System.Linq.Expressions;
 using System.Reflection;
 
@@ -63,6 +64,11 @@ internal sealed class Db2EntityMaterializer<TEntity, TRow>
                 continue;
             }
 
+            // If the schema describes an array-valued field, do not fall back to scalar binding for
+            // collection-like CLR members we don't explicitly support (only T[] and ICollection<T> are supported).
+            if (field.ElementCount > 1 && typeof(IEnumerable).IsAssignableFrom(memberType))
+                continue;
+
             if (TryCreateScalarBinding(property, field, memberType, out var scalarBinding))
                 memberBindings.Add(scalarBinding);
         }
@@ -85,11 +91,7 @@ internal sealed class Db2EntityMaterializer<TEntity, TRow>
         }
 
         var genericDefinition = memberType.GetGenericTypeDefinition();
-        if (genericDefinition != typeof(ICollection<>)
-            && genericDefinition != typeof(IList<>)
-            && genericDefinition != typeof(IEnumerable<>)
-            && genericDefinition != typeof(IReadOnlyCollection<>)
-            && genericDefinition != typeof(IReadOnlyList<>))
+        if (genericDefinition != typeof(ICollection<>))
         {
             binding = null!;
             return false;

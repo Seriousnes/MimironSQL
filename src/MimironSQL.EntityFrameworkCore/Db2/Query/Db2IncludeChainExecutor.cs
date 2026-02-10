@@ -13,11 +13,6 @@ namespace MimironSQL.EntityFrameworkCore.Db2.Query;
 
 internal static class Db2IncludeChainExecutor
 {
-    private static readonly ConcurrentDictionary<(Type EntityType, MemberInfo Member), Delegate> GetterCache = new();
-    private static readonly ConcurrentDictionary<(Type EntityType, MemberInfo Member), Delegate> SetterCache = new();
-    private static readonly ConcurrentDictionary<(Type EntityType, MemberInfo Member), Delegate> IntGetterCache = new();
-    private static readonly ConcurrentDictionary<(Type EntityType, MemberInfo Member), Delegate> IntEnumerableGetterCache = new();
-
     private static readonly ConcurrentDictionary<(Type EntityType, MemberInfo Member, Type ValueType), Delegate> TypedGetterCache = new();
     private static readonly ConcurrentDictionary<(Type EntityType, MemberInfo Member, Type ValueType), Delegate> TypedSetterCache = new();
     private static readonly ConcurrentDictionary<(Type EntityType, MemberInfo Member), Delegate> TypedIntGetterCache = new();
@@ -790,103 +785,6 @@ internal static class Db2IncludeChainExecutor
             return Expression.Lambda<Func<TEntity, IEnumerable<int>?>>(selectCall, instance).Compile();
         });
 
-    private static Func<object, object?> GetOrCreateGetter(Type entityType, MemberInfo member)
-        => (Func<object, object?>)GetterCache.GetOrAdd((entityType, member), static key =>
-        {
-            var instance = Expression.Parameter(typeof(object), "instance");
-            var typedInstance = Expression.Convert(instance, key.EntityType);
-
-            Expression access = key.Member switch
-            {
-                PropertyInfo p => Expression.Property(typedInstance, p),
-                FieldInfo f => Expression.Field(typedInstance, f),
-                _ => throw new InvalidOperationException($"Unexpected member type: {key.Member.GetType().FullName}"),
-            };
-
-            var body = Expression.Convert(access, typeof(object));
-            return Expression.Lambda<Func<object, object?>>(body, instance).Compile();
-        });
-
-    private static Action<object, object?> GetOrCreateSetter(Type entityType, MemberInfo member)
-        => (Action<object, object?>)SetterCache.GetOrAdd((entityType, member), static key =>
-        {
-            var instance = Expression.Parameter(typeof(object), "instance");
-            var value = Expression.Parameter(typeof(object), "value");
-
-            var typedInstance = Expression.Convert(instance, key.EntityType);
-
-            var memberType = key.Member.GetMemberType();
-
-            Expression access = key.Member switch
-            {
-                PropertyInfo p => Expression.Property(typedInstance, p),
-                FieldInfo f => Expression.Field(typedInstance, f),
-                _ => throw new InvalidOperationException($"Unexpected member type: {key.Member.GetType().FullName}"),
-            };
-
-            var assign = Expression.Assign(access, Expression.Convert(value, memberType));
-            return Expression.Lambda<Action<object, object?>>(assign, instance, value).Compile();
-        });
-
-    private static Func<object, int> GetOrCreateIntGetter(Type entityType, MemberInfo member)
-        => (Func<object, int>)IntGetterCache.GetOrAdd((entityType, member), static key =>
-        {
-            var instance = Expression.Parameter(typeof(object), "instance");
-            var typedInstance = Expression.Convert(instance, key.EntityType);
-
-            Expression access = key.Member switch
-            {
-                PropertyInfo p => Expression.Property(typedInstance, p),
-                FieldInfo f => Expression.Field(typedInstance, f),
-                _ => throw new InvalidOperationException($"Unexpected member type: {key.Member.GetType().FullName}"),
-            };
-
-            var memberType = key.Member.GetMemberType();
-            access = ConvertToInt32NoBox(access, memberType);
-            return Expression.Lambda<Func<object, int>>(access, instance).Compile();
-        });
-
-    private static Func<object, IEnumerable<int>?> GetOrCreateIntEnumerableGetter(Type entityType, MemberInfo member)
-        => (Func<object, IEnumerable<int>?>)IntEnumerableGetterCache.GetOrAdd((entityType, member), static key =>
-        {
-            var instance = Expression.Parameter(typeof(object), "instance");
-            var typedInstance = Expression.Convert(instance, key.EntityType);
-
-            Expression access = key.Member switch
-            {
-                PropertyInfo p => Expression.Property(typedInstance, p),
-                FieldInfo f => Expression.Field(typedInstance, f),
-                _ => throw new InvalidOperationException($"Unexpected member type: {key.Member.GetType().FullName}"),
-            };
-
-            var memberType = key.Member.GetMemberType();
-
-            if (memberType == typeof(int[]))
-                return Expression.Lambda<Func<object, IEnumerable<int>?>>(Expression.Convert(access, typeof(IEnumerable<int>)), instance).Compile();
-
-            if (typeof(IEnumerable<int>).IsAssignableFrom(memberType))
-                return Expression.Lambda<Func<object, IEnumerable<int>?>>(Expression.Convert(access, typeof(IEnumerable<int>)), instance).Compile();
-
-            if (!TryGetIEnumerableElementType(memberType, out var elementType) || elementType is null)
-                throw new NotSupportedException($"Expected an integer key enumerable member but found '{memberType.FullName}'.");
-
-            var enumerableType = typeof(IEnumerable<>).MakeGenericType(elementType);
-            var castEnumerable = Expression.Convert(access, enumerableType);
-
-            var item = Expression.Parameter(elementType, "x");
-            var itemToInt = ConvertToInt32NoBox(item, elementType);
-            var selector = Expression.Lambda(itemToInt, item);
-
-            var selectCall = Expression.Call(
-                typeof(Enumerable),
-                nameof(Enumerable.Select),
-                [elementType, typeof(int)],
-                castEnumerable,
-                selector);
-
-            return Expression.Lambda<Func<object, IEnumerable<int>?>>(selectCall, instance).Compile();
-        });
-
     private static bool TryGetIEnumerableElementType(Type type, out Type? elementType)
     {
         if (type == typeof(string))
@@ -953,37 +851,4 @@ internal static class Db2IncludeChainExecutor
             FieldInfo f => !f.IsInitOnly,
             _ => false,
         };
-
-    private sealed class Db2EntityMaterializerFactory<TRow>
-        where TRow : struct, IRowHandle
-    {
-        private readonly object _materializer;
-        private readonly Func<IDb2File<TRow>, RowHandle, object> _materialize;
-
-        public Db2EntityMaterializerFactory(Db2EntityType entityType, IDb2EntityFactory entityFactory)
-        {
-            ArgumentNullException.ThrowIfNull(entityType);
-            ArgumentNullException.ThrowIfNull(entityFactory);
-
-            var targetClrType = entityType.ClrType;
-            var materializerType = typeof(Db2EntityMaterializer<,>).MakeGenericType(targetClrType, typeof(TRow));
-
-            _materializer = Activator.CreateInstance(materializerType, entityType, entityFactory)
-                ?? throw new InvalidOperationException($"Unable to create materializer for {targetClrType.FullName}.");
-
-            var fileParam = Expression.Parameter(typeof(IDb2File<TRow>), "file");
-            var handleParam = Expression.Parameter(typeof(RowHandle), "handle");
-
-            var call = Expression.Call(
-                Expression.Convert(Expression.Constant(_materializer), materializerType),
-                materializerType.GetMethod(nameof(Db2EntityMaterializer<,>.Materialize))!,
-                fileParam,
-                handleParam);
-
-            var body = Expression.Convert(call, typeof(object));
-            _materialize = Expression.Lambda<Func<IDb2File<TRow>, RowHandle, object>>(body, fileParam, handleParam).Compile();
-        }
-
-        public object Materialize(IDb2File<TRow> file, RowHandle handle) => _materialize(file, handle);
-    }
 }

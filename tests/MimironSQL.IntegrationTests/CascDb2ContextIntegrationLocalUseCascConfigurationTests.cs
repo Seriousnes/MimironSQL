@@ -26,7 +26,7 @@ public sealed class CascDb2ContextIntegrationLocalUseCascConfigurationTests
         var testDataDir = TestDataPaths.GetTestDataDirectory();
         Directory.Exists(testDataDir).ShouldBeTrue();
 
-        var manifestPath = Path.Combine(testDataDir, "manifest.json");
+        var manifestPath = System.IO.Path.Combine(testDataDir, "manifest.json");
         File.Exists(manifestPath).ShouldBeTrue();
 
         var optionsBuilder = new DbContextOptionsBuilder<WoWDb2Context>();
@@ -64,7 +64,7 @@ public sealed class CascDb2ContextIntegrationLocalUseCascConfigurationTests
         var testDataDir = TestDataPaths.GetTestDataDirectory();
         Directory.Exists(testDataDir).ShouldBeTrue();
 
-        var manifestPath = Path.Combine(testDataDir, "manifest.json");
+        var manifestPath = System.IO.Path.Combine(testDataDir, "manifest.json");
         File.Exists(manifestPath).ShouldBeTrue();
 
         var cascSection = Substitute.For<IConfigurationSection>();

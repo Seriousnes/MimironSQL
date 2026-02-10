@@ -19,7 +19,7 @@ public sealed class CascDb2ContextIntegrationLocalTests
         var testDataDir = TestDataPaths.GetTestDataDirectory();
         Directory.Exists(testDataDir).ShouldBeTrue();
 
-        var manifestPath = Path.Combine(testDataDir, "manifest.json");
+        var manifestPath = System.IO.Path.Combine(testDataDir, "manifest.json");
         File.Exists(manifestPath).ShouldBeTrue();
 
         var optionsBuilder = new DbContextOptionsBuilder<WoWDb2Context>();

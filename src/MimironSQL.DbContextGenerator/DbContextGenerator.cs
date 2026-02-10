@@ -309,9 +309,16 @@ public sealed class DbContextGenerator : IIncrementalGenerator
         sb.AppendLine("public partial class WoWDb2Context(DbContextOptions<WoWDb2Context> options) : DbContext(options)");
         sb.AppendLine("{");
 
+        var usedDbSetNames = new HashSet<string>(StringComparer.Ordinal);
+
         foreach (var e in entities.OrderBy(e => e.ClassName, StringComparer.Ordinal))
         {
-            sb.AppendLine($"    public DbSet<{e.ClassName}> {e.ClassName} => Set<{e.ClassName}>();");
+            var dbSetName = e.ClassName.EndsWith("Entity", StringComparison.Ordinal) && e.ClassName.Length > "Entity".Length
+                ? e.ClassName.Substring(0, e.ClassName.Length - "Entity".Length)
+                : e.ClassName;
+
+            dbSetName = NameNormalizer.MakeUnique(dbSetName, usedDbSetNames);
+            sb.AppendLine($"    public DbSet<{e.ClassName}> {dbSetName} => Set<{e.ClassName}>();");
         }
 
         sb.AppendLine();
@@ -633,7 +640,7 @@ public sealed class DbContextGenerator : IIncrementalGenerator
         /// <returns>The created entity specification.</returns>
         public static EntitySpec Create(string tableName, DbdFile dbd, DbdBuildBlock build)
         {
-            var className = NameNormalizer.NormalizeTypeName(tableName);
+            var className = $"{NameNormalizer.NormalizeTypeName(tableName)}Entity";
 
             var idEntry = build.Entries.FirstOrDefault(e => e.IsId);
             var idType = TypeMapping.GetIdClrType(idEntry, dbd.ColumnsByName);
@@ -754,11 +761,81 @@ public sealed class DbContextGenerator : IIncrementalGenerator
         /// <returns>A normalized CLR type name.</returns>
         public static string NormalizeTypeName(string tableName)
         {
-            return tableName.IndexOf('_') switch
+            if (string.IsNullOrWhiteSpace(tableName))
+                return "_";
+
+            // Preserve current behavior for already-CLR-safe names that don't need normalization.
+            // If the name has underscores, we historically PascalCased it.
+            // If the name has hyphens or other non-identifier characters, we normalize/escape to a stable identifier.
+            var hasUnderscore = tableName.IndexOf('_') >= 0;
+            var needsEscaping = tableName.IndexOfAny(['-', '.', ' ', '\t', '\r', '\n']) >= 0
+                || tableName.Any(static c => !(char.IsLetterOrDigit(c) || c == '_'))
+                || char.IsDigit(tableName[0]);
+
+            if (!needsEscaping)
             {
-                < 0 => EscapeIdentifier(tableName),
-                _ => EscapeIdentifier(ToPascalCase(tableName)),
-            };
+                return hasUnderscore
+                    ? EscapeIdentifier(ToPascalCase(tableName))
+                    : EscapeIdentifier(tableName);
+            }
+
+            return EscapeIdentifier(NormalizeTypeNameWithEscapes(tableName));
+        }
+
+        private static string NormalizeTypeNameWithEscapes(string tableName)
+        {
+            var sb = new StringBuilder(tableName.Length + 8);
+            var token = new StringBuilder(capacity: 16);
+
+            void FlushToken()
+            {
+                if (token.Length == 0)
+                    return;
+
+                sb.Append(char.ToUpperInvariant(token[0]));
+                if (token.Length > 1)
+                    sb.Append(token.ToString(1, token.Length - 1));
+                token.Clear();
+            }
+
+            foreach (var c in tableName)
+            {
+                if (char.IsLetterOrDigit(c))
+                {
+                    token.Append(c);
+                    continue;
+                }
+
+                if (c == '_')
+                {
+                    FlushToken();
+                    continue;
+                }
+
+                if (c == '-')
+                {
+                    // User-requested: replace hyphens with a non-colliding token.
+                    FlushToken();
+                    sb.Append("__");
+                    continue;
+                }
+
+                // General non-identifier escaping: stable, readable-ish, and extremely unlikely to collide.
+                FlushToken();
+                sb.Append("__u");
+                sb.Append(((int)c).ToString("X4", CultureInfo.InvariantCulture));
+                sb.Append("__");
+            }
+
+            FlushToken();
+
+            if (sb.Length == 0)
+                sb.Append('_');
+
+            if (char.IsDigit(sb[0]))
+                sb.Insert(0, '_');
+
+            return sb.ToString();
         }
 
         /// <summary>
@@ -846,8 +923,11 @@ public sealed class DbContextGenerator : IIncrementalGenerator
         /// <param name="idEntry">The DBD entry describing the key.</param>
         /// <param name="columnsByName">DBD columns keyed by column name.</param>
         /// <returns>A CLR type name.</returns>
-        public static string GetIdClrType(DbdLayoutEntry idEntry, IReadOnlyDictionary<string, DbdColumn> columnsByName)
+        public static string GetIdClrType(DbdLayoutEntry? idEntry, IReadOnlyDictionary<string, DbdColumn> columnsByName)
         {
+            if (idEntry is null)
+                return "int";
+
             if (idEntry.Name is null)
                 return "int";
 

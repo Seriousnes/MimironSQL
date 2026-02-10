@@ -2,20 +2,25 @@ using System.Text.Json;
 
 namespace MimironSQL.Providers;
 
-internal sealed class LocalFirstManifestProvider(IManifestProvider fallback, CascDb2ProviderOptions options) : IManifestProvider
+/// <summary>
+/// Manifest provider that resolves DB2 table names to FileDataIds from a local manifest JSON file.
+/// </summary>
+public sealed class FileSystemManifestProvider(CascDb2ProviderOptions options) : IManifestProvider
 {
-    private readonly IManifestProvider _fallback = fallback ?? throw new ArgumentNullException(nameof(fallback));
     private readonly CascDb2ProviderOptions _options = options ?? throw new ArgumentNullException(nameof(options));
 
     private readonly SemaphoreSlim _lock = new(1, 1);
     private Dictionary<string, int>? _db2ByTableName;
 
-    public async Task EnsureManifestExistsAsync(CancellationToken cancellationToken = default)
+    public Task EnsureManifestExistsAsync(CancellationToken cancellationToken = default)
     {
-        if (TryFindLocalManifestPath() is not null)
-            return;
+        _ = cancellationToken;
 
-        await _fallback.EnsureManifestExistsAsync(cancellationToken).ConfigureAwait(false);
+        var path = GetManifestPath();
+        if (!File.Exists(path))
+            throw new FileNotFoundException($"Manifest file not found: '{path}'.", path);
+
+        return Task.CompletedTask;
     }
 
     public async Task<int?> TryResolveDb2FileDataIdAsync(string db2NameOrPath, CancellationToken cancellationToken = default)
@@ -42,7 +47,9 @@ internal sealed class LocalFirstManifestProvider(IManifestProvider fallback, Cas
             if (_db2ByTableName is not null)
                 return _db2ByTableName;
 
-            await using var stream = await OpenCachedAsync(cancellationToken).ConfigureAwait(false);
+            await EnsureManifestExistsAsync(cancellationToken).ConfigureAwait(false);
+
+            await using var stream = File.OpenRead(GetManifestPath());
             using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken).ConfigureAwait(false);
 
             var map = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
@@ -89,35 +96,13 @@ internal sealed class LocalFirstManifestProvider(IManifestProvider fallback, Cas
         }
     }
 
-    private async Task<Stream> OpenCachedAsync(CancellationToken cancellationToken)
+    private string GetManifestPath()
     {
-        var localPath = TryFindLocalManifestPath();
-        if (localPath is not null)
-            return File.OpenRead(localPath);
+        var directory = !string.IsNullOrWhiteSpace(_options.ManifestCacheDirectory)
+            ? _options.ManifestCacheDirectory
+            : throw new InvalidOperationException("ManifestCacheDirectory is required when using FileSystemManifestProvider.");
 
-        await _fallback.EnsureManifestExistsAsync(cancellationToken).ConfigureAwait(false);
-
-        var cacheDir = GetCacheDirectoryOrDefault();
-        var targetPath = Path.Combine(cacheDir, _options.ManifestAssetName);
-        return File.OpenRead(targetPath);
-    }
-
-    private string GetCacheDirectoryOrDefault()
-    {
-        if (!string.IsNullOrWhiteSpace(_options.ManifestCacheDirectory))
-            return _options.ManifestCacheDirectory;
-
-        var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        return Path.Combine(localAppData, "MimironSQL", "wowdbdefs");
-    }
-
-    private string? TryFindLocalManifestPath()
-    {
-        if (string.IsNullOrWhiteSpace(_options.ManifestCacheDirectory))
-            return null;
-
-        var path = Path.Combine(_options.ManifestCacheDirectory, _options.ManifestAssetName);
-        return File.Exists(path) ? path : null;
+        return Path.Combine(directory, _options.ManifestAssetName);
     }
 
     private static bool TryReadEntry(JsonElement element, out string tableName, out int fileDataId)

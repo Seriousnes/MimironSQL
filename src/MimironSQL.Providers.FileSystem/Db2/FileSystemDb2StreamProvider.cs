@@ -18,4 +18,14 @@ public sealed class FileSystemDb2StreamProvider(FileSystemDb2StreamProviderOptio
 
         throw new FileNotFoundException($"No .db2 file found for table '{tableName}' in '{options.Db2DirectoryPath}'.");
     }
+
+    public Task<Stream> OpenDb2StreamAsync(string tableName, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(tableName);
+        if (_pathsByTableName.TryGetValue(tableName, out var path))
+        {
+            return Task.FromResult<Stream>(new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, bufferSize: 4096, useAsync: true));
+        }
+        throw new FileNotFoundException($"No .db2 file found for table '{tableName}' in '{options.Db2DirectoryPath}'.");
+    }
 }

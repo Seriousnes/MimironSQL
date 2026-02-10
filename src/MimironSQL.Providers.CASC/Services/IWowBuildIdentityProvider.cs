@@ -3,7 +3,7 @@ namespace MimironSQL.Providers;
 /// <summary>
 /// Provides a way to derive a build identity from a World of Warcraft installation.
 /// </summary>
-internal interface IWowBuildIdentityProvider
+public interface IWowBuildIdentityProvider
 {
     /// <summary>
     /// Gets build identity information for the installation rooted at <paramref name="installRoot"/>.

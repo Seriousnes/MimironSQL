@@ -5,7 +5,7 @@ namespace MimironSQL.Providers;
 /// <summary>
 /// Default implementation of <see cref="IWowBuildIdentityProvider"/>.
 /// </summary>
-internal sealed partial class WowBuildIdentityProvider : IWowBuildIdentityProvider
+public sealed partial class WowBuildIdentityProvider : IWowBuildIdentityProvider
 {
     /// <summary>
     /// Gets build identity information for the installation rooted at <paramref name="installRoot"/>.

@@ -20,9 +20,8 @@ Binds configuration from `IConfiguration` sections and registers:
 
 | Service | Implementation |
 |---------|---------------|
-| `IDb2StreamProvider` | `CascDBCProvider` |
-| `ICascStorageService` | `CascStorageService` |
-| `IManifestProvider` | `LocalFirstManifestProvider` (falls back to `WowDb2ManifestProvider`) |
+| `IDb2StreamProvider` | `CascStorageService` |
+| `IManifestProvider` | `FileSystemManifestProvider` |
 
 Configuration:
 

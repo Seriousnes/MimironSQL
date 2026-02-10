@@ -11,4 +11,12 @@ public interface IDb2StreamProvider
     /// <param name="tableName">The DB2 table name (for example, <c>Map</c>).</param>
     /// <returns>A readable stream positioned at the start of the DB2 file content.</returns>
     Stream OpenDb2Stream(string tableName);
+
+    /// <summary>
+    /// Opens a readable stream for a DB2 table asynchronously.
+    /// </summary>
+    /// <param name="tableName">The DB2 table name (for example, <c>Map</c>).</param>
+    /// <param name="cancellationToken">A cancellation token.</param>
+    /// <returns>A task that produces a readable stream positioned at the start of the DB2 file content.</returns>
+    Task<Stream> OpenDb2StreamAsync(string tableName, CancellationToken cancellationToken = default);
 }

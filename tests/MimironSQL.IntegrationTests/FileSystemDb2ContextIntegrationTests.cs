@@ -26,6 +26,20 @@ public sealed class FileSystemDb2ContextIntegrationTests
     }
 
     [Fact]
+    public async Task ToListAsync_executes_end_to_end_via_async_over_sync()
+    {
+        await using var context = CreateContext();
+
+        var results = await context.Map
+            .Where(x => x.Id > 0)
+            .Take(10)
+            .ToListAsync();
+
+        results.Count.ShouldBeGreaterThan(0);
+        results.All(x => x.Id > 0).ShouldBeTrue();
+    }
+
+    [Fact]
     public void Can_query_and_include_collection_navigation()
     {
         var context = CreateContext();

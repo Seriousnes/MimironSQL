@@ -1,35 +1,39 @@
 # Project Overview
 This project is a SQL engine for reading and querying World of Warcraft DB2 files. It is implemented in C# and designed to be extensible for future file formats used by World of Warcraft. It will support reading DB2 files via the FileSystem (i.e. FileSystemDBDProvider) and via CASC (i.e. CascDBDProvider).
 
-## IMPORTANT
-- When you receive answers to questions as per the "Follow-up Questions" instructions, incorporate those answers into this project overview and the implementation plan as needed.
-- Only consider files within the root directory of MimironSQL and its subdirectories as part of this project. Do not consider files from other repositories (such as DBCD, WoWDBDefs, or CASC.Net) except for understanding how to interface with them.
-- Use minimal commenting style, only adding comments on methods or complex logic where absolutely necessary for clarity.
-
-## Terminal (Hard)
+## Terminal
 - Assume all terminal commands run in **Windows PowerShell (pwsh)**, not `cmd.exe`.
 - Do **not** use `cmd.exe`-specific syntax such as `cd /d`.
 - Prefer `Set-Location` (or `cd`) with **absolute paths** (e.g., `Set-Location "g:\source\MimironSQL"`).
 - Commands can be chained with `;` or `&&`.
 
-## Modern C# / Style Rules (Hard)
-- Target .NET 10 / C# 14 and prefer the newest language features.
+## Modern C# / Style Rules
+- Target .NET 10 / C# 14 and prefer the newest language features, unless otherwise specified.
 - Follow the additional coding style rules in [coding-style.md](./instructions/coding-style.md).
 
 ## Performance 
 - Follow the performance guidelines in [performance.md](./instructions/performance.md)
 
-### Attributes (Hard)
+### Attributes
 - Do NOT add `[MethodImpl(...)]` attributes (including `MethodImplOptions.AggressiveInlining`).
 - Remove any `[MethodImpl(...)]` attributes you encounter.
 - Only add these attributes back after benchmarking demonstrates a real benefit.
 
 ## Repository Structure
-- `MimironSQL/`: Main library project with the SQL engine implementation
-- `MimironSQL.Abstractions/`: Abstract interfaces and base types for DB2 format support
-- `MimironSQL.Formats.Wdc5/`: WDC5 format implementation (World of Warcraft DB2 version 5)
-- `MimironSQL.Tests/`: Unit and integration tests using xUnit, NSubstitute, and Shouldly
-- `Salsa20/`: Salsa20 encryption library used for encrypted DB2 files
+- `src/`: Shipping libraries and packages
+    - `MimironSQL.Contracts/`: Public interfaces and extension points (formats, providers, DBD model)
+    - `MimironSQL.Dbd/`: WoWDBDefs `.dbd` parser + typed model (embedded dependency)
+    - `MimironSQL.DbContextGenerator/`: Roslyn incremental source generator for EF Core DbContext + entities from `.dbd`
+    - `MimironSQL.EntityFrameworkCore/`: Read-only EF Core provider for querying DB2 files via LINQ
+    - `MimironSQL.Formats.Wdc5/`: WDC5 binary format reader (`IDb2Format`)
+    - `MimironSQL.Providers.CASC/`: CASC-based DB2 stream provider (reads from a WoW install)
+    - `MimironSQL.Providers.FileSystem/`: File-system providers (DB2/DBD/TACT keys from disk)
+    - `Salsa20/`: Salsa20 cipher used for TACT-encrypted DB2 sections
+- `tests/`: Test projects (xUnit) and benchmarks
+    - `MimironSQL.Contracts.Tests/`, `MimironSQL.Dbd.Tests/`, `MimironSQL.EntityFrameworkCore.Tests/`, etc.
+    - `MimironSQL.IntegrationTests/`: End-to-end tests
+    - `MimironSQL.Benchmarks/`: BenchmarkDotNet benchmarks
+- `tools/`: Developer tooling (e.g., coverage helpers)
 
 ## Development Workflow
 

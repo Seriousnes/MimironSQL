@@ -1,10 +1,22 @@
 # MimironSQL.Contracts
 
-Public interfaces and types for extending MimironSQL with custom formats, providers, and data sources.
+Public interfaces, value types, and extension points for the MimironSQL ecosystem.
 
-## Providers
+## Overview
 
-### `IDb2StreamProvider`
+`MimironSQL.Contracts` defines the abstractions that MimironSQL uses to read DB2 files, resolve DBD metadata, and detect binary formats. Reference this package directly when implementing a custom format reader, stream provider, or DBD provider. In most scenarios you do not need to reference it explicitly — it is a transitive dependency of the higher-level packages such as `MimironSQL.EntityFrameworkCore`, `MimironSQL.Formats.Wdc5`, and `MimironSQL.Providers.FileSystem`.
+
+## Installation
+
+```shell
+dotnet add package MimironSQL.Contracts --version 0.1.0
+```
+
+> **Note:** This package is published to GitHub Packages. If you consume one of the higher-level MimironSQL packages, this dependency is pulled in transitively.
+
+## Provider Interfaces
+
+### IDb2StreamProvider
 
 Opens a raw byte stream for a named DB2 table.
 
@@ -15,7 +27,7 @@ public interface IDb2StreamProvider
 }
 ```
 
-### `IDbdProvider`
+### IDbdProvider
 
 Provides parsed DBD metadata for a named table.
 
@@ -26,7 +38,7 @@ public interface IDbdProvider
 }
 ```
 
-### `IDbdParser`
+### IDbdParser
 
 Parses WoWDBDefs `.dbd` content into the contracts-level DBD model.
 
@@ -38,7 +50,7 @@ public interface IDbdParser
 }
 ```
 
-### `ITactKeyProvider`
+### ITactKeyProvider
 
 Resolves TACT encryption keys by their 8-byte lookup ID.
 
@@ -51,7 +63,7 @@ public interface ITactKeyProvider
 
 ## Format Interfaces
 
-### `IDb2Format`
+### IDb2Format
 
 Reads a binary DB2 stream and produces an `IDb2File`.
 
@@ -64,14 +76,7 @@ public interface IDb2Format
 }
 ```
 
-Register custom formats with `Db2FormatRegistry`:
-
-```csharp
-var registry = new Db2FormatRegistry();
-registry.Register(myCustomFormat);
-```
-
-### `IDb2File` / `IDb2File<TRow>`
+### IDb2File / IDb2File\<TRow\>
 
 Represents an opened DB2 file. Provides row enumeration, field reads, and row-by-ID lookups.
 
@@ -97,7 +102,21 @@ public interface IDb2File<TRow> : IDb2File where TRow : struct
 }
 ```
 
-### `RowHandle`
+## DBD Interfaces
+
+The DBD interfaces model the parsed content of a WoWDBDefs `.dbd` file:
+
+| Interface | Purpose |
+|---|---|
+| `IDbdFile` | Root — columns by name, layouts, and global builds |
+| `IDbdLayout` | Layout hashes and associated build blocks |
+| `IDbdBuildBlock` | A single build's field list |
+| `IDbdLayoutEntry` | One field in a build — name, type, array count, flags |
+| `IDbdColumn` | Column-level metadata — value type, foreign key reference, verified flag |
+
+## Value Types
+
+### RowHandle
 
 Identifies a single row within a DB2 file by section index, row offset, and row ID.
 
@@ -105,7 +124,7 @@ Identifies a single row within a DB2 file by section index, row offset, and row 
 public readonly struct RowHandle(int sectionIndex, int rowIndexInSection, int rowId);
 ```
 
-### `Db2FileLayout`
+### Db2FileLayout
 
 Layout hash and physical field count for a DB2 file (used to match against DBD definitions).
 
@@ -113,33 +132,25 @@ Layout hash and physical field count for a DB2 file (used to match against DBD d
 public readonly struct Db2FileLayout(uint layoutHash, int physicalFieldsCount);
 ```
 
-## DBD Interfaces
-
-The DBD interfaces model the parsed content of a WoWDBDefs `.dbd` file:
-
-| Interface | Purpose |
-|-----------|---------|
-| `IDbdFile` | Root — columns by name, layouts, and global builds |
-| `IDbdLayout` | Layout hashes and associated build blocks |
-| `IDbdBuildBlock` | A single build's field list |
-| `IDbdLayoutEntry` | One field in a build — name, type, array count, flags |
-| `IDbdColumn` | Column-level metadata — value type, foreign key reference, verified flag |
-
 ## Enums
 
 | Enum | Values |
-|------|--------|
+|---|---|
 | `Db2Format` | `Unknown`, `Wdc3`, `Wdc4`, `Wdc5` |
 | `Db2Flags` | `None`, `Sparse`, `SecondaryKey`, `Index`, `BitPacked` |
 | `Db2ValueType` | `Unknown`, `Int64`, `UInt64`, `Single`, `String`, `LocString` |
 
 ## Utilities
 
-### `Db2FormatDetector`
+### Db2FormatDetector
 
-Detects the DB2 format version from the first few header bytes:
+Detects the DB2 format version from the first few header bytes.
 
 ```csharp
 Db2Format format = Db2FormatDetector.Detect(headerBytes);
 Db2Format format = Db2FormatDetector.DetectOrThrow(headerBytes); // throws on Unknown
 ```
+
+## License
+
+This project is licensed under the [MIT License](https://github.com/Seriousnes/MimironSQL/blob/main/LICENSE.txt).

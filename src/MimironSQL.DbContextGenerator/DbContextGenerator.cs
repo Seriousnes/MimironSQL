@@ -11,37 +11,33 @@ using MimironSQL.Db2;
 
 namespace MimironSQL.DbContextGenerator;
 
+/// <summary>
+/// Incremental source generator that emits Entity Framework Core context and entity types from WoWDBDefs <c>.dbd</c> files.
+/// </summary>
 [Generator(LanguageNames.CSharp)]
 public sealed class DbContextGenerator : IIncrementalGenerator
 {
-    private static readonly DiagnosticDescriptor MissingEnvFile = new(
-        id: "MSQLDBD001",
-        title: "Missing .env file",
-        messageFormat: "MimironSQL.DbContextGenerator requires a .env file provided via AdditionalFiles",
+    private static readonly DiagnosticDescriptor NoSourcesGenerated = new(
+        id: "MSQLDBD004",
+        title: "No sources generated",
+        messageFormat: "MimironSQL.DbContextGenerator emitted no sources: {0}",
         category: "MimironSQL.DbContextGenerator",
-        defaultSeverity: DiagnosticSeverity.Error,
+        defaultSeverity: DiagnosticSeverity.Warning,
         isEnabledByDefault: true);
 
-    private static readonly DiagnosticDescriptor MissingWowVersion = new(
-        id: "MSQLDBD002",
-        title: "Missing WOW_VERSION",
-        messageFormat: "MimironSQL.DbContextGenerator requires WOW_VERSION=... in .env.",
-        category: "MimironSQL.DbContextGenerator",
-        defaultSeverity: DiagnosticSeverity.Error,
-        isEnabledByDefault: true);
-
-    private static readonly DiagnosticDescriptor InvalidWowVersion = new(
-        id: "MSQLDBD003",
-        title: "Invalid WOW_VERSION",
-        messageFormat: "WOW_VERSION value '{0}' could not be parsed. Expected 'major.minor.patch' or 'major.minor.patch.build'.",
-        category: "MimironSQL.DbContextGenerator",
-        defaultSeverity: DiagnosticSeverity.Error,
-        isEnabledByDefault: true);
-
+    /// <summary>
+    /// Initializes the generator and registers all incremental steps.
+    /// </summary>
+    /// <param name="context">The generator initialization context.</param>
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
         var envProvider = context.AdditionalTextsProvider
-            .Where(static f => string.Equals(Path.GetFileName(f.Path), ".env", StringComparison.OrdinalIgnoreCase))
+            .Where(static f =>
+            {
+                var fileName = Path.GetFileName(f.Path);
+                return string.Equals(fileName, ".env", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(fileName, ".env.local", StringComparison.OrdinalIgnoreCase);
+            })
             .Collect()
             .Select(static (files, cancellationToken) =>
             {
@@ -50,7 +46,20 @@ public sealed class DbContextGenerator : IIncrementalGenerator
                 if (files.Length == 0)
                     return EnvResult.Missing;
 
-                var text = files[0].GetText(cancellationToken);
+                AdditionalText? selected = null;
+                foreach (var f in files)
+                {
+                    var fileName = Path.GetFileName(f.Path);
+                    if (string.Equals(fileName, ".env.local", StringComparison.OrdinalIgnoreCase))
+                    {
+                        selected = f;
+                        break;
+                    }
+                }
+
+                selected ??= files[0];
+
+                var text = selected.GetText(cancellationToken);
                 if (text is null)
                     return EnvResult.Missing;
 
@@ -64,20 +73,10 @@ public sealed class DbContextGenerator : IIncrementalGenerator
                 return new EnvResult(EnvResultKind.Ok, version, value);
             });
 
-        context.RegisterSourceOutput(envProvider, static (spc, env) =>
-        {
-            if (env.Kind == EnvResultKind.MissingEnv)
-                spc.ReportDiagnostic(Diagnostic.Create(MissingEnvFile, Location.None));
-
-            if (env.Kind == EnvResultKind.MissingWowVersion)
-                spc.ReportDiagnostic(Diagnostic.Create(MissingWowVersion, Location.None));
-
-            if (env.Kind == EnvResultKind.InvalidWowVersion)
-                spc.ReportDiagnostic(Diagnostic.Create(InvalidWowVersion, Location.None, env.RawValue ?? string.Empty));
-        });
-
         var dbdFilesProvider = context.AdditionalTextsProvider
             .Where(static f => f.Path.EndsWith(".dbd", StringComparison.OrdinalIgnoreCase));
+
+        var dbdFilesCollectedProvider = dbdFilesProvider.Collect();
 
         var entitySpecsProvider = dbdFilesProvider
             .Combine(envProvider)
@@ -127,6 +126,62 @@ public sealed class DbContextGenerator : IIncrementalGenerator
             var contextSource = RenderContext(entities);
             spc.AddSource("WoWDb2Context.g.cs", SourceText.From(contextSource, Encoding.UTF8));
         });
+
+        var diagnosticsProvider = envProvider
+            .Combine(dbdFilesCollectedProvider)
+            .Combine(entitySpecsProvider.Collect())
+            .Select(static (input, cancellationToken) =>
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                var ((env, dbdFiles), entities) = input;
+                return new GenerationStatus(env, dbdFiles.Length, entities.Length);
+            });
+
+        context.RegisterSourceOutput(diagnosticsProvider, static (spc, status) =>
+        {
+            if (status.EntitiesGeneratedCount != 0)
+                return;
+
+            var reasons = new List<string>(capacity: 3);
+
+            if (status.Env.Kind == EnvResultKind.MissingEnv)
+                reasons.Add("no .env (or .env.local) file was provided via AdditionalFiles");
+
+            if (status.Env.Kind == EnvResultKind.MissingWowVersion)
+                reasons.Add("WOW_VERSION is missing from .env");
+
+            if (status.Env.Kind == EnvResultKind.InvalidWowVersion)
+                reasons.Add($"WOW_VERSION value '{status.Env.RawValue ?? string.Empty}' is invalid");
+
+            if (status.DbdFilesCount == 0)
+                reasons.Add("no .dbd files were provided via AdditionalFiles");
+
+            if (reasons.Count == 0 && status.Env.Kind == EnvResultKind.Ok && status.DbdFilesCount > 0)
+                reasons.Add($"no compatible BUILD blocks were found for WOW_VERSION={status.Env.RawValue}");
+
+            if (reasons.Count == 0)
+                reasons.Add("inputs were present but no entities could be produced");
+
+            var message = string.Join("; ", reasons);
+            spc.ReportDiagnostic(Diagnostic.Create(NoSourcesGenerated, Location.None, message));
+        });
+    }
+
+    private readonly struct GenerationStatus
+    {
+        public GenerationStatus(EnvResult env, int dbdFilesCount, int entitiesGeneratedCount)
+        {
+            Env = env;
+            DbdFilesCount = dbdFilesCount;
+            EntitiesGeneratedCount = entitiesGeneratedCount;
+        }
+
+        public EnvResult Env { get; }
+
+        public int DbdFilesCount { get; }
+
+        public int EntitiesGeneratedCount { get; }
     }
 
     private static DbdFile ParseDbd(SourceText text)
@@ -410,22 +465,65 @@ public sealed class DbContextGenerator : IIncrementalGenerator
 
     private readonly struct EnvResult(DbContextGenerator.EnvResultKind kind, DbContextGenerator.WowVersion? version, string? rawValue)
     {
+        /// <summary>
+        /// Gets the kind of environment read result.
+        /// </summary>
         public EnvResultKind Kind { get; } = kind;
+
+        /// <summary>
+        /// Gets the parsed WoW version when available.
+        /// </summary>
         public WowVersion? Version { get; } = version;
+
+        /// <summary>
+        /// Gets the raw <c>WOW_VERSION</c> value when present.
+        /// </summary>
         public string? RawValue { get; } = rawValue;
 
+        /// <summary>
+        /// Gets an <see cref="EnvResult"/> that represents a missing <c>.env</c> file.
+        /// </summary>
         public static EnvResult Missing => new(EnvResultKind.MissingEnv, null, null);
+
+        /// <summary>
+        /// Gets an <see cref="EnvResult"/> that represents a missing <c>WOW_VERSION</c> key.
+        /// </summary>
         public static EnvResult MissingWowVersion => new(EnvResultKind.MissingWowVersion, null, null);
     }
 
     private readonly struct WowVersion(int major, int minor, int patch, int build, bool hasBuild) : IComparable<WowVersion>
     {
+        /// <summary>
+        /// Gets the major version component.
+        /// </summary>
         public int Major { get; } = major;
+
+        /// <summary>
+        /// Gets the minor version component.
+        /// </summary>
         public int Minor { get; } = minor;
+
+        /// <summary>
+        /// Gets the patch version component.
+        /// </summary>
         public int Patch { get; } = patch;
+
+        /// <summary>
+        /// Gets the build component.
+        /// </summary>
         public int Build { get; } = build;
+
+        /// <summary>
+        /// Gets a value indicating whether the build component was explicitly provided.
+        /// </summary>
         public bool HasBuild { get; } = hasBuild;
 
+        /// <summary>
+        /// Tries to parse a WoW version from the provided text.
+        /// </summary>
+        /// <param name="value">The text to parse.</param>
+        /// <param name="version">The parsed version when the method returns <see langword="true"/>.</param>
+        /// <returns><see langword="true"/> if parsing succeeded; otherwise <see langword="false"/>.</returns>
         public static bool TryParse(string value, out WowVersion version)
         {
             var rawParts = value.Split(['.'], StringSplitOptions.RemoveEmptyEntries);
@@ -464,9 +562,21 @@ public sealed class DbContextGenerator : IIncrementalGenerator
             return true;
         }
 
+        /// <summary>
+        /// Gets an effective upper bound used for range comparisons.
+        /// </summary>
+        /// <returns>The effective upper bound version.</returns>
         public WowVersion GetEffectiveUpperBound()
             => HasBuild ? this : new WowVersion(Major, Minor, Patch, int.MaxValue, hasBuild: false);
 
+        /// <summary>
+        /// Compares this version to another version.
+        /// </summary>
+        /// <param name="other">The other version.</param>
+        /// <returns>
+        /// A value less than zero if this instance precedes <paramref name="other"/>, zero if they are equal,
+        /// or a value greater than zero if this instance follows <paramref name="other"/>.
+        /// </returns>
         public int CompareTo(WowVersion other)
         {
             var major = Major.CompareTo(other.Major);
@@ -489,12 +599,38 @@ public sealed class DbContextGenerator : IIncrementalGenerator
         ImmutableArray<DbContextGenerator.ScalarPropertySpec> scalarProperties,
         ImmutableArray<DbContextGenerator.NavigationSpec> navigations)
     {
+        /// <summary>
+        /// Gets the source table name.
+        /// </summary>
         public string TableName { get; } = tableName;
+
+        /// <summary>
+        /// Gets the generated CLR type name.
+        /// </summary>
         public string ClassName { get; } = className;
+
+        /// <summary>
+        /// Gets the CLR type name used for the entity key.
+        /// </summary>
         public string IdTypeName { get; } = idTypeName;
+
+        /// <summary>
+        /// Gets the scalar property specifications for the entity.
+        /// </summary>
         public ImmutableArray<ScalarPropertySpec> ScalarProperties { get; } = scalarProperties;
+
+        /// <summary>
+        /// Gets the navigation property specifications for the entity.
+        /// </summary>
         public ImmutableArray<NavigationSpec> Navigations { get; } = navigations;
 
+        /// <summary>
+        /// Creates an entity specification from a DBD file and a selected build block.
+        /// </summary>
+        /// <param name="tableName">The source table name.</param>
+        /// <param name="dbd">The parsed DBD file.</param>
+        /// <param name="build">The selected build block.</param>
+        /// <returns>The created entity specification.</returns>
         public static EntitySpec Create(string tableName, DbdFile dbd, DbdBuildBlock build)
         {
             var className = NameNormalizer.NormalizeTypeName(tableName);
@@ -565,22 +701,57 @@ public sealed class DbContextGenerator : IIncrementalGenerator
 
     private sealed class ScalarPropertySpec(string propertyName, string typeName, string initializer, string? columnName)
     {
+        /// <summary>
+        /// Gets the C# property name.
+        /// </summary>
         public string PropertyName { get; } = propertyName;
+
+        /// <summary>
+        /// Gets the CLR type name.
+        /// </summary>
         public string TypeName { get; } = typeName;
+
+        /// <summary>
+        /// Gets the initializer source text for the generated property.
+        /// </summary>
         public string Initializer { get; } = initializer;
+
+        /// <summary>
+        /// Gets the source column name when it differs from <see cref="PropertyName"/>.
+        /// </summary>
         public string? ColumnName { get; } = columnName;
     }
 
     private sealed class NavigationSpec(string targetTableName, string foreignKeyPropertyName, string propertyName, bool isCollection)
     {
+        /// <summary>
+        /// Gets the target table name for the navigation.
+        /// </summary>
         public string TargetTableName { get; } = targetTableName;
+
+        /// <summary>
+        /// Gets the foreign key property name in the source entity.
+        /// </summary>
         public string ForeignKeyPropertyName { get; } = foreignKeyPropertyName;
+
+        /// <summary>
+        /// Gets the navigation property name.
+        /// </summary>
         public string PropertyName { get; } = propertyName;
+
+        /// <summary>
+        /// Gets a value indicating whether the navigation is a collection.
+        /// </summary>
         public bool IsCollection { get; } = isCollection;
     }
 
     private static class NameNormalizer
     {
+        /// <summary>
+        /// Normalizes a DBD table name into a CLR type name.
+        /// </summary>
+        /// <param name="tableName">The source table name.</param>
+        /// <returns>A normalized CLR type name.</returns>
         public static string NormalizeTypeName(string tableName)
         {
             return tableName.IndexOf('_') switch
@@ -590,6 +761,11 @@ public sealed class DbContextGenerator : IIncrementalGenerator
             };
         }
 
+        /// <summary>
+        /// Normalizes a DBD column name into a CLR property name.
+        /// </summary>
+        /// <param name="columnName">The source column name.</param>
+        /// <returns>A normalized CLR property name.</returns>
         public static string NormalizePropertyName(string columnName)
         {
             // Don't normalize Field_X_Y_Z style columns
@@ -606,6 +782,12 @@ public sealed class DbContextGenerator : IIncrementalGenerator
             };
         }
 
+        /// <summary>
+        /// Makes the provided name unique within the set of previously used names.
+        /// </summary>
+        /// <param name="name">The base name.</param>
+        /// <param name="used">The set of names already used.</param>
+        /// <returns>A unique name.</returns>
         public static string MakeUnique(string name, HashSet<string> used)
         {
             if (used.Add(name))
@@ -619,6 +801,11 @@ public sealed class DbContextGenerator : IIncrementalGenerator
             }
         }
 
+        /// <summary>
+        /// Escapes an identifier if it is a C# keyword.
+        /// </summary>
+        /// <param name="identifier">The identifier to escape.</param>
+        /// <returns>The escaped identifier.</returns>
         public static string EscapeIdentifier(string identifier)
         {
             if (SyntaxFacts.GetKeywordKind(identifier) != SyntaxKind.None)
@@ -653,6 +840,12 @@ public sealed class DbContextGenerator : IIncrementalGenerator
 
     private static class TypeMapping
     {
+        /// <summary>
+        /// Gets the CLR type name used for the entity key based on the DBD layout and column metadata.
+        /// </summary>
+        /// <param name="idEntry">The DBD entry describing the key.</param>
+        /// <param name="columnsByName">DBD columns keyed by column name.</param>
+        /// <returns>A CLR type name.</returns>
         public static string GetIdClrType(DbdLayoutEntry idEntry, IReadOnlyDictionary<string, DbdColumn> columnsByName)
         {
             if (idEntry.Name is null)
@@ -686,6 +879,11 @@ public sealed class DbContextGenerator : IIncrementalGenerator
             };
         }
 
+        /// <summary>
+        /// Gets the CLR type name for the specified DBD entry.
+        /// </summary>
+        /// <param name="entry">The DBD entry.</param>
+        /// <returns>A CLR type name.</returns>
         public static string GetClrTypeName(DbdLayoutEntry entry)
         {
             var elementType = GetClrElementTypeName(entry);
@@ -707,6 +905,11 @@ public sealed class DbContextGenerator : IIncrementalGenerator
             };
         }
 
+        /// <summary>
+        /// Gets the initializer source text for a generated property of the given type.
+        /// </summary>
+        /// <param name="typeName">The CLR type name.</param>
+        /// <returns>An initializer string, or an empty string when no initializer is required.</returns>
         public static string GetInitializer(string typeName)
         {
             if (typeName.StartsWith("ICollection<", StringComparison.Ordinal))

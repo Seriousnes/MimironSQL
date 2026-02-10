@@ -1,6 +1,17 @@
 namespace MimironSQL.Providers;
 
-public sealed record CascInstallLayout(
+/// <summary>
+/// Describes relevant CASC paths within a World of Warcraft installation.
+/// </summary>
+/// <param name="InstallRoot">Root directory of the installation.</param>
+/// <param name="FlavorDirectory">The detected flavor directory (for example <c>_retail_</c>).</param>
+/// <param name="DataDirectory">The <c>Data</c> directory.</param>
+/// <param name="DataDataDirectory">The <c>Data\data</c> directory.</param>
+/// <param name="DataConfigDirectory">The <c>Data\config</c> directory.</param>
+/// <param name="Product">The CASC product token (for example <c>wow</c>).</param>
+/// <param name="BuildInfoPath">Path to the <c>.build.info</c> file.</param>
+/// <param name="FlavorInfoPath">Path to the <c>.flavor.info</c> file (when present).</param>
+internal sealed record CascInstallLayout(
     string InstallRoot,
     string FlavorDirectory,
     string DataDirectory,
@@ -10,8 +21,16 @@ public sealed record CascInstallLayout(
     string BuildInfoPath,
     string FlavorInfoPath);
 
-public static class CascInstallLayoutDetector
+/// <summary>
+/// Detects CASC directory layout for a given World of Warcraft install root.
+/// </summary>
+internal static class CascInstallLayoutDetector
 {
+    /// <summary>
+    /// Detects the CASC install layout under the provided install root.
+    /// </summary>
+    /// <param name="installRoot">Root directory of the World of Warcraft installation.</param>
+    /// <returns>The detected install layout.</returns>
     public static CascInstallLayout Detect(string installRoot)
     {
         ArgumentNullException.ThrowIfNull(installRoot);

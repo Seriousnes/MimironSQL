@@ -4,18 +4,41 @@ using MimironSQL.EntityFrameworkCore;
 
 namespace MimironSQL.Providers;
 
+/// <summary>
+/// Provider configuration extensions for using extracted DB2 files and DBD definitions from the local file system.
+/// </summary>
 public static class MimironDb2FileSystemOptionsBuilderExtensions
 {
-    public static MimironDb2DbContextOptionsBuilder UseFileSystem(
-        this MimironDb2DbContextOptionsBuilder builder,
+    /// <summary>
+    /// Configures the DB2 provider to read DB2 files and DBD definitions from the file system.
+    /// </summary>
+    /// <param name="builder">The provider options builder.</param>
+    /// <param name="db2DirectoryPath">Directory containing DB2 files.</param>
+    /// <param name="dbdDefinitionsDirectory">Directory containing WoWDBDefs .dbd files.</param>
+    /// <returns>The same <paramref name="builder"/> instance to enable chaining.</returns>
+    public static IMimironDb2DbContextOptionsBuilder UseFileSystem(
+        this IMimironDb2DbContextOptionsBuilder builder,
         string db2DirectoryPath,
         string dbdDefinitionsDirectory)
-        => builder.UseFileSystem(
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+        ArgumentException.ThrowIfNullOrWhiteSpace(db2DirectoryPath);
+        ArgumentException.ThrowIfNullOrWhiteSpace(dbdDefinitionsDirectory);
+
+        return builder.UseFileSystem(
             new FileSystemDb2StreamProviderOptions(db2DirectoryPath),
             new FileSystemDbdProviderOptions(dbdDefinitionsDirectory));
+    }
 
-    public static MimironDb2DbContextOptionsBuilder UseFileSystem(
-        this MimironDb2DbContextOptionsBuilder builder,
+    /// <summary>
+    /// Configures the DB2 provider to read DB2 files and DBD definitions from the file system.
+    /// </summary>
+    /// <param name="builder">The provider options builder.</param>
+    /// <param name="db2Options">Options for locating DB2 files.</param>
+    /// <param name="dbdOptions">Options for locating DBD definitions.</param>
+    /// <returns>The same <paramref name="builder"/> instance to enable chaining.</returns>
+    public static IMimironDb2DbContextOptionsBuilder UseFileSystem(
+        this IMimironDb2DbContextOptionsBuilder builder,
         FileSystemDb2StreamProviderOptions db2Options,
         FileSystemDbdProviderOptions dbdOptions)
     {

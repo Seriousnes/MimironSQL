@@ -5,6 +5,8 @@ using MimironSQL.EntityFrameworkCore.Db2.Schema;
 
 using Shouldly;
 
+using System.Linq.Expressions;
+
 namespace MimironSQL.EntityFrameworkCore.Tests;
 
 public sealed class Db2NavigationQueryTranslatorTests
@@ -195,6 +197,81 @@ public sealed class Db2NavigationQueryTranslatorTests
     }
 
     [Fact]
+    public void TryTranslateScalarPredicate_creates_typed_plans_for_integral_constants_without_numeric_promotion()
+    {
+        var model = CreateModel();
+
+        static Expression<Func<Child, bool>> BuildComparison<T>(
+            ExpressionType nodeType,
+            string targetMemberName,
+            T constant)
+        {
+            var root = Expression.Parameter(typeof(Child), "x");
+            var parent = Expression.Property(root, nameof(Child.Parent));
+            var target = Expression.Property(parent, targetMemberName);
+            var rhs = Expression.Constant(constant, typeof(T));
+            var body = Expression.MakeBinary(nodeType, target, rhs);
+            return Expression.Lambda<Func<Child, bool>>(body, root);
+        }
+
+        Db2NavigationQueryTranslator
+            .TryTranslateScalarPredicate(model, BuildComparison(ExpressionType.GreaterThan, nameof(Parent.Small), (byte)2), out var bytePlan)
+            .ShouldBeTrue();
+        bytePlan.ShouldBeOfType<Db2NavigationScalarPredicatePlan<byte>>().ComparisonValue.ShouldBe((byte)2);
+
+        Db2NavigationQueryTranslator
+            .TryTranslateScalarPredicate(model, BuildComparison(ExpressionType.NotEqual, nameof(Parent.TinySigned), (sbyte)0), out var sbytePlan)
+            .ShouldBeTrue();
+        sbytePlan.ShouldBeOfType<Db2NavigationScalarPredicatePlan<sbyte>>().ComparisonValue.ShouldBe((sbyte)0);
+
+        Db2NavigationQueryTranslator
+            .TryTranslateScalarPredicate(model, BuildComparison(ExpressionType.GreaterThanOrEqual, nameof(Parent.Shorty), (short)1), out var shortPlan)
+            .ShouldBeTrue();
+        shortPlan.ShouldBeOfType<Db2NavigationScalarPredicatePlan<short>>().ComparisonValue.ShouldBe((short)1);
+
+        Db2NavigationQueryTranslator
+            .TryTranslateScalarPredicate(model, BuildComparison(ExpressionType.LessThanOrEqual, nameof(Parent.UShorty), (ushort)5), out var ushortPlan)
+            .ShouldBeTrue();
+        ushortPlan.ShouldBeOfType<Db2NavigationScalarPredicatePlan<ushort>>().ComparisonValue.ShouldBe((ushort)5);
+
+        Db2NavigationQueryTranslator
+            .TryTranslateScalarPredicate(model, BuildComparison(ExpressionType.Equal, nameof(Parent.ULevel), (uint)7), out var uintPlan)
+            .ShouldBeTrue();
+        uintPlan.ShouldBeOfType<Db2NavigationScalarPredicatePlan<uint>>().ComparisonValue.ShouldBe((uint)7);
+
+        Db2NavigationQueryTranslator
+            .TryTranslateScalarPredicate(model, BuildComparison(ExpressionType.GreaterThan, nameof(Parent.UBig), (ulong)0), out var ulongPlan)
+            .ShouldBeTrue();
+        ulongPlan.ShouldBeOfType<Db2NavigationScalarPredicatePlan<ulong>>().ComparisonValue.ShouldBe((ulong)0);
+    }
+
+    [Fact]
+    public void TryTranslateScalarPredicate_flips_all_supported_comparisons_when_navigation_is_on_right_side()
+    {
+        var model = CreateModel();
+
+        Db2NavigationQueryTranslator
+            .TryTranslateScalarPredicate<Child>(model, x => 3 < x.Parent!.Level, out var lt)
+            .ShouldBeTrue();
+        lt.ComparisonKind.ShouldBe(Db2ScalarComparisonKind.GreaterThan);
+
+        Db2NavigationQueryTranslator
+            .TryTranslateScalarPredicate<Child>(model, x => 3 <= x.Parent!.Level, out var lte)
+            .ShouldBeTrue();
+        lte.ComparisonKind.ShouldBe(Db2ScalarComparisonKind.GreaterThanOrEqual);
+
+        Db2NavigationQueryTranslator
+            .TryTranslateScalarPredicate<Child>(model, x => 3 > x.Parent!.Level, out var gt)
+            .ShouldBeTrue();
+        gt.ComparisonKind.ShouldBe(Db2ScalarComparisonKind.LessThan);
+
+        Db2NavigationQueryTranslator
+            .TryTranslateScalarPredicate<Child>(model, x => 3 >= x.Parent!.Level, out var gte)
+            .ShouldBeTrue();
+        gte.ComparisonKind.ShouldBe(Db2ScalarComparisonKind.LessThanOrEqual);
+    }
+
+    [Fact]
     public void TryTranslateCollectionAnyPredicate_supports_Any_with_and_without_dependent_predicate()
     {
         var builder = new Db2ModelBuilder();
@@ -277,6 +354,26 @@ public sealed class Db2NavigationQueryTranslatorTests
 
         Db2NavigationQueryTranslator
             .TryTranslateCollectionAnyPredicate<Parent>(model, x => x.Children.AsQueryable().Any(), out _)
+            .ShouldBeFalse();
+    }
+
+    [Fact]
+    public void TryTranslateStringPredicate_returns_false_for_unsupported_string_method()
+    {
+        var model = CreateModel();
+
+        Db2NavigationQueryTranslator
+            .TryTranslateStringPredicate<Child>(model, x => x.Parent!.Name.ToUpper() == "ABC", out _)
+            .ShouldBeFalse();
+    }
+
+    [Fact]
+    public void TryTranslateCollectionAnyPredicate_returns_false_when_source_is_not_direct_member_access()
+    {
+        var model = CreateModel();
+
+        Db2NavigationQueryTranslator
+            .TryTranslateCollectionAnyPredicate<Parent>(model, x => x.Children.Where(static c => c.Id > 0).Any(), out _)
             .ShouldBeFalse();
     }
 

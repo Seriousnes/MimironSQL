@@ -2,6 +2,8 @@
 
 using MimironSQL.Dbd;
 
+using NSubstitute;
+
 using Shouldly;
 
 namespace MimironSQL.Providers.FileSystem.Tests;
@@ -44,16 +46,30 @@ public sealed class FileSystemProviderTests
     }
 
     [Fact]
-    public void FileSystemDbdProvider_Open_ParsesDbdFile()
+    public void FileSystemDbdProvider_Open_DelegatesToParser()
     {
         var dir = CreateTempDirectory();
         try
         {
             File.WriteAllText(Path.Combine(dir, "Spell.dbd"), "COLUMNS\nint ID\n");
 
-            var provider = new FileSystemDbdProvider(new FileSystemDbdProviderOptions(dir), new DbdParser());
+            var expectedPath = Path.Combine(dir, "Spell.dbd");
+
+            var expectedFile = Substitute.For<IDbdFile>();
+            expectedFile.ColumnsByName.Returns(new Dictionary<string, IDbdColumn>(StringComparer.Ordinal)
+            {
+                ["ID"] = Substitute.For<IDbdColumn>(),
+            });
+
+            var dbdParser = Substitute.For<IDbdParser>();
+            dbdParser.Parse(expectedPath).Returns(expectedFile);
+
+            var provider = new FileSystemDbdProvider(new FileSystemDbdProviderOptions(dir), dbdParser);
             var file = provider.Open("Spell");
+
+            file.ShouldBeSameAs(expectedFile);
             file.ColumnsByName.ContainsKey("ID").ShouldBeTrue();
+            dbdParser.Received(1).Parse(expectedPath);
         }
         finally
         {

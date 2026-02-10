@@ -9,6 +9,8 @@ public interface IManifestProvider
     /// <summary>
     /// Ensures the underlying manifest data exists locally (download/cache as needed).
     /// </summary>
+    /// <param name="cancellationToken">A cancellation token.</param>
+    /// <returns>A task that completes when the manifest is available locally.</returns>
     Task EnsureManifestExistsAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -16,5 +18,8 @@ public interface IManifestProvider
     /// (e.g. "DBFilesClient\\SpellName.db2") to a FileDataId.
     /// Returns null when no mapping exists.
     /// </summary>
+    /// <param name="db2NameOrPath">The DB2 table name or DB2 CASC path.</param>
+    /// <param name="cancellationToken">A cancellation token.</param>
+    /// <returns>A task that produces the resolved FileDataId, or null when not found.</returns>
     Task<int?> TryResolveDb2FileDataIdAsync(string db2NameOrPath, CancellationToken cancellationToken = default);
 }

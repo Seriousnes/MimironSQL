@@ -1,7 +1,15 @@
 namespace MimironSQL.Providers;
 
-public static class CascFlavorInfo
+/// <summary>
+/// Helpers for reading <c>.flavor.info</c> metadata.
+/// </summary>
+internal static class CascFlavorInfo
 {
+    /// <summary>
+    /// Reads the CASC product token from a <c>.flavor.info</c> file.
+    /// </summary>
+    /// <param name="flavorInfoPath">Path to the <c>.flavor.info</c> file.</param>
+    /// <returns>The product token.</returns>
     public static string ReadProduct(string flavorInfoPath)
     {
         ArgumentNullException.ThrowIfNull(flavorInfoPath);

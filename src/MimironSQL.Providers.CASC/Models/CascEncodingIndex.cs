@@ -2,12 +2,20 @@ using System.Buffers.Binary;
 
 namespace MimironSQL.Providers;
 
-public sealed class CascEncodingIndex
+/// <summary>
+/// Represents the decoded ENCODING index used to map content keys (CKey) to encoded keys (EKey).
+/// </summary>
+internal sealed class CascEncodingIndex
 {
     private readonly Dictionary<CascKey, CascKey> _eKeyByCKey;
 
     private CascEncodingIndex(Dictionary<CascKey, CascKey> eKeyByCKey) => _eKeyByCKey = eKeyByCKey;
 
+    /// <summary>
+    /// Parses decoded ENCODING file bytes.
+    /// </summary>
+    /// <param name="decodedEncodingFile">Decoded ENCODING file bytes.</param>
+    /// <returns>A parsed encoding index.</returns>
     public static CascEncodingIndex Parse(ReadOnlySpan<byte> decodedEncodingFile)
     {
         // Format described on wowdev.wiki (TACT: Encoding table).
@@ -73,8 +81,19 @@ public sealed class CascEncodingIndex
         return new CascEncodingIndex(map);
     }
 
+    /// <summary>
+    /// Attempts to resolve an EKey for the provided CKey.
+    /// </summary>
+    /// <param name="ckey">The content key.</param>
+    /// <param name="ekey">When this method returns, contains the resolved encoded key.</param>
+    /// <returns><see langword="true"/> if an EKey was found; otherwise <see langword="false"/>.</returns>
     public bool TryGetEKey(CascKey ckey, out CascKey ekey) => _eKeyByCKey.TryGetValue(ckey, out ekey);
 
+    /// <summary>
+    /// Resolves an EKey for the provided CKey.
+    /// </summary>
+    /// <param name="ckey">The content key.</param>
+    /// <returns>The resolved encoded key.</returns>
     public CascKey GetEKey(CascKey ckey)
     {
         if (!TryGetEKey(ckey, out var ekey))

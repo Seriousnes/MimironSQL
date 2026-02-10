@@ -1,6 +1,15 @@
 namespace MimironSQL.Providers;
 
-public sealed record CascBuildConfig(
+/// <summary>
+/// Represents the subset of CASC build configuration keys required by this provider.
+/// </summary>
+/// <param name="EncodingCKey">The ENCODING content key (CKey).</param>
+/// <param name="EncodingEKey">The ENCODING encoded key (EKey), when present.</param>
+/// <param name="RootCKey">The ROOT content key (CKey).</param>
+/// <param name="RootEKey">The ROOT encoded key (EKey), when present.</param>
+/// <param name="InstallCKey">The INSTALL content key (CKey).</param>
+/// <param name="InstallEKey">The INSTALL encoded key (EKey), when present.</param>
+internal sealed record CascBuildConfig(
     CascKey EncodingCKey,
     CascKey? EncodingEKey,
     CascKey RootCKey,
@@ -8,8 +17,16 @@ public sealed record CascBuildConfig(
     CascKey InstallCKey,
     CascKey? InstallEKey);
 
-public static class CascBuildConfigParser
+/// <summary>
+/// Parses CASC build configuration files.
+/// </summary>
+internal static class CascBuildConfigParser
 {
+    /// <summary>
+    /// Reads and parses a build config file from disk.
+    /// </summary>
+    /// <param name="buildConfigPath">Path to the build config file.</param>
+    /// <returns>The parsed build configuration.</returns>
     public static CascBuildConfig ReadFromFile(string buildConfigPath)
     {
         ArgumentNullException.ThrowIfNull(buildConfigPath);
@@ -20,6 +37,11 @@ public static class CascBuildConfigParser
         return Read(bytes);
     }
 
+    /// <summary>
+    /// Parses build configuration from bytes.
+    /// </summary>
+    /// <param name="buildConfigBytes">Build config file bytes.</param>
+    /// <returns>The parsed build configuration.</returns>
     public static CascBuildConfig Read(ReadOnlySpan<byte> buildConfigBytes)
     {
         if (buildConfigBytes.Length == 0)

@@ -5,6 +5,4 @@
 
 Rule ID | Category | Severity | Notes
 --------|----------|----------|-------
-MSQLDBD001 | MimironSQL.DbContextGenerator | Error | DbContextGenerator
-MSQLDBD002 | MimironSQL.DbContextGenerator | Error | DbContextGenerator
-MSQLDBD003 | MimironSQL.DbContextGenerator | Error | DbContextGenerator
+MSQLDBD004 | MimironSQL.DbContextGenerator | Warning | DbContextGenerator

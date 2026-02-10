@@ -5,11 +5,20 @@ using MimironSQL.EntityFrameworkCore.Infrastructure;
 
 namespace MimironSQL.EntityFrameworkCore;
 
+/// <summary>
+/// Extension methods for configuring MimironSQL's DB2 Entity Framework Core provider.
+/// </summary>
 public static class MimironDb2DbContextOptionsExtensions
 {
+    /// <summary>
+    /// Enables the MimironSQL DB2 provider and configures the underlying DB2 stream / DBD definition provider.
+    /// </summary>
+    /// <param name="optionsBuilder">The EF Core options builder.</param>
+    /// <param name="configureOptions">A callback used to configure the provider.</param>
+    /// <returns>The same <paramref name="optionsBuilder"/> instance to enable chaining.</returns>
     public static DbContextOptionsBuilder UseMimironDb2(
         this DbContextOptionsBuilder optionsBuilder,
-        Action<MimironDb2DbContextOptionsBuilder> configureOptions)
+        Action<IMimironDb2DbContextOptionsBuilder> configureOptions)
     {
         ArgumentNullException.ThrowIfNull(optionsBuilder);
         ArgumentNullException.ThrowIfNull(configureOptions);
@@ -26,7 +35,7 @@ public static class MimironDb2DbContextOptionsExtensions
         if (extension.ProviderKey is null)
         {
             throw new InvalidOperationException(
-                "MimironDb2 providers must be configured. Call UseFileSystem(...), UseCascNet(...), or another provider method inside UseMimironDb2(...). ");
+                "MimironDb2 providers must be configured. Call UseFileSystem(...), UseCasc(...), or another provider method inside UseMimironDb2(...). ");
         }
 
         return optionsBuilder;

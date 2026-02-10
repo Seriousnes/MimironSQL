@@ -5,6 +5,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
+	<NoWarn>CS0649;CS8618;EF1001</NoWarn>  
   </PropertyGroup>
 
   <ItemGroup>
@@ -26,7 +27,9 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\MimironSQL.EntityFrameworkCore\MimironSQL.EntityFrameworkCore.csproj" />
+    <ProjectReference Include="..\..\src\MimironSQL.Dbd\MimironSQL.Dbd.csproj" />
     <ProjectReference Include="..\..\src\MimironSQL.Providers.FileSystem\MimironSQL.Providers.FileSystem.csproj" />
+    <ProjectReference Include="..\..\src\MimironSQL.Providers.CASC\MimironSQL.Providers.CASC.csproj" />
   </ItemGroup>
 
 </Project>

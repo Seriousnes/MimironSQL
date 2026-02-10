@@ -1,94 +1,84 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
-using Microsoft.Extensions.Options;
 
 namespace MimironSQL.Providers;
 
+/// <summary>
+/// Service registration helpers for CASC-based DB2 stream access.
+/// </summary>
 public static class ServiceCollectionExtensions
 {
-    public static IServiceCollection AddCascNet(
+    /// <summary>
+    /// Registers CASC services required to open DB2 streams from a World of Warcraft installation.
+    /// </summary>
+    /// <param name="services">The service collection.</param>
+    /// <param name="options">CASC provider options.</param>
+    /// <returns>The same <paramref name="services"/> instance to enable chaining.</returns>
+    public static IServiceCollection AddCasc(
         this IServiceCollection services,
-        Action<CascStorageOptions>? configureStorage = null,
-        Action<WowListfileOptions>? configureWowListfile = null,
-        Action<WowDb2ManifestOptions>? configureWowDb2Manifest = null,
-        Action<CascNetOptions>? configureCascNet = null)
-        => AddCascNetInternal(services, configuration: null, configureStorage, configureWowListfile, configureWowDb2Manifest, configureCascNet);
+        CascDb2ProviderOptions options)
+        => AddCasc(services, configuration: null, options);
 
-    public static IServiceCollection AddCascNet(
+    /// <summary>
+    /// Registers CASC services required to open DB2 streams from a World of Warcraft installation.
+    /// </summary>
+    /// <param name="services">The service collection.</param>
+    /// <param name="configuration">Configuration used as an additional source for CASC settings.</param>
+    /// <returns>The same <paramref name="services"/> instance to enable chaining.</returns>
+    public static IServiceCollection AddCasc(
         this IServiceCollection services,
-        IConfiguration configuration,
-        Action<CascStorageOptions>? configureStorage = null,
-        Action<WowListfileOptions>? configureWowListfile = null,
-        Action<WowDb2ManifestOptions>? configureWowDb2Manifest = null,
-        Action<CascNetOptions>? configureCascNet = null)
-        => AddCascNetInternal(services, configuration, configureStorage, configureWowListfile, configureWowDb2Manifest, configureCascNet);
+        IConfiguration configuration)
+        => AddCasc(services, configuration, options: null);
 
-    private static IServiceCollection AddCascNetInternal(
+    private static IServiceCollection AddCasc(
         IServiceCollection services,
         IConfiguration? configuration,
-        Action<CascStorageOptions>? configureStorage,
-        Action<WowListfileOptions>? configureWowListfile,
-        Action<WowDb2ManifestOptions>? configureWowDb2Manifest,
-        Action<CascNetOptions>? configureCascNet)
+        CascDb2ProviderOptions? options)
     {
         ArgumentNullException.ThrowIfNull(services);
 
-        services.AddOptions<CascNetOptions>();
-        if (configureCascNet is not null)
-            services.Configure(configureCascNet);
+        if (options is null && configuration is null)
+            throw new ArgumentException("Either options or configuration must be provided.");
 
-        var cascNetOptions = new CascNetOptions
-        {
-            WowInstallRoot = configuration?["CascNet:WowInstallRoot"]?.Trim() ?? string.Empty,
-        };
+        var bound = options ?? BindOptions(configuration!);
 
-        var envInstallRoot = Environment.GetEnvironmentVariable("CascNet__WowInstallRoot");
-        if (!string.IsNullOrWhiteSpace(envInstallRoot))
-            cascNetOptions.WowInstallRoot = envInstallRoot.Trim();
+        if (string.IsNullOrWhiteSpace(bound.WowInstallRoot))
+            throw new InvalidOperationException("WoW install root is required. Configure 'Casc:WowInstallRoot'.");
 
-        configureCascNet?.Invoke(cascNetOptions);
+        var hasManifestProvider = services.Any(x => x.ServiceType == typeof(IManifestProvider));
+        if (!hasManifestProvider && string.IsNullOrWhiteSpace(bound.ManifestDirectory))
+            throw new ArgumentException("Manifest directory is required. Configure 'Casc:ManifestDirectory'.", options is null ? nameof(configuration) : nameof(options));
 
-        if (string.IsNullOrWhiteSpace(cascNetOptions.WowInstallRoot))
-        {
-            throw new InvalidOperationException(
-                "WoW install root is required. Configure 'CascNet:WowInstallRoot' (e.g. appsettings.json) or set env var 'CascNet__WowInstallRoot'.");
-        }
+        services.TryAddSingleton(bound);
 
-        services.PostConfigure<CascNetOptions>(o => o.WowInstallRoot = cascNetOptions.WowInstallRoot);
-
-        services.AddOptions<CascStorageOptions>();
-        if (configureStorage is not null)
-            services.Configure(configureStorage);
-
-        services.AddOptions<WowListfileOptions>();
-        if (configureWowListfile is not null)
-            services.Configure(configureWowListfile);
-
-        services.AddOptions<WowDb2ManifestOptions>();
-        if (configureWowDb2Manifest is not null)
-            services.Configure(configureWowDb2Manifest);
-
-        // Default manifest provider uses WoWDBDefs manifest.json with local-first fallback.
-        services.AddHttpClient<WowDb2ManifestProvider>();
-        services.TryAddSingleton<IManifestProvider>(sp =>
-            new LocalFirstManifestProvider(
-                sp.GetRequiredService<WowDb2ManifestProvider>(),
-                sp.GetRequiredService<IOptions<WowDb2ManifestOptions>>()));
-
-        services.TryAddSingleton<ICascStorageService, CascStorageService>();
-
-        // CascDBCProvider requires an opened storage instance.
-        services.TryAddSingleton(sp =>
-        {
-            var installRoot = sp.GetRequiredService<IOptions<CascNetOptions>>().Value.WowInstallRoot;
-            var storageService = sp.GetRequiredService<ICascStorageService>();
-            return storageService.OpenInstallRootAsync(installRoot).GetAwaiter().GetResult();
-        });
-
-        services.TryAddSingleton<CascDBCProvider>();
-        services.TryAddSingleton<IDb2StreamProvider>(sp => sp.GetRequiredService<CascDBCProvider>());
-
+        services.TryAddSingleton<IWowBuildIdentityProvider, WowBuildIdentityProvider>();
+        services.TryAddSingleton<IManifestProvider, FileSystemManifestProvider>();
+        services.TryAddSingleton<CascStorageService>();
+        services.TryAddSingleton<IDb2StreamProvider>(sp => sp.GetRequiredService<CascStorageService>());
+        
         return services;
+    }
+
+    private static CascDb2ProviderOptions BindOptions(IConfiguration configuration)
+    {
+        var casc = configuration.GetSection("Casc");
+
+        static string? ReadString(IConfigurationSection section, IConfiguration root, string key)
+            => section[key]?.Trim() is { Length: > 0 } v ? v : (root[key]?.Trim() is { Length: > 0 } r ? r : null);
+
+        var wowInstallRoot = ReadString(casc, configuration, "WowInstallRoot") ?? string.Empty;
+        var dbdDefsDir = ReadString(casc, configuration, "DbdDefinitionsDirectory");
+        var manifestDir = ReadString(casc, configuration, "ManifestDirectory") ?? string.Empty;
+
+        var assetName = casc["ManifestAssetName"]?.Trim() ?? configuration["ManifestAssetName"]?.Trim() ?? "manifest.json";
+
+        return new CascDb2ProviderOptions
+        {
+            WowInstallRoot = wowInstallRoot,
+            DbdDefinitionsDirectory = dbdDefsDir,
+            ManifestDirectory = manifestDir,
+            ManifestAssetName = assetName,
+        };
     }
 }

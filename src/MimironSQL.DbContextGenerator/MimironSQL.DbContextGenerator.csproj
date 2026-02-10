@@ -22,7 +22,12 @@
 		<RepositoryType>git</RepositoryType>
 		<PackageLicenseExpression>MIT</PackageLicenseExpression>
 		<PackageTags>warcraft;wow;db2;source-generator;roslyn</PackageTags>
+		<PackageReadmeFile>README.md</PackageReadmeFile>
 	</PropertyGroup>
+
+	<ItemGroup>
+		<None Include="README.md" Pack="true" PackagePath="" />
+	</ItemGroup>
 
 	<ItemGroup>
 		<PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.12.0" PrivateAssets="all" />
@@ -31,12 +36,7 @@
 
 	<ItemGroup>
 		<ProjectReference Include="..\MimironSQL.Contracts\MimironSQL.Contracts.csproj" />
-		<ProjectReference Include="..\MimironSQL.Dbd\MimironSQL.Dbd.csproj" />
-	</ItemGroup>
-
-	<ItemGroup>
-		<None Include="buildTransitive\MimironSQL.DbContextGenerator.props" Pack="true" PackagePath="buildTransitive\" />
-		<None Include="buildTransitive\MimironSQL.DbContextGenerator.targets" Pack="true" PackagePath="buildTransitive\" />
+		<ProjectReference Include="..\MimironSQL.Dbd\MimironSQL.Dbd.csproj" PrivateAssets="all" />
 	</ItemGroup>
 
 	<Target Name="PackBuildOutputs" DependsOnTargets="SatelliteDllsProjectOutputGroup;DebugSymbolsProjectOutputGroup">

@@ -1,71 +1,138 @@
 # MimironSQL.Providers.CASC
 
-Reads DB2 files directly from a World of Warcraft installation via the CASC (Content Addressable Storage Container) archive system. Provides `IDb2StreamProvider` and supporting services for CASC archive access, encoding/index resolution, and BLTE decoding.
+CASC archive provider for reading DB2 files directly from a World of Warcraft installation.
 
-This is an internal library — not published as a standalone package.
+## Overview
 
-## DI Registration
+This package provides read-only access to DB2 files stored in the CASC (Content Addressable Storage Container) archive system used by World of Warcraft. It handles the full CASC resolution pipeline — manifest lookup, root/encoding index resolution, local archive access, and BLTE decoding — and exposes the result as an `IDb2StreamProvider` for use with the MimironSQL ecosystem.
 
-```csharp
-services.AddCascNet(configuration);
+Key capabilities:
+
+- Resolves DB2 table names to FileDataIds via a manifest file.
+- Navigates the CASC root and encoding indices to locate content and encoding keys.
+- Reads data from local `.data` archive files and decodes BLTE-compressed streams (including LZ4-compressed and TACT-encrypted blocks).
+- Integrates with `MimironSQL.EntityFrameworkCore` via the `UseCasc()` builder pattern, or registers standalone via `AddCasc()`.
+
+## Installation
+
+Packages are published to GitHub Packages. See the [repository README](https://github.com/Seriousnes/MimironSQL) for feed setup, then install:
+
+```shell
+dotnet add package MimironSQL.Providers.CASC
 ```
 
-Binds configuration from `IConfiguration` sections and registers:
+## EF Core Integration
+
+Use the `UseCasc()` extension method on `IMimironDb2DbContextOptionsBuilder` to configure the CASC provider within an EF Core context.
+
+### Configuration-based
+
+Bind options directly from `IConfiguration`:
+
+```csharp
+services.AddDbContext<MyDbContext>(options =>
+    options.UseMimironDb2(db2 =>
+        db2.UseCasc(configuration)));
+```
+
+### Fluent builder
+
+Configure options explicitly with the fluent API:
+
+```csharp
+services.AddDbContext<MyDbContext>(options =>
+    options.UseMimironDb2(db2 =>
+        db2.UseCasc(casc =>
+        {
+            casc.WithWowInstallRoot(@"C:\Games\World of Warcraft")
+                .WithDbdDefinitions(@"C:\WoWDBDefs\definitions")
+                .WithManifest(@"C:\cache", "manifest.json")
+                .Apply();
+        })));
+```
+
+The builder also supports custom provider types:
+
+```csharp
+casc.WithDbdProvider<MyCustomDbdProvider>()
+    .WithManifestProvider<MyCustomManifestProvider>()
+    .Apply();
+```
+
+## Standalone DI Registration
+
+For non-EF Core usage, register CASC services directly on `IServiceCollection`:
+
+```csharp
+services.AddCasc(configuration);
+```
+
+Or pass options explicitly:
+
+```csharp
+services.AddCasc(new CascDb2ProviderOptions
+{
+    WowInstallRoot = @"C:\Games\World of Warcraft",
+    ManifestDirectory = @"C:\cache"
+});
+```
+
+This registers:
 
 | Service | Implementation |
-|---------|---------------|
-| `IDb2StreamProvider` | `CascDBCProvider` |
-| `ICascStorageService` | `CascStorageService` |
-| `IManifestProvider` | `LocalFirstManifestProvider` (falls back to `WowDb2ManifestProvider`) |
+|---|---|
+| `IDb2StreamProvider` | `CascStorageService` |
+| `IManifestProvider` | `FileSystemManifestProvider` |
 
-Configuration sections:
+## Configuration
 
-| Section | Options type | Key settings |
-|---------|-------------|-------------|
-| `CascNet` | `CascNetOptions` | `WowInstallRoot` — path to WoW installation |
-| `CascStorage` | `CascStorageOptions` | `EnsureManifestOnOpenInstallRoot` |
-| `WowDb2Manifest` | `WowDb2ManifestOptions` | `Owner`, `Repository`, `CacheDirectory` |
-| `WowListfile` | `WowListfileOptions` | `Owner`, `Repository`, `DownloadOnStartup` |
+Keys are read from the `Casc` section of `IConfiguration`, with a fallback to root-level keys for `WowInstallRoot`:
 
-## Core Types
+| Key | Required | Default | Description |
+|---|---|---|---|
+| `Casc:WowInstallRoot` | Yes | — | Path to the World of Warcraft installation directory. |
+| `Casc:ManifestDirectory` | Yes* | — | Directory where the DB2 manifest file is located when using the default `FileSystemManifestProvider`. |
+| `Casc:ManifestAssetName` | No | `manifest.json` | File name of the manifest asset. |
+| `Casc:DbdDefinitionsDirectory` | No* | — | Directory containing WoWDBDefs `.dbd` files. Required when using the `UseCasc(configuration)` EF Core overload. |
 
-### `CascStorage`
+\* `Casc:ManifestDirectory` is only optional when you register a custom `IManifestProvider` (e.g. via `WithManifestProvider<T>()`, `ManifestProvider`, or `ManifestProviderFactory`).
 
-Opens a WoW installation and resolves files by content key, encoding key, or FileDataID:
+Example `appsettings.json`:
 
-```csharp
-var storage = await CascStorage.OpenInstallRootAsync("C:/Games/World of Warcraft");
-
-using var stream = await storage.OpenDb2ByFileDataIdAsync(fileDataId);
+```json
+{
+  "Casc": {
+    "WowInstallRoot": "C:\\Games\\World of Warcraft",
+    "DbdDefinitionsDirectory": "C:\\WoWDBDefs\\definitions",
+    "ManifestDirectory": "C:\\cache"
+  }
+}
 ```
 
-### `CascDBCProvider`
+## Architecture
 
-Wraps `CascStorage` as an `IDb2StreamProvider`, resolving table names to FileDataIDs via the manifest:
+When a DB2 stream is requested, the CASC provider executes the following pipeline:
 
-```csharp
-var provider = new CascDBCProvider(storage, manifestProvider);
-using var stream = provider.OpenDb2Stream("Map");
-```
+1. **Manifest resolution** — The `IManifestProvider` (default: `FileSystemManifestProvider`) maps a DB2 table name (e.g. `Map`) to a FileDataId by reading a `manifest.json` file.
+2. **Root index lookup** — The `CascRootIndex` resolves the FileDataId to a content key (CKey).
+3. **Encoding resolution** — The `CascEncodingIndex` maps the CKey to an encoding key (EKey). If no encoding entry exists, the CKey is used directly.
+4. **Archive read** — The `CascLocalArchiveReader` locates the EKey in the local `.idx` files and reads the corresponding BLTE-encoded data from a `.data` archive file.
+5. **BLTE decoding** — The `BlteDecoder` decompresses the data, handling plain, LZ4-compressed, and TACT-encrypted blocks. Encrypted blocks that cannot be decrypted are skipped with diagnostic events.
 
-### `CascKey`
+The entire pipeline is encapsulated in `CascStorageService`, which implements `IDb2StreamProvider` and lazily initializes on first use.
 
-16-byte content/encoding key with hex parsing and equality:
+## Public API
 
-```csharp
-var key = CascKey.ParseHex("0123456789abcdef0123456789abcdef");
-```
+This package intentionally keeps its public surface small:
 
-### BLTE Decoding
+- `CascDb2ProviderOptions` — configuration record for CASC provider settings.
+- `CascDb2ProviderBuilder` — fluent builder for EF Core integration.
+- `CascStorageService` — `IDb2StreamProvider` implementation that reads DB2 streams from CASC.
+- `FileSystemManifestProvider` — default `IManifestProvider` that reads `manifest.json` from disk.
+- `ServiceCollectionExtensions.AddCasc(...)` — DI registration for standalone usage.
+- `MimironDb2CascOptionsBuilderExtensions.UseCasc(...)` — EF Core integration entry point.
+- `IWowBuildIdentityProvider` / `WowBuildIdentityProvider` — resolves WoW build identity from an install directory.
 
-```csharp
-byte[] decoded = BlteDecoder.Decode(rawBlteBytes);
-```
+## License
 
-### Build Detection
-
-```csharp
-var layout = CascInstallLayoutDetector.Detect("C:/Games/World of Warcraft");
-var records = CascBuildInfo.Read(layout.BuildInfoPath);
-var config = CascBuildConfigParser.ReadFromFile(configPath);
-```
+Licensed under the [MIT License](../../LICENSE.txt).

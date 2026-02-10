@@ -765,6 +765,51 @@ public sealed class Db2NavigationQueryCompilerTests
     }
 
     [Fact]
+    public void SemiJoin_string_predicate_endswith_uses_dense_string_index_provider_when_available()
+    {
+        var model = BuildParentChildModel();
+
+        var dense = BuildDenseStringTable(["alpha", "bravo"]);
+
+        var parents = InMemoryDb2File.Create(
+            tableName: nameof(Parent),
+            flags: Db2Flags.None,
+            denseStringTableBytes: dense.Bytes,
+            rows:
+            [
+                new InMemoryDb2File.Row(1, [1, 1, "alpha"]),
+                new InMemoryDb2File.Row(2, [2, 5, "bravo"]),
+            ],
+            denseStringIndexProvider: dense.OffsetByString);
+
+        var children = InMemoryDb2File.Create(
+            tableName: nameof(Child),
+            flags: Db2Flags.None,
+            denseStringTableBytes: ReadOnlyMemory<byte>.Empty,
+            rows:
+            [
+                new InMemoryDb2File.Row(100, [100, 1, "c1"]),
+                new InMemoryDb2File.Row(101, [101, 2, "c2"]),
+            ]);
+
+        (IDb2File<RowHandle> File, Db2TableSchema Schema) TableResolver(string tableName)
+            => tableName switch
+            {
+                nameof(Parent) => (parents, SchemaResolver(tableName)),
+                nameof(Child) => (children, SchemaResolver(tableName)),
+                _ => throw new InvalidOperationException($"Unknown table: {tableName}"),
+            };
+
+        Expression<Func<Child, bool>> predicate = c => c.Parent!.Name.EndsWith("vo");
+
+        Db2NavigationQueryCompiler.TryCompileSemiJoinPredicate(model, children, TableResolver, predicate, out var rowPredicate)
+            .ShouldBeTrue();
+
+        children.EnumerateRows().Where(rowPredicate).Select(r => r.RowId).ToArray()
+            .ShouldBe([101]);
+    }
+
+    [Fact]
     public void SemiJoin_string_predicate_endswith_falls_back_to_string_ops_when_sparse()
     {
         var model = BuildParentChildModel();
@@ -843,6 +888,97 @@ public sealed class Db2NavigationQueryCompilerTests
             };
 
         Expression<Func<Child, bool>> predicate = c => c.Parent!.Level != 1 && c.Parent.Level <= 5;
+
+        Db2NavigationQueryCompiler.TryCompileSemiJoinPredicate(model, children, TableResolver, predicate, out var rowPredicate)
+            .ShouldBeTrue();
+
+        children.EnumerateRows().Where(rowPredicate).Select(r => r.RowId).ToArray()
+            .ShouldBe([101]);
+    }
+
+    [Fact]
+    public void SemiJoin_scalar_predicate_supports_bool_and_byte_types()
+    {
+        var model = BuildScalarTypesModel();
+
+        var parents = InMemoryDb2File.Create(
+            tableName: nameof(ScalarParent),
+            flags: Db2Flags.None,
+            denseStringTableBytes: ReadOnlyMemory<byte>.Empty,
+            rows:
+            [
+                new InMemoryDb2File.Row(1, [1, false, (byte)9, 1L, 1.0f]),
+                new InMemoryDb2File.Row(2, [2, true, (byte)2, 20L, 2.0f]),
+                new InMemoryDb2File.Row(3, [3, true, (byte)5, 30L, 4.0f]),
+            ]);
+
+        var children = InMemoryDb2File.Create(
+            tableName: nameof(ScalarChild),
+            flags: Db2Flags.None,
+            denseStringTableBytes: ReadOnlyMemory<byte>.Empty,
+            rows:
+            [
+                new InMemoryDb2File.Row(100, [100, 1]),
+                new InMemoryDb2File.Row(101, [101, 2]),
+                new InMemoryDb2File.Row(102, [102, 3]),
+            ]);
+
+        (IDb2File<RowHandle> File, Db2TableSchema Schema) TableResolver(string tableName)
+            => tableName switch
+            {
+                nameof(ScalarParent) => (parents, SchemaResolverScalarTypes(tableName)),
+                nameof(ScalarChild) => (children, SchemaResolverScalarTypes(tableName)),
+                _ => throw new InvalidOperationException($"Unknown table: {tableName}"),
+            };
+
+        Expression<Func<ScalarChild, bool>> predicate1 = c => c.Parent!.IsActive == true && c.Parent.ByteValue == (byte)5;
+        Expression<Func<ScalarChild, bool>> predicate2 = c => c.Parent!.IsActive && c.Parent.ByteValue == (byte)5;
+
+        Db2NavigationQueryCompiler.TryCompileSemiJoinPredicate(model, children, TableResolver, predicate1, out var rowPredicate)
+            .ShouldBeTrue();
+        Db2NavigationQueryCompiler.TryCompileSemiJoinPredicate(model, children, TableResolver, predicate2, out rowPredicate)
+            .ShouldBeTrue();
+
+        children.EnumerateRows().Where(rowPredicate).Select(r => r.RowId).ToArray()
+            .ShouldBe([102]);
+    }
+
+    [Fact]
+    public void SemiJoin_scalar_predicate_supports_long_and_float_types()
+    {
+        var model = BuildScalarTypesModel();
+
+        var parents = InMemoryDb2File.Create(
+            tableName: nameof(ScalarParent),
+            flags: Db2Flags.None,
+            denseStringTableBytes: ReadOnlyMemory<byte>.Empty,
+            rows:
+            [
+                new InMemoryDb2File.Row(1, [1, true, (byte)1, 5L, 1.5f]),
+                new InMemoryDb2File.Row(2, [2, true, (byte)2, 20L, 2.0f]),
+                new InMemoryDb2File.Row(3, [3, true, (byte)3, 30L, 4.0f]),
+            ]);
+
+        var children = InMemoryDb2File.Create(
+            tableName: nameof(ScalarChild),
+            flags: Db2Flags.None,
+            denseStringTableBytes: ReadOnlyMemory<byte>.Empty,
+            rows:
+            [
+                new InMemoryDb2File.Row(100, [100, 1]),
+                new InMemoryDb2File.Row(101, [101, 2]),
+                new InMemoryDb2File.Row(102, [102, 3]),
+            ]);
+
+        (IDb2File<RowHandle> File, Db2TableSchema Schema) TableResolver(string tableName)
+            => tableName switch
+            {
+                nameof(ScalarParent) => (parents, SchemaResolverScalarTypes(tableName)),
+                nameof(ScalarChild) => (children, SchemaResolverScalarTypes(tableName)),
+                _ => throw new InvalidOperationException($"Unknown table: {tableName}"),
+            };
+
+        Expression<Func<ScalarChild, bool>> predicate = c => c.Parent!.LongValue >= 10L && c.Parent.FloatValue < 3.0f;
 
         Db2NavigationQueryCompiler.TryCompileSemiJoinPredicate(model, children, TableResolver, predicate, out var rowPredicate)
             .ShouldBeTrue();
@@ -1337,6 +1473,45 @@ public sealed class Db2NavigationQueryCompilerTests
     }
 
     [Fact]
+    public void SemiJoin_collection_count_gt_1_is_not_supported()
+    {
+        var model = BuildParentChildCollectionModel();
+
+        var parents = InMemoryDb2File.Create(
+            tableName: nameof(Parent),
+            flags: Db2Flags.None,
+            denseStringTableBytes: ReadOnlyMemory<byte>.Empty,
+            rows:
+            [
+                new InMemoryDb2File.Row(1, [1, 0, "p1"]),
+                new InMemoryDb2File.Row(2, [2, 0, "p2"]),
+            ]);
+
+        var children = InMemoryDb2File.Create(
+            tableName: nameof(Child),
+            flags: Db2Flags.None,
+            denseStringTableBytes: ReadOnlyMemory<byte>.Empty,
+            rows:
+            [
+                new InMemoryDb2File.Row(100, [100, 1, "c1"]),
+                new InMemoryDb2File.Row(101, [101, 1, "c2"]),
+            ]);
+
+        (IDb2File<RowHandle> File, Db2TableSchema Schema) TableResolver(string tableName)
+            => tableName switch
+            {
+                nameof(Parent) => (parents, SchemaResolver(tableName)),
+                nameof(Child) => (children, SchemaResolver(tableName)),
+                _ => throw new InvalidOperationException($"Unknown table: {tableName}"),
+            };
+
+        Expression<Func<Parent, bool>> predicate = p => p.Children.Count > 1;
+
+        Db2NavigationQueryCompiler.TryCompileSemiJoinPredicate(model, parents, TableResolver, predicate, out _)
+            .ShouldBeFalse();
+    }
+
+    [Fact]
     public void SemiJoin_shared_primary_key_one_to_one_uses_row_id_matching()
     {
         var model = BuildSharedPrimaryKeyModel();
@@ -1434,6 +1609,20 @@ public sealed class Db2NavigationQueryCompilerTests
         return builder.Build(SchemaResolver);
     }
 
+    private static Db2Model BuildScalarTypesModel()
+    {
+        var builder = new Db2ModelBuilder();
+
+        builder.Entity<ScalarChild>()
+            .HasOne(x => x.Parent)
+            .WithForeignKey(x => x.ParentId);
+
+        builder.Entity<ScalarParent>().HasKey(x => x.Id);
+        builder.Entity<ScalarChild>().HasKey(x => x.Id);
+
+        return builder.Build(SchemaResolverScalarTypes);
+    }
+
     private static Db2TableSchema SchemaResolver(string tableName)
     {
         return tableName switch
@@ -1516,6 +1705,37 @@ public sealed class Db2NavigationQueryCompilerTests
                 [
                     new Db2FieldSchema("ID", Db2ValueType.Int64, ColumnStartIndex: 0, ElementCount: 1, IsVerified: true, IsVirtual: false, IsId: true, IsRelation: false, ReferencedTableName: null),
                     new Db2FieldSchema(nameof(SpkChild.Name), Db2ValueType.String, ColumnStartIndex: 1, ElementCount: 1, IsVerified: true, IsVirtual: false, IsId: false, IsRelation: false, ReferencedTableName: null),
+                ]),
+
+            _ => throw new InvalidOperationException($"Unknown table: {tableName}"),
+        };
+    }
+
+    private static Db2TableSchema SchemaResolverScalarTypes(string tableName)
+    {
+        return tableName switch
+        {
+            nameof(ScalarParent) => new Db2TableSchema(
+                tableName: nameof(ScalarParent),
+                layoutHash: 0,
+                physicalColumnCount: 5,
+                fields:
+                [
+                    new Db2FieldSchema("ID", Db2ValueType.Int64, ColumnStartIndex: 0, ElementCount: 1, IsVerified: true, IsVirtual: false, IsId: true, IsRelation: false, ReferencedTableName: null),
+                    new Db2FieldSchema(nameof(ScalarParent.IsActive), Db2ValueType.Int64, ColumnStartIndex: 1, ElementCount: 1, IsVerified: true, IsVirtual: false, IsId: false, IsRelation: false, ReferencedTableName: null),
+                    new Db2FieldSchema(nameof(ScalarParent.ByteValue), Db2ValueType.Int64, ColumnStartIndex: 2, ElementCount: 1, IsVerified: true, IsVirtual: false, IsId: false, IsRelation: false, ReferencedTableName: null),
+                    new Db2FieldSchema(nameof(ScalarParent.LongValue), Db2ValueType.Int64, ColumnStartIndex: 3, ElementCount: 1, IsVerified: true, IsVirtual: false, IsId: false, IsRelation: false, ReferencedTableName: null),
+                    new Db2FieldSchema(nameof(ScalarParent.FloatValue), Db2ValueType.Single, ColumnStartIndex: 4, ElementCount: 1, IsVerified: true, IsVirtual: false, IsId: false, IsRelation: false, ReferencedTableName: null),
+                ]),
+
+            nameof(ScalarChild) => new Db2TableSchema(
+                tableName: nameof(ScalarChild),
+                layoutHash: 0,
+                physicalColumnCount: 2,
+                fields:
+                [
+                    new Db2FieldSchema("ID", Db2ValueType.Int64, ColumnStartIndex: 0, ElementCount: 1, IsVerified: true, IsVirtual: false, IsId: true, IsRelation: false, ReferencedTableName: null),
+                    new Db2FieldSchema(nameof(ScalarChild.ParentId), Db2ValueType.Int64, ColumnStartIndex: 1, ElementCount: 1, IsVerified: true, IsVirtual: false, IsId: false, IsRelation: false, ReferencedTableName: nameof(ScalarParent)),
                 ]),
 
             _ => throw new InvalidOperationException($"Unknown table: {tableName}"),
@@ -1626,6 +1846,28 @@ public sealed class Db2NavigationQueryCompilerTests
         public SpkParent? Parent { get; set; }
     }
 
+    private sealed class ScalarParent
+    {
+        public int Id { get; set; }
+
+        public bool IsActive { get; set; }
+
+        public byte ByteValue { get; set; }
+
+        public long LongValue { get; set; }
+
+        public float FloatValue { get; set; }
+    }
+
+    private sealed class ScalarChild
+    {
+        public int Id { get; set; }
+
+        public int ParentId { get; set; }
+
+        public ScalarParent? Parent { get; set; }
+    }
+
     private sealed class InMemoryDb2File(string tableName,
         Db2Flags flags,
         ReadOnlyMemory<byte> denseStringTableBytes,
@@ -1652,7 +1894,64 @@ public sealed class Db2NavigationQueryCompilerTests
         public T ReadField<T>(RowHandle handle, int fieldIndex)
         {
             var values = valuesByRowId[handle.RowId];
-            return (T)values[fieldIndex];
+            var value = values[fieldIndex];
+
+            if (value is T typedValue)
+                return typedValue;
+
+            if (value is null)
+                return default!;
+
+            var targetType = Nullable.GetUnderlyingType(typeof(T)) ?? typeof(T);
+            var sourceType = value.GetType();
+
+            if (IsNumericType(sourceType) && IsNumericType(targetType))
+            {
+                var sourceRank = GetNumericRank(sourceType);
+                var targetRank = GetNumericRank(targetType);
+
+                if (sourceRank <= targetRank)
+                    return (T)Convert.ChangeType(value, targetType, System.Globalization.CultureInfo.InvariantCulture);
+            }
+
+            return (T)value;
+        }
+
+        private static bool IsNumericType(Type type)
+        {
+            var typeCode = Type.GetTypeCode(type);
+            return typeCode is
+                TypeCode.SByte or
+                TypeCode.Byte or
+                TypeCode.Int16 or
+                TypeCode.UInt16 or
+                TypeCode.Int32 or
+                TypeCode.UInt32 or
+                TypeCode.Int64 or
+                TypeCode.UInt64 or
+                TypeCode.Single or
+                TypeCode.Double or
+                TypeCode.Decimal;
+        }
+
+        private static int GetNumericRank(Type type)
+        {
+            var typeCode = Type.GetTypeCode(type);
+            return typeCode switch
+            {
+                TypeCode.SByte => 1,
+                TypeCode.Byte => 2,
+                TypeCode.Int16 => 3,
+                TypeCode.UInt16 => 4,
+                TypeCode.Int32 => 5,
+                TypeCode.UInt32 => 6,
+                TypeCode.Int64 => 7,
+                TypeCode.UInt64 => 8,
+                TypeCode.Single => 9,
+                TypeCode.Double => 10,
+                TypeCode.Decimal => 11,
+                _ => throw new NotSupportedException($"Unsupported numeric type: {type.FullName}"),
+            };
         }
 
         public bool TryGetRowHandle<TId>(TId id, out RowHandle handle) where TId : IEquatable<TId>, IComparable<TId>

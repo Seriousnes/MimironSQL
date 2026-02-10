@@ -76,7 +76,7 @@ public class MimironDb2OptionsExtensionTests
     {
         var optionsBuilder = new DbContextOptionsBuilder();
 
-        Action<MimironDb2DbContextOptionsBuilder> configureOptions = null!;
+        Action<IMimironDb2DbContextOptionsBuilder> configureOptions = null!;
         Should.Throw<ArgumentNullException>(() => optionsBuilder.UseMimironDb2(configureOptions));
     }
 

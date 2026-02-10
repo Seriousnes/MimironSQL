@@ -3,24 +3,35 @@
 	<PropertyGroup>
 		<TargetFramework>net10.0</TargetFramework>
 		<ImplicitUsings>enable</ImplicitUsings>
-		<Nullable>enable</Nullable>		
+		<Nullable>enable</Nullable>
 		<RootNamespace>MimironSQL.Providers</RootNamespace>
-		<IsPackable>false</IsPackable>
+		<IsPackable>true</IsPackable>
+		<GenerateDocumentationFile>true</GenerateDocumentationFile>
+	</PropertyGroup>
+	
+	<PropertyGroup>
+		<PackageId>MimironSQL.Providers.CASC</PackageId>
+		<Version>0.1.0</Version>
+		<Authors>Seriousnes</Authors>
+		<Company>Seriousnes</Company>
+		<Description>CASC-based implementations of MimironSQL provider interfaces for reading DB2 files from a WoW installation</Description>
+		<PackageProjectUrl>https://github.com/Seriousnes/MimironSQL</PackageProjectUrl>
+		<RepositoryUrl>https://github.com/Seriousnes/MimironSQL</RepositoryUrl>
+		<RepositoryType>git</RepositoryType>
+		<PackageLicenseExpression>MIT</PackageLicenseExpression>
+		<PackageTags>warcraft;wow;db2;providers;casc;blte;tact</PackageTags>
 	</PropertyGroup>
 
 	<ItemGroup>
 		<PackageReference Include="K4os.Compression.LZ4" Version="1.3.8" />
-		<PackageReference Include="CsvHelper" Version="33.1.0" />
 		<PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" Version="10.0.2" />
 		<PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.2" />
 		<PackageReference Include="Microsoft.Extensions.Http" Version="10.0.2" />
-		<PackageReference Include="Microsoft.Extensions.Options" Version="10.0.2" />
 	</ItemGroup>
 
 	<ItemGroup>
-	  <ProjectReference Include="..\MimironSQL.Contracts\MimironSQL.Contracts.csproj" />
-	  <ProjectReference Include="..\MimironSQL.EntityFrameworkCore\MimironSQL.EntityFrameworkCore.csproj" />
-	  <ProjectReference Include="..\MimironSQL.Providers.FileSystem\MimironSQL.Providers.FileSystem.csproj" />
+		<ProjectReference Include="..\MimironSQL.Contracts\MimironSQL.Contracts.csproj" />
+		<ProjectReference Include="..\MimironSQL.Providers.FileSystem\MimironSQL.Providers.FileSystem.csproj" AdditionalProperties="NoWarn=1591" />
 	</ItemGroup>
 
 </Project>

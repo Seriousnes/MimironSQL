@@ -2,11 +2,26 @@ using System.Buffers.Binary;
 
 namespace MimironSQL.Providers;
 
-public sealed class CascShmemFile
+/// <summary>
+/// Represents parsed metadata from a CASC <c>shmem</c> file.
+/// </summary>
+internal sealed class CascShmemFile
 {
+    /// <summary>
+    /// Gets the data path value read from the shmem header.
+    /// </summary>
     public required string DataPath { get; init; }
+
+    /// <summary>
+    /// Gets the inferred <c>.idx</c> versions list.
+    /// </summary>
     public required IReadOnlyList<uint> IdxVersions { get; init; }
 
+    /// <summary>
+    /// Reads and parses a shmem file from the provided stream.
+    /// </summary>
+    /// <param name="stream">The input stream.</param>
+    /// <returns>The parsed <see cref="CascShmemFile"/>.</returns>
     public static CascShmemFile Read(Stream stream)
     {
         ArgumentNullException.ThrowIfNull(stream);

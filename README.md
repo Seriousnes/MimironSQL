@@ -18,6 +18,8 @@ A read-only Entity Framework Core database provider for World of Warcraft DB2 fi
 | `MimironSQL.DbContextGenerator` | Source generator that emits entities and DbContext from `.dbd` definitions |
 | `MimironSQL.Contracts` | Public interfaces and types for extending MimironSQL |
 | `MimironSQL.Formats.Wdc5` | WDC5 binary format reader |
+| `MimironSQL.Providers.FileSystem` | File system-based implementations of `IDb2StreamProvider`, `IDbdProvider`, and `ITactKeyProvider` |
+| `MimironSQL.Providers.CASC` | CASC-based `IDb2StreamProvider` and related CASC services |
 | `Salsa20` | Salsa20 stream cipher used for encrypted DB2 sections |
 
 ## Installation
@@ -35,6 +37,8 @@ Then install the packages you need:
 
 ```shell
 dotnet add package MimironSQL.EntityFrameworkCore
+dotnet add package MimironSQL.Providers.FileSystem
+dotnet add package MimironSQL.Providers.CASC
 dotnet add package MimironSQL.DbContextGenerator
 ```
 
@@ -48,6 +52,17 @@ The source generator needs a WoW build version to select the correct DBD layout.
 
 ```
 WOW_VERSION=12.0.0.65655
+```
+
+### 1.1 Provide generator inputs
+
+The generator only reads local files provided via MSBuild `AdditionalFiles`. Add your `.env` and the `.dbd` definitions you want to generate from:
+
+```xml
+<ItemGroup>
+    <AdditionalFiles Include=".env" />
+    <AdditionalFiles Include="path/to/dbd/definitions/**/*.dbd" />
+</ItemGroup>
 ```
 
 ### 2. Define your DbContext
@@ -73,12 +88,14 @@ services.AddDbContext<WoWDb2Context>(options =>
 
 ```csharp
 services.AddDbContext<WoWDb2Context>(options =>
-    options.UseMimironDb2(o => o.UseCascNet(
-        wowInstallRoot: "path/to/World of Warcraft",
-        dbdDefinitionsDirectory: "path/to/dbd/definitions")));
+    options.UseMimironDb2(o => o
+        .UseCasc()
+        .WithWowInstallRoot("path/to/World of Warcraft")
+        .WithDbdDefinitions("path/to/dbd/definitions")
+        .Apply()));
 ```
 
-`UseCascNet` configures CASC for DB2 streams and uses the file system for `.dbd` definitions.
+`UseCasc` configures CASC for DB2 streams and uses the file system for `.dbd` definitions.
 
 ### 4. Query
 

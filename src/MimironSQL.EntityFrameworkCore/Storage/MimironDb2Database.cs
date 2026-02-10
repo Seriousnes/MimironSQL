@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.EntityFrameworkCore.Update;
 
 using MimironSQL.EntityFrameworkCore.Query;
+using MimironSQL.EntityFrameworkCore.Query.Internal;
 
 namespace MimironSQL.EntityFrameworkCore.Storage;
 
@@ -21,11 +22,11 @@ internal sealed class MimironDb2Database(IMimironDb2QueryExecutor queryExecutor)
     public Func<QueryContext, TResult> CompileQuery<TResult>(Expression query, bool async)
     {
         if (async)
-            return _ => throw new NotSupportedException("Async query execution is not supported.");
+            return _ => MimironDb2AsyncQueryAdapter.ExecuteAsync<TResult>(_queryExecutor, query);
 
         return _ => _queryExecutor.Execute<TResult>(query);
     }
 
     public Expression<Func<QueryContext, TResult>> CompileQueryExpression<TResult>(Expression query, bool async)
-        => throw new NotSupportedException("Query precompilation is not supported.");
+        => MimironDb2AsyncQueryAdapter.PrecompileQuery<TResult>(_queryExecutor, query, async);
 }

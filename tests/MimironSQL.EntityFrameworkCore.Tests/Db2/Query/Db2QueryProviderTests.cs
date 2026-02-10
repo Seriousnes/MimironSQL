@@ -174,6 +174,33 @@ public sealed class Db2QueryProviderTests
     }
 
     [Fact]
+    public void Where_after_Select_suppresses_ArgumentNullException_in_predicates()
+    {
+        var (table, _) = CreateParentTable();
+
+        var result = table
+            .Select(static p => p)
+            .Where(static p => AlwaysThrowsArgNull(p))
+            .ToArray();
+
+        result.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void Skip_after_Select_executes_via_post_ops_dispatch()
+    {
+        var (table, _) = CreateParentTable();
+
+        var result = table
+            .Select(static p => p)
+            .Skip(1)
+            .Select(static p => p.Id)
+            .ToArray();
+
+        result.ShouldBe([2, 3]);
+    }
+
+    [Fact]
     public void Select_and_Take_can_prune_to_row_level_reads()
     {
         var (table, _) = CreateParentTable();
@@ -245,6 +272,35 @@ public sealed class Db2QueryProviderTests
     }
 
     [Fact]
+    public void AutoInclude_expands_chains_transitively_and_skips_cycles()
+    {
+        var (children, _) = CreateParentChildTablesWithAutoIncludes();
+
+        var result = children
+            .ToArray()
+            .OrderBy(static c => c.Id)
+            .ToArray();
+
+        result.Length.ShouldBe(3);
+
+        // Child -> Parent auto-include
+        result[0].Id.ShouldBe(10);
+        result[0].Parent.ShouldNotBeNull();
+        result[0].Parent!.Id.ShouldBe(1);
+
+        result[1].Id.ShouldBe(11);
+        result[1].Parent.ShouldNotBeNull();
+        result[1].Parent!.Id.ShouldBe(2);
+
+        result[2].Id.ShouldBe(12);
+        result[2].Parent.ShouldBeNull();
+
+        // Transitive auto-include: Child.Parent.Children
+        result[0].Parent!.Children.Select(static c => c.Id).ToArray().ShouldBe([10]);
+        result[1].Parent!.Children.Select(static c => c.Id).ToArray().ShouldBe([11]);
+    }
+
+    [Fact]
     public void Navigation_projection_pruning_can_apply_semi_join_predicates_and_project_related_values()
     {
         var (children, _, _) = CreateParentChildTables();
@@ -284,33 +340,132 @@ public sealed class Db2QueryProviderTests
     }
 
     [Fact]
-    public void CreateIntEnumerableGetter_converts_nullable_enum_arrays_without_boxing()
+    public void Include_supports_nullable_enum_foreign_key_arrays_and_ignores_null_keys()
     {
-        var member = typeof(EntityWithNullableEnumKeys).GetProperty(nameof(EntityWithNullableEnumKeys.Keys))!;
+        var builder = new Db2ModelBuilder();
 
-        var executorType = typeof(Db2IncludeChainExecutor);
-        var method = executorType.GetMethod("GetOrCreateIntEnumerableGetter", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!;
+        builder.Entity<ParentWithNullableEnumChildIds>()
+            .HasMany(x => x.Children)
+            .WithForeignKeyArray<TestKey?>(x => x.ChildIds);
 
-        var getter = (Func<object, IEnumerable<int>?>)method.Invoke(null, [typeof(EntityWithNullableEnumKeys), member])!;
+        builder.Entity<ParentWithNullableEnumChildIds>().HasKey(x => x.Id);
+        builder.Entity<Child>().HasKey(x => x.Id);
 
-        var entity = new EntityWithNullableEnumKeys
+        var model = builder.Build(SchemaResolver);
+
+        var parent = new ParentWithNullableEnumChildIds
         {
-            Keys = [TestKey.Ten, null, TestKey.Eleven],
+            Id = 1,
+            ChildIds = [TestKey.Ten, null, TestKey.Eleven],
+            Children = [],
         };
 
-        getter(entity)!.ToArray().ShouldBe([10, 0, 11]);
+        var childFile = InMemoryDb2File.Create(
+            tableName: nameof(Child),
+            flags: default,
+            denseStringTableBytes: default,
+            rows:
+            [
+                new InMemoryDb2File.Row(10, [10]),
+                new InMemoryDb2File.Row(11, [11]),
+            ]);
+
+        Db2IncludeChainExecutor.Apply<ParentWithNullableEnumChildIds, RowHandle>(
+            source: [parent],
+            model: model,
+            tableResolver: name => name == nameof(Child)
+                ? (childFile, SchemaResolver(name))
+                : throw new InvalidOperationException($"Unknown table: {name}"),
+            members: [GetMember<ParentWithNullableEnumChildIds, ICollection<Child>>(x => x.Children)],
+            entityFactory: new ReflectionDb2EntityFactory())
+            .ToArray();
+
+        parent.Children.Select(static c => c.Id).ToArray().ShouldBe([10, 11]);
+
+        static Db2TableSchema SchemaResolver(string tableName)
+        {
+            return tableName switch
+            {
+                nameof(ParentWithNullableEnumChildIds) => new Db2TableSchema(
+                    tableName: nameof(ParentWithNullableEnumChildIds),
+                    layoutHash: 0,
+                    physicalColumnCount: 2,
+                    fields:
+                    [
+                        new Db2FieldSchema("ID", Db2ValueType.Int64, ColumnStartIndex: 0, ElementCount: 1, IsVerified: true, IsVirtual: false, IsId: true, IsRelation: false, ReferencedTableName: null),
+                        new Db2FieldSchema(nameof(ParentWithNullableEnumChildIds.ChildIds), Db2ValueType.Int64, ColumnStartIndex: 1, ElementCount: 3, IsVerified: true, IsVirtual: false, IsId: false, IsRelation: false, ReferencedTableName: nameof(Child)),
+                    ]),
+
+                nameof(Child) => new Db2TableSchema(
+                    tableName: nameof(Child),
+                    layoutHash: 0,
+                    physicalColumnCount: 1,
+                    fields:
+                    [
+                        new Db2FieldSchema("ID", Db2ValueType.Int64, ColumnStartIndex: 0, ElementCount: 1, IsVerified: true, IsVirtual: false, IsId: true, IsRelation: false, ReferencedTableName: null),
+                    ]),
+
+                _ => throw new InvalidOperationException($"Unknown table: {tableName}"),
+            };
+        }
     }
 
     [Fact]
-    public void CreateIntEnumerableGetter_throws_for_string_enumerables_even_though_string_is_IEnumerable()
+    public void Build_throws_for_string_foreign_key_collections_even_though_string_is_IEnumerable()
     {
-        var member = typeof(EntityWithStringKeys).GetProperty(nameof(EntityWithStringKeys.Keys))!;
+        var builder = new Db2ModelBuilder();
 
-        var executorType = typeof(Db2IncludeChainExecutor);
-        var method = executorType.GetMethod("GetOrCreateIntEnumerableGetter", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!;
+        builder.Entity<EntityWithStringKeys>()
+            .HasMany(x => x.Children)
+            .WithForeignKeyArray<char>(x => x.Keys);
 
-        var ex = Should.Throw<TargetInvocationException>(() => method.Invoke(null, [typeof(EntityWithStringKeys), member]));
-        ex.InnerException.ShouldBeOfType<NotSupportedException>();
+        builder.Entity<EntityWithStringKeys>().HasKey(x => x.Id);
+        builder.Entity<Child>().HasKey(x => x.Id);
+
+        var ex = Should.Throw<NotSupportedException>(() => builder.Build(SchemaResolver));
+        ex.Message.ShouldContain("expects an integer key collection");
+
+        static Db2TableSchema SchemaResolver(string tableName)
+        {
+            return tableName switch
+            {
+                nameof(EntityWithStringKeys) => new Db2TableSchema(
+                    tableName: nameof(EntityWithStringKeys),
+                    layoutHash: 0,
+                    physicalColumnCount: 2,
+                    fields:
+                    [
+                        new Db2FieldSchema("ID", Db2ValueType.Int64, ColumnStartIndex: 0, ElementCount: 1, IsVerified: true, IsVirtual: false, IsId: true, IsRelation: false, ReferencedTableName: null),
+                        new Db2FieldSchema(nameof(EntityWithStringKeys.Keys), Db2ValueType.String, ColumnStartIndex: 1, ElementCount: 1, IsVerified: true, IsVirtual: false, IsId: false, IsRelation: false, ReferencedTableName: null),
+                    ]),
+
+                nameof(Child) => new Db2TableSchema(
+                    tableName: nameof(Child),
+                    layoutHash: 0,
+                    physicalColumnCount: 1,
+                    fields:
+                    [
+                        new Db2FieldSchema("ID", Db2ValueType.Int64, ColumnStartIndex: 0, ElementCount: 1, IsVerified: true, IsVirtual: false, IsId: true, IsRelation: false, ReferencedTableName: null),
+                    ]),
+
+                _ => throw new InvalidOperationException($"Unknown table: {tableName}"),
+            };
+        }
+    }
+
+    private static MemberInfo GetMember<TEntity, TMember>(Expression<Func<TEntity, TMember>> expression)
+    {
+        ArgumentNullException.ThrowIfNull(expression);
+
+        var body = expression.Body;
+        if (body is UnaryExpression { NodeType: ExpressionType.Convert or ExpressionType.ConvertChecked } u)
+            body = u.Operand;
+
+        return body switch
+        {
+            MemberExpression m => m.Member,
+            _ => throw new InvalidOperationException("Expected simple member access."),
+        };
     }
 
     [Fact]
@@ -591,6 +746,61 @@ public sealed class Db2QueryProviderTests
         return (new Db2Queryable<Child>(childrenProvider), new Db2Queryable<Parent>(parentsProvider), model);
     }
 
+    private static (IQueryable<Child> Children, Db2Model Model) CreateParentChildTablesWithAutoIncludes()
+    {
+        var builder = new Db2ModelBuilder();
+
+        builder.Entity<Child>()
+            .HasOne(x => x.Parent)
+            .WithForeignKey(x => x.ParentId);
+
+        builder.Entity<Parent>()
+            .HasMany(x => x.Children)
+            .WithForeignKey(x => x.ParentId);
+
+        // Auto-includes apply transitively on included entities.
+        builder.SetAutoInclude(typeof(Child), GetMember<Child, Parent?>(static x => x.Parent));
+        builder.SetAutoInclude(typeof(Parent), GetMember<Parent, ICollection<Child>>(static x => x.Children));
+
+        builder.Entity<Parent>().HasKey(x => x.Id);
+        builder.Entity<Child>().HasKey(x => x.Id);
+
+        var model = builder.Build(SchemaResolver);
+
+        var parentsFile = InMemoryDb2File.Create(
+            tableName: nameof(Parent),
+            flags: Db2Flags.None,
+            denseStringTableBytes: ReadOnlyMemory<byte>.Empty,
+            rows:
+            [
+                new InMemoryDb2File.Row(1, [1, 1, "p1"]),
+                new InMemoryDb2File.Row(2, [2, 5, "p2"]),
+            ]);
+
+        var childrenFile = InMemoryDb2File.Create(
+            tableName: nameof(Child),
+            flags: Db2Flags.None,
+            denseStringTableBytes: ReadOnlyMemory<byte>.Empty,
+            rows:
+            [
+                new InMemoryDb2File.Row(10, [10, 1, "c1"]),
+                new InMemoryDb2File.Row(11, [11, 2, "c2"]),
+                new InMemoryDb2File.Row(12, [12, 0, "c0"]),
+            ]);
+
+        (IDb2File<RowHandle> File, Db2TableSchema Schema) TableResolver(string tableName)
+            => tableName switch
+            {
+                nameof(Parent) => (parentsFile, SchemaResolver(nameof(Parent))),
+                nameof(Child) => (childrenFile, SchemaResolver(nameof(Child))),
+                _ => throw new InvalidOperationException($"Unknown table: {tableName}"),
+            };
+
+        var childrenProvider = new Db2QueryProvider<Child, RowHandle>(childrenFile, model, TableResolver, new ReflectionDb2EntityFactory());
+
+        return (new Db2Queryable<Child>(childrenProvider), model);
+    }
+
     private static (IQueryable<ParentWithChildIds> Parent, IQueryable<Child> Children, Db2Model Model) CreateParentWithChildIdsTables()
     {
         var builder = new Db2ModelBuilder();
@@ -823,13 +1033,21 @@ public sealed class Db2QueryProviderTests
         Eleven = 11,
     }
 
-    private sealed class EntityWithNullableEnumKeys
+    private sealed class ParentWithNullableEnumChildIds
     {
-        public TestKey?[] Keys { get; set; } = [];
+        public int Id { get; set; }
+
+        public TestKey?[] ChildIds { get; set; } = [];
+
+        public ICollection<Child> Children { get; set; } = [];
     }
 
     private sealed class EntityWithStringKeys
     {
+        public int Id { get; set; }
+
         public string Keys { get; set; } = string.Empty;
+
+        public ICollection<Child> Children { get; set; } = [];
     }
 }

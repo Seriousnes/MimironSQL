@@ -1,14 +1,30 @@
 namespace MimironSQL.Providers;
 
-public sealed record CascBuildInfoRecord(
+/// <summary>
+/// Represents a single row from the <c>.build.info</c> file.
+/// </summary>
+/// <param name="Product">The product identifier.</param>
+/// <param name="Branch">The branch identifier, when present.</param>
+/// <param name="BuildConfig">The build config key.</param>
+/// <param name="CdnConfig">The CDN config key, when present.</param>
+/// <param name="Version">The version string, when present.</param>
+internal sealed record CascBuildInfoRecord(
     string Product,
     string? Branch,
     string BuildConfig,
     string? CdnConfig,
     string? Version);
 
-public static class CascBuildInfo
+/// <summary>
+/// Helpers for reading and selecting records from <c>.build.info</c>.
+/// </summary>
+internal static class CascBuildInfo
 {
+    /// <summary>
+    /// Reads <c>.build.info</c> records from disk.
+    /// </summary>
+    /// <param name="buildInfoPath">Path to the <c>.build.info</c> file.</param>
+    /// <returns>The parsed records.</returns>
     public static IReadOnlyList<CascBuildInfoRecord> Read(string buildInfoPath)
     {
         ArgumentNullException.ThrowIfNull(buildInfoPath);
@@ -81,6 +97,13 @@ public static class CascBuildInfo
         return records;
     }
 
+    /// <summary>
+    /// Selects the first record matching the specified product, optionally falling back to additional products.
+    /// </summary>
+    /// <param name="records">The available records.</param>
+    /// <param name="product">The desired product identifier.</param>
+    /// <param name="productFallbacks">Optional additional products to try.</param>
+    /// <returns>The selected build info record.</returns>
     public static CascBuildInfoRecord SelectForProduct(
         IReadOnlyList<CascBuildInfoRecord> records,
         string product,

@@ -2,8 +2,17 @@ using System.Text.RegularExpressions;
 
 namespace MimironSQL.Providers;
 
-public sealed partial class WowBuildIdentityProvider : IWowBuildIdentityProvider
+/// <summary>
+/// Default implementation of <see cref="IWowBuildIdentityProvider"/>.
+/// </summary>
+internal sealed partial class WowBuildIdentityProvider : IWowBuildIdentityProvider
 {
+    /// <summary>
+    /// Gets build identity information for the installation rooted at <paramref name="installRoot"/>.
+    /// </summary>
+    /// <param name="installRoot">Root directory of the World of Warcraft installation.</param>
+    /// <param name="cancellationToken">A cancellation token.</param>
+    /// <returns>The build identity.</returns>
     public ValueTask<WowBuildIdentity> GetAsync(string installRoot, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(installRoot);
@@ -23,6 +32,11 @@ public sealed partial class WowBuildIdentityProvider : IWowBuildIdentityProvider
         return new ValueTask<WowBuildIdentity>(new WowBuildIdentity(buildKey, buildNumber, version, buildConfigKey));
     }
 
+    /// <summary>
+    /// Attempts to parse a numeric build number from a version string.
+    /// </summary>
+    /// <param name="version">The version string.</param>
+    /// <returns>The build number when found; otherwise <see langword="null"/>.</returns>
     public static int? TryParseBuildNumber(string? version)
     {
         if (string.IsNullOrWhiteSpace(version))
@@ -38,6 +52,11 @@ public sealed partial class WowBuildIdentityProvider : IWowBuildIdentityProvider
         return int.TryParse(last, out var n) ? n : null;
     }
 
+    /// <summary>
+    /// Sanitizes an arbitrary string into a token suitable for identifiers.
+    /// </summary>
+    /// <param name="input">The input string.</param>
+    /// <returns>A sanitized token.</returns>
     public static string SanitizeForNamespace(string input)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(input);

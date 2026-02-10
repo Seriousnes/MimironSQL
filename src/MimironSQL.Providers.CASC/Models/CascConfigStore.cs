@@ -1,7 +1,16 @@
 namespace MimironSQL.Providers;
 
-public static class CascConfigStore
+/// <summary>
+/// Reads CASC config blobs from the <c>Data\config</c> store.
+/// </summary>
+internal static class CascConfigStore
 {
+    /// <summary>
+    /// Reads the config blob for the specified key.
+    /// </summary>
+    /// <param name="dataConfigDirectory">The <c>Data\config</c> directory.</param>
+    /// <param name="key">The config blob key.</param>
+    /// <returns>The config blob bytes.</returns>
     public static byte[] ReadConfigBytes(string dataConfigDirectory, CascKey key)
     {
         ArgumentNullException.ThrowIfNull(dataConfigDirectory);

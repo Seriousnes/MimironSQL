@@ -11,7 +11,7 @@ services.AddDbContext<WoWDb2Context>(options =>
         dbdDefinitionsDirectory: "path/to/dbd/definitions")));
 ```
 
-Provider configuration is done via the `Action<MimironDb2DbContextOptionsBuilder>` callback. Provider-specific extension methods live in their provider packages (for example, `UseFileSystem(...)` and `UseCascNet(...)`). Only one provider may be configured.
+Provider configuration is done via the `Action<MimironDb2DbContextOptionsBuilder>` callback. Provider-specific extension methods live in their provider packages (for example, `UseFileSystem(...)` and `UseCasc(...)`). Only one provider may be configured.
 
 If you need to register core MimironSQL services outside of EF Core, you can use:
 

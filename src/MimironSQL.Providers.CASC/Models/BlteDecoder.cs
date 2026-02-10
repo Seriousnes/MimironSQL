@@ -6,11 +6,25 @@ using K4os.Compression.LZ4;
 
 namespace MimironSQL.Providers;
 
-public static class BlteDecoder
+/// <summary>
+/// Decodes BLTE-encoded data blocks.
+/// </summary>
+internal static class BlteDecoder
 {
+    /// <summary>
+    /// Decodes a BLTE buffer.
+    /// </summary>
+    /// <param name="blte">The BLTE bytes.</param>
+    /// <returns>The decoded bytes.</returns>
     public static byte[] Decode(ReadOnlySpan<byte> blte)
         => Decode(blte, options: null);
 
+    /// <summary>
+    /// Decodes a BLTE buffer.
+    /// </summary>
+    /// <param name="blte">The BLTE bytes.</param>
+    /// <param name="options">Optional decode options.</param>
+    /// <returns>The decoded bytes.</returns>
     public static byte[] Decode(ReadOnlySpan<byte> blte, BlteDecodeOptions? options)
     {
         if (blte.Length < 8)

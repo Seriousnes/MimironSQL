@@ -77,12 +77,14 @@ services.AddDbContext<WoWDb2Context>(options =>
 
 ```csharp
 services.AddDbContext<WoWDb2Context>(options =>
-    options.UseMimironDb2(o => o.UseCascNet(
-        wowInstallRoot: "path/to/World of Warcraft",
-        dbdDefinitionsDirectory: "path/to/dbd/definitions")));
+    options.UseMimironDb2(o => o
+        .UseCasc()
+        .WithWowInstallRoot("path/to/World of Warcraft")
+        .WithDbdDefinitions("path/to/dbd/definitions")
+        .Apply()));
 ```
 
-`UseCascNet` configures CASC for DB2 streams and uses the file system for `.dbd` definitions.
+`UseCasc` configures CASC for DB2 streams and uses the file system for `.dbd` definitions.
 
 ### 4. Query
 

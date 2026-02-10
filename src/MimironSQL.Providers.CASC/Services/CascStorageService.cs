@@ -1,16 +1,22 @@
-using Microsoft.Extensions.Options;
-
 namespace MimironSQL.Providers;
 
-public sealed class CascStorageService(IManifestProvider manifestProvider, IOptions<CascStorageOptions> storageOptions) : ICascStorageService
+/// <summary>
+/// DI-friendly service for opening <see cref="ICascStorage"/> instances.
+/// </summary>
+/// <param name="manifestProvider">The manifest provider used for optional initialization.</param>
+internal sealed class CascStorageService(IManifestProvider manifestProvider) : ICascStorageService
 {
     private readonly IManifestProvider _manifestProvider = manifestProvider ?? throw new ArgumentNullException(nameof(manifestProvider));
-    private readonly CascStorageOptions _storageOptions = storageOptions?.Value ?? throw new ArgumentNullException(nameof(storageOptions));
 
+    /// <summary>
+    /// Opens CASC storage for the specified install root.
+    /// </summary>
+    /// <param name="installRoot">Root directory of the World of Warcraft installation.</param>
+    /// <param name="cancellationToken">A cancellation token.</param>
+    /// <returns>An opened CASC storage instance.</returns>
     public async Task<ICascStorage> OpenInstallRootAsync(string installRoot, CancellationToken cancellationToken = default)
     {
-        if (_storageOptions.EnsureManifestOnOpenInstallRoot)
-            await _manifestProvider.EnsureManifestExistsAsync(cancellationToken).ConfigureAwait(false);
+        await _manifestProvider.EnsureManifestExistsAsync(cancellationToken).ConfigureAwait(false);
 
         return await CascStorage.OpenInstallRootAsync(installRoot, cancellationToken).ConfigureAwait(false);
     }

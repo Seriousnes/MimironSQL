@@ -23,14 +23,12 @@ public sealed class CascDb2ContextIntegrationLocalTests
         File.Exists(manifestPath).ShouldBeTrue();
 
         var optionsBuilder = new DbContextOptionsBuilder<WoWDb2Context>();
-        optionsBuilder.UseMimironDb2(o => o.UseCascNet(
-            wowInstallRoot: wowInstallRoot,
-            dbdDefinitionsDirectory: testDataDir,
-            configureWowDb2Manifest: m =>
-            {
-                m.CacheDirectory = testDataDir;
-                m.AssetName = "manifest.json";
-            }));
+        optionsBuilder.UseMimironDb2(o => o
+            .UseCasc()
+            .WithWowInstallRoot(wowInstallRoot)
+            .WithDbdDefinitions(testDataDir)
+            .WithManifest(testDataDir, "manifest.json")
+            .Apply());
 
         using var context = new WoWDb2Context(optionsBuilder.Options);
 

@@ -6,6 +6,10 @@
 		<Nullable>enable</Nullable>		
 		<RootNamespace>MimironSQL.Providers</RootNamespace>
 		<IsPackable>true</IsPackable>
+		<GenerateDocumentationFile>true</GenerateDocumentationFile>
+	</PropertyGroup>
+
+	<PropertyGroup>
 		<PackageId>MimironSQL.Providers.FileSystem</PackageId>
 		<Version>0.1.0</Version>
 		<Authors>Seriousnes</Authors>

@@ -1,13 +1,11 @@
 using System.Text.Json;
 
-using Microsoft.Extensions.Options;
-
 namespace MimironSQL.Providers;
 
-public sealed class LocalFirstManifestProvider(IManifestProvider fallback, IOptions<WowDb2ManifestOptions> options) : IManifestProvider
+internal sealed class LocalFirstManifestProvider(IManifestProvider fallback, CascDb2ProviderOptions options) : IManifestProvider
 {
     private readonly IManifestProvider _fallback = fallback ?? throw new ArgumentNullException(nameof(fallback));
-    private readonly WowDb2ManifestOptions _options = options?.Value ?? throw new ArgumentNullException(nameof(options));
+    private readonly CascDb2ProviderOptions _options = options ?? throw new ArgumentNullException(nameof(options));
 
     private readonly SemaphoreSlim _lock = new(1, 1);
     private Dictionary<string, int>? _db2ByTableName;
@@ -18,35 +16,6 @@ public sealed class LocalFirstManifestProvider(IManifestProvider fallback, IOpti
             return;
 
         await _fallback.EnsureManifestExistsAsync(cancellationToken).ConfigureAwait(false);
-    }
-
-    public async Task<Stream> OpenCachedAsync(CancellationToken cancellationToken = default)
-    {
-        var localPath = TryFindLocalManifestPath();
-        if (localPath is not null)
-            return File.OpenRead(localPath);
-
-        await _fallback.EnsureManifestExistsAsync(cancellationToken).ConfigureAwait(false);
-
-        var cacheDir = _options.GetCacheDirectoryOrDefault();
-        var targetPath = Path.Combine(cacheDir, _options.AssetName);
-        return File.OpenRead(targetPath);
-    }
-
-    public async Task<IReadOnlyDictionary<string, int>> GetDb2FileDataIdByPathAsync(CancellationToken cancellationToken = default)
-    {
-        var map = await GetDb2ByTableNameAsync(cancellationToken).ConfigureAwait(false);
-
-        var byPath = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-        foreach (var (tableName, fileDataId) in map)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            var path = CascPath.NormalizeDb2Path($"DBFilesClient\\{tableName}.db2");
-            byPath[path] = fileDataId;
-        }
-
-        return byPath;
     }
 
     public async Task<int?> TryResolveDb2FileDataIdAsync(string db2NameOrPath, CancellationToken cancellationToken = default)
@@ -107,9 +76,7 @@ public sealed class LocalFirstManifestProvider(IManifestProvider fallback, IOpti
                     }
 
                     if (value.ValueKind == JsonValueKind.Object && TryReadEntry(value, out var table, out fdid))
-                    {
                         map[table] = fdid;
-                    }
                 }
             }
 
@@ -122,24 +89,44 @@ public sealed class LocalFirstManifestProvider(IManifestProvider fallback, IOpti
         }
     }
 
+    private async Task<Stream> OpenCachedAsync(CancellationToken cancellationToken)
+    {
+        var localPath = TryFindLocalManifestPath();
+        if (localPath is not null)
+            return File.OpenRead(localPath);
+
+        await _fallback.EnsureManifestExistsAsync(cancellationToken).ConfigureAwait(false);
+
+        var cacheDir = GetCacheDirectoryOrDefault();
+        var targetPath = Path.Combine(cacheDir, _options.ManifestAssetName);
+        return File.OpenRead(targetPath);
+    }
+
+    private string GetCacheDirectoryOrDefault()
+    {
+        if (!string.IsNullOrWhiteSpace(_options.ManifestCacheDirectory))
+            return _options.ManifestCacheDirectory;
+
+        var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        return Path.Combine(localAppData, "MimironSQL", "wowdbdefs");
+    }
+
     private string? TryFindLocalManifestPath()
     {
-        var root = _options.GetCacheDirectoryOrDefault();
-        if (string.IsNullOrWhiteSpace(root) || !Directory.Exists(root))
+        if (string.IsNullOrWhiteSpace(_options.ManifestCacheDirectory))
             return null;
 
-        var direct = Path.Combine(root, _options.AssetName);
-        if (File.Exists(direct))
-            return direct;
-
-        return null;
+        var path = Path.Combine(_options.ManifestCacheDirectory, _options.ManifestAssetName);
+        return File.Exists(path) ? path : null;
     }
 
     private static bool TryReadEntry(JsonElement element, out string tableName, out int fileDataId)
     {
-        fileDataId = 0;
         if (!TryGetStringProperty(element, "tableName", out tableName))
+        {
+            fileDataId = 0;
             return false;
+        }
 
         if (!TryGetIntProperty(element, "db2FileDataID", out fileDataId)
             && !TryGetIntProperty(element, "db2FileDataId", out fileDataId)

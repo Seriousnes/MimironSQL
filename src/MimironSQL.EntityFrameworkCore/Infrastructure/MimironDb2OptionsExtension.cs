@@ -1,4 +1,3 @@
-using System.Runtime.CompilerServices;
 using System.Text;
 
 using Microsoft.EntityFrameworkCore.Infrastructure;
@@ -10,6 +9,9 @@ using MimironSQL.Providers;
 
 namespace MimironSQL.EntityFrameworkCore.Infrastructure;
 
+/// <summary>
+/// EF Core options extension used to store provider selection and register MimironSQL DB2 services.
+/// </summary>
 public class MimironDb2OptionsExtension : IDbContextOptionsExtension
 {
     private DbContextOptionsExtensionInfo? _info;
@@ -27,10 +29,28 @@ public class MimironDb2OptionsExtension : IDbContextOptionsExtension
 
     public virtual DbContextOptionsExtensionInfo Info => _info ??= new ExtensionInfo(this);
 
+    /// <summary>
+    /// Gets the configured provider key, or <see langword="null"/> if no provider has been selected.
+    /// </summary>
     public string? ProviderKey { get; private set; }
+
+    /// <summary>
+    /// Gets a hash of the provider configuration used for EF Core service provider caching.
+    /// </summary>
     public int ProviderConfigHash { get; private set; }
+
+    /// <summary>
+    /// Gets the callback that registers provider-specific services.
+    /// </summary>
     public Action<IServiceCollection>? ApplyProviderServices { get; private set; }
 
+    /// <summary>
+    /// Returns a copy of this extension configured with the specified provider information.
+    /// </summary>
+    /// <param name="providerKey">A stable identifier for the provider.</param>
+    /// <param name="providerConfigHash">A hash representing the provider configuration.</param>
+    /// <param name="applyProviderServices">A callback to register provider-specific services.</param>
+    /// <returns>A configured copy of this extension.</returns>
     public MimironDb2OptionsExtension WithProvider(
         string providerKey,
         int providerConfigHash,
@@ -48,6 +68,10 @@ public class MimironDb2OptionsExtension : IDbContextOptionsExtension
 
     protected virtual MimironDb2OptionsExtension Clone() => new(this);
 
+    /// <summary>
+    /// Registers services required by the provider.
+    /// </summary>
+    /// <param name="services">The service collection.</param>
     public void ApplyServices(IServiceCollection services)
     {
         services.AddSingleton<IModelCacheKeyFactory, MimironDb2ModelCacheKeyFactory>();
@@ -61,6 +85,10 @@ public class MimironDb2OptionsExtension : IDbContextOptionsExtension
         MimironDb2ServiceCollectionExtensions.AddCoreServices(services);
     }
 
+    /// <summary>
+    /// Validates that the provider has been configured.
+    /// </summary>
+    /// <param name="options">The options being validated.</param>
     public void Validate(IDbContextOptions options)
     {
         if (ProviderKey is null || ApplyProviderServices is null)

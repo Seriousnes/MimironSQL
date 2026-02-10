@@ -3,10 +3,24 @@ using System.Text;
 
 namespace MimironSQL.Providers;
 
-public sealed record CascInstallFileEntry(string Name, CascKey ContentKey, uint Size);
+/// <summary>
+/// Represents a single file entry from a decoded CASC INSTALL manifest.
+/// </summary>
+/// <param name="Name">The entry name.</param>
+/// <param name="ContentKey">The content key (CKey) for the entry.</param>
+/// <param name="Size">The entry size in bytes.</param>
+internal sealed record CascInstallFileEntry(string Name, CascKey ContentKey, uint Size);
 
-public static class CascInstallManifest
+/// <summary>
+/// Parses decoded CASC INSTALL manifest bytes.
+/// </summary>
+internal static class CascInstallManifest
 {
+    /// <summary>
+    /// Parses the decoded INSTALL file.
+    /// </summary>
+    /// <param name="decodedInstallFile">Decoded INSTALL file bytes.</param>
+    /// <returns>A list of INSTALL file entries.</returns>
     public static IReadOnlyList<CascInstallFileEntry> Parse(ReadOnlySpan<byte> decodedInstallFile)
     {
         if (decodedInstallFile.Length < 10)

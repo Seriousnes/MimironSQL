@@ -1,7 +1,15 @@
 namespace MimironSQL.Providers;
 
-public static class CascPath
+/// <summary>
+/// Helpers for normalizing logical CASC paths.
+/// </summary>
+internal static class CascPath
 {
+    /// <summary>
+    /// Normalizes an input path to a canonical CASC logical path.
+    /// </summary>
+    /// <param name="path">The input path.</param>
+    /// <returns>A normalized CASC path using backslashes and no leading separator.</returns>
     public static string NormalizeCascPath(string path)
     {
         ArgumentNullException.ThrowIfNull(path);
@@ -11,6 +19,11 @@ public static class CascPath
         return normalized;
     }
 
+    /// <summary>
+    /// Normalizes an input path to a canonical DB2 path under <c>DBFilesClient\</c>.
+    /// </summary>
+    /// <param name="path">The input DB2 path.</param>
+    /// <returns>A normalized DB2 path starting with <c>DBFilesClient\</c>.</returns>
     public static string NormalizeDb2Path(string path)
     {
         var normalized = NormalizeCascPath(path);

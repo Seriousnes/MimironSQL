@@ -56,7 +56,7 @@ internal sealed class CascRootIndex
             return ParseMfst(decodedRootFile);
 
         if (decodedRootFile.Length >= 4 && TagEquals(decodedRootFile[..4], "TVFS"))
-            throw new NotSupportedException("TVFS ROOT format detected. CASC.Net currently supports only TSFM/MFST ROOT parsing.");
+            throw new NotSupportedException("TVFS ROOT format detected. This provider currently supports only TSFM/MFST ROOT parsing.");
 
         // Fallback for nonstandard/older layouts where the TSFM/MFST payload is embedded in a chunk stream.
         if (TryExtractMfstChunk(decodedRootFile, out var mfstBytes))

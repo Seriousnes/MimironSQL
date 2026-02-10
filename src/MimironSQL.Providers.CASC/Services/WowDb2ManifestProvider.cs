@@ -4,42 +4,58 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-using Microsoft.Extensions.Options;
-
 namespace MimironSQL.Providers;
 
-public sealed class WowDb2ManifestProvider : IWowDb2ManifestProvider, IManifestProvider
+/// <summary>
+/// Downloads, caches, and queries the WoWDBDefs DB2 manifest.
+/// </summary>
+internal sealed class WowDb2ManifestProvider : IManifestProvider
 {
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
 
+    private const string DefaultOwner = "wowdev";
+    private const string DefaultRepository = "WoWDBDefs";
+    private const int DefaultHttpTimeoutSeconds = 60;
+
     private readonly HttpClient _httpClient;
-    private readonly WowDb2ManifestOptions _options;
+    private readonly CascDb2ProviderOptions _options;
 
     private readonly SemaphoreSlim _db2ByTableNameLock = new(1, 1);
     private Dictionary<string, int>? _db2ByTableName;
 
-    public WowDb2ManifestProvider(HttpClient httpClient, IOptions<WowDb2ManifestOptions> options)
+    /// <summary>
+    /// Initializes a new instance of the <see cref="WowDb2ManifestProvider"/> class.
+    /// </summary>
+    /// <param name="httpClient">The HTTP client used to access GitHub releases.</param>
+    /// <param name="options">Manifest provider options.</param>
+    public WowDb2ManifestProvider(HttpClient httpClient, CascDb2ProviderOptions options)
     {
         _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
-        _options = options?.Value ?? throw new ArgumentNullException(nameof(options));
+        _options = options ?? throw new ArgumentNullException(nameof(options));
 
         if (_httpClient.DefaultRequestHeaders.UserAgent.Count == 0)
             _httpClient.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("MimironSQL", "1.0"));
 
         if (_httpClient.Timeout == Timeout.InfiniteTimeSpan)
-            _httpClient.Timeout = TimeSpan.FromSeconds(_options.HttpTimeoutSeconds);
+            _httpClient.Timeout = TimeSpan.FromSeconds(DefaultHttpTimeoutSeconds);
     }
 
-    public async Task EnsureDownloadedAsync(CancellationToken cancellationToken = default)
+    /// <summary>
+    /// Ensures the manifest asset is downloaded to the local cache.
+    /// </summary>
+    /// <param name="cancellationToken">A cancellation token.</param>
+    /// <returns>A task representing the asynchronous operation.</returns>
+    private async Task EnsureDownloadedAsync(CancellationToken cancellationToken)
     {
-        var cacheDir = _options.GetCacheDirectoryOrDefault();
+        var cacheDir = GetCacheDirectoryOrDefault();
         Directory.CreateDirectory(cacheDir);
 
-        var targetPath = Path.Combine(cacheDir, _options.AssetName);
-        var metaPath = Path.Combine(cacheDir, _options.AssetName + ".meta.json");
+        var targetPath = Path.Combine(cacheDir, _options.ManifestAssetName);
+        var metaPath = Path.Combine(cacheDir, _options.ManifestAssetName + ".meta.json");
 
         var release = await GetLatestReleaseAsync(cancellationToken).ConfigureAwait(false);
-        var asset = release.Assets.FirstOrDefault(a => string.Equals(a.Name, _options.AssetName, StringComparison.OrdinalIgnoreCase)) ?? throw new InvalidOperationException($"WoWDBDefs latest release did not include asset '{_options.AssetName}'.");
+        var asset = release.Assets.FirstOrDefault(a => string.Equals(a.Name, _options.ManifestAssetName, StringComparison.OrdinalIgnoreCase))
+            ?? throw new InvalidOperationException($"WoWDBDefs latest release did not include asset '{_options.ManifestAssetName}'.");
         var expectedSha256 = ParseSha256Digest(asset.Digest) ?? throw new InvalidOperationException($"GitHub release asset '{asset.Name}' did not include a sha256 digest.");
         var existingMeta = await TryReadMetadataAsync(metaPath, cancellationToken).ConfigureAwait(false);
         if (File.Exists(targetPath) && existingMeta?.Sha256 is { Length: > 0 } sha &&
@@ -89,18 +105,33 @@ public sealed class WowDb2ManifestProvider : IWowDb2ManifestProvider, IManifestP
         }, cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Ensures the manifest is available locally.
+    /// </summary>
+    /// <param name="cancellationToken">A cancellation token.</param>
+    /// <returns>A task representing the asynchronous operation.</returns>
     public Task EnsureManifestExistsAsync(CancellationToken cancellationToken = default) => EnsureDownloadedAsync(cancellationToken);
 
-    public async Task<Stream> OpenCachedAsync(CancellationToken cancellationToken = default)
+    /// <summary>
+    /// Opens a readable stream for the cached manifest.
+    /// </summary>
+    /// <param name="cancellationToken">A cancellation token.</param>
+    /// <returns>A readable stream.</returns>
+    private async Task<Stream> OpenCachedAsync(CancellationToken cancellationToken)
     {
         await EnsureDownloadedAsync(cancellationToken).ConfigureAwait(false);
 
-        var cacheDir = _options.GetCacheDirectoryOrDefault();
-        var targetPath = Path.Combine(cacheDir, _options.AssetName);
+        var cacheDir = GetCacheDirectoryOrDefault();
+        var targetPath = Path.Combine(cacheDir, _options.ManifestAssetName);
         return File.OpenRead(targetPath);
     }
 
-    public async Task<IReadOnlyDictionary<string, int>> GetDb2FileDataIdByPathAsync(CancellationToken cancellationToken = default)
+    /// <summary>
+    /// Gets a mapping from normalized DB2 paths to FileDataIds.
+    /// </summary>
+    /// <param name="cancellationToken">A cancellation token.</param>
+    /// <returns>A mapping from DB2 path to FileDataId.</returns>
+    private async Task<IReadOnlyDictionary<string, int>> GetDb2FileDataIdByPathAsync(CancellationToken cancellationToken)
     {
         var entries = await ReadEntriesAsync(cancellationToken).ConfigureAwait(false);
 
@@ -122,6 +153,12 @@ public sealed class WowDb2ManifestProvider : IWowDb2ManifestProvider, IManifestP
         return map;
     }
 
+    /// <summary>
+    /// Attempts to resolve a DB2 table name (or path-like input) to a FileDataId.
+    /// </summary>
+    /// <param name="db2NameOrPath">The table name or path-like input.</param>
+    /// <param name="cancellationToken">A cancellation token.</param>
+    /// <returns>The FileDataId when resolved; otherwise <see langword="null"/>.</returns>
     public async Task<int?> TryResolveDb2FileDataIdAsync(string db2NameOrPath, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(db2NameOrPath))
@@ -178,6 +215,15 @@ public sealed class WowDb2ManifestProvider : IWowDb2ManifestProvider, IManifestP
         return entries ?? [];
     }
 
+    private string GetCacheDirectoryOrDefault()
+    {
+        if (!string.IsNullOrWhiteSpace(_options.ManifestCacheDirectory))
+            return _options.ManifestCacheDirectory;
+
+        var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        return Path.Combine(localAppData, "MimironSQL", "wowdbdefs");
+    }
+
     private static string NormalizeToTableName(string db2NameOrPath)
     {
         var value = db2NameOrPath.Trim();
@@ -198,7 +244,7 @@ public sealed class WowDb2ManifestProvider : IWowDb2ManifestProvider, IManifestP
 
     private async Task<GitHubReleaseDto> GetLatestReleaseAsync(CancellationToken cancellationToken)
     {
-        var url = $"https://api.github.com/repos/{_options.Owner}/{_options.Repository}/releases/latest";
+        var url = $"https://api.github.com/repos/{DefaultOwner}/{DefaultRepository}/releases/latest";
 
         using var response = await _httpClient.GetAsync(url, cancellationToken).ConfigureAwait(false);
         response.EnsureSuccessStatusCode();
@@ -321,5 +367,14 @@ public sealed class WowDb2ManifestProvider : IWowDb2ManifestProvider, IManifestP
 
         [JsonPropertyName("digest")]
         public string? Digest { get; init; }
+    }
+
+    private sealed record WowDb2ManifestCacheMetadata
+    {
+        public string Tag { get; init; } = string.Empty;
+        public string AssetName { get; init; } = string.Empty;
+        public string AssetUrl { get; init; } = string.Empty;
+        public string Sha256 { get; init; } = string.Empty;
+        public DateTimeOffset DownloadedAtUtc { get; init; }
     }
 }

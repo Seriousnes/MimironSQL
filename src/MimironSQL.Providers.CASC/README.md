@@ -13,7 +13,7 @@ dotnet add package MimironSQL.Providers.CASC
 ## DI Registration
 
 ```csharp
-services.AddCascNet(configuration);
+services.AddCasc(configuration);
 ```
 
 Binds configuration from `IConfiguration` sections and registers:
@@ -24,54 +24,22 @@ Binds configuration from `IConfiguration` sections and registers:
 | `ICascStorageService` | `CascStorageService` |
 | `IManifestProvider` | `LocalFirstManifestProvider` (falls back to `WowDb2ManifestProvider`) |
 
-Configuration sections:
+Configuration:
 
-| Section | Options type | Key settings |
-|---------|-------------|-------------|
-| `CascNet` | `CascNetOptions` | `WowInstallRoot` — path to WoW installation |
-| `CascStorage` | `CascStorageOptions` | `EnsureManifestOnOpenInstallRoot` |
-| `WowDb2Manifest` | `WowDb2ManifestOptions` | `Owner`, `Repository`, `CacheDirectory` |
-| `WowListfile` | `WowListfileOptions` | `Owner`, `Repository`, `DownloadOnStartup` |
+Keys are read from the `Casc` section (with a fallback to root-level keys for `WowInstallRoot`):
 
-## Core Types
+| Key | Notes |
+|-----|------|
+| `Casc:WowInstallRoot` | Path to WoW installation (required) |
+| `Casc:ManifestCacheDirectory` | Optional cache directory for `manifest.json` |
+| `Casc:ManifestAssetName` | Optional manifest file name (default: `manifest.json`) |
+| `Casc:DbdDefinitionsDirectory` | Used by EF Core `UseCasc(configuration)` overload |
 
-### `CascStorage`
+## Public API
 
-Opens a WoW installation and resolves files by content key, encoding key, or FileDataID:
+This package intentionally keeps its public surface small:
 
-```csharp
-var storage = await CascStorage.OpenInstallRootAsync("C:/Games/World of Warcraft");
-
-using var stream = await storage.OpenDb2ByFileDataIdAsync(fileDataId);
-```
-
-### `CascDBCProvider`
-
-Wraps `CascStorage` as an `IDb2StreamProvider`, resolving table names to FileDataIDs via the manifest:
-
-```csharp
-var provider = new CascDBCProvider(storage, manifestProvider);
-using var stream = provider.OpenDb2Stream("Map");
-```
-
-### `CascKey`
-
-16-byte content/encoding key with hex parsing and equality:
-
-```csharp
-var key = CascKey.ParseHex("0123456789abcdef0123456789abcdef");
-```
-
-### BLTE Decoding
-
-```csharp
-byte[] decoded = BlteDecoder.Decode(rawBlteBytes);
-```
-
-### Build Detection
-
-```csharp
-var layout = CascInstallLayoutDetector.Detect("C:/Games/World of Warcraft");
-var records = CascBuildInfo.Read(layout.BuildInfoPath);
-var config = CascBuildConfigParser.ReadFromFile(configPath);
-```
+- `CascDb2ProviderOptions` (configuration object)
+- `ServiceCollectionExtensions.AddCasc(...)`
+- `MimironDb2CascOptionsBuilderExtensions.UseCasc(...)` (EF Core integration)
+- `IManifestProvider` (in `MimironSQL.Contracts`) is the manifest extension point

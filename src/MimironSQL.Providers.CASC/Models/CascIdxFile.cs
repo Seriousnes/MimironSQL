@@ -2,11 +2,26 @@ using System.Buffers.Binary;
 
 namespace MimironSQL.Providers;
 
-public sealed class CascIdxFile
+/// <summary>
+/// Represents a parsed CASC <c>.idx</c> file.
+/// </summary>
+internal sealed class CascIdxFile
 {
+    /// <summary>
+    /// Gets the parsed header.
+    /// </summary>
     public required CascIdxHeader Header { get; init; }
+
+    /// <summary>
+    /// Gets the parsed entry records.
+    /// </summary>
     public required IReadOnlyList<CascIdxEntry> Entries { get; init; }
 
+    /// <summary>
+    /// Reads and parses an <c>.idx</c> file from the provided stream.
+    /// </summary>
+    /// <param name="stream">The input stream.</param>
+    /// <returns>The parsed <see cref="CascIdxFile"/>.</returns>
     public static CascIdxFile Read(Stream stream)
     {
         ArgumentNullException.ThrowIfNull(stream);

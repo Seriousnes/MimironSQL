@@ -31,7 +31,7 @@
 
 	<ItemGroup>
 		<ProjectReference Include="..\MimironSQL.Contracts\MimironSQL.Contracts.csproj" />
-		<ProjectReference Include="..\MimironSQL.Providers.FileSystem\MimironSQL.Providers.FileSystem.csproj" />
+		<ProjectReference Include="..\MimironSQL.Providers.FileSystem\MimironSQL.Providers.FileSystem.csproj" AdditionalProperties="NoWarn=1591" />
 	</ItemGroup>
 
 </Project>

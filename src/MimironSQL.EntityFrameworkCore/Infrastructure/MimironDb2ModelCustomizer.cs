@@ -5,8 +5,13 @@ using Microsoft.EntityFrameworkCore.Infrastructure;
 
 namespace MimironSQL.EntityFrameworkCore.Infrastructure;
 
+/// <summary>
+/// Applies provider-specific model conventions for MimironDB2.
+/// </summary>
+/// <param name="dependencies">EF Core model customizer dependencies.</param>
 public class MimironDb2ModelCustomizer(ModelCustomizerDependencies dependencies) : ModelCustomizer(dependencies)
 {
+    /// <inheritdoc />
     public override void Customize(ModelBuilder modelBuilder, DbContext context)
     {
         base.Customize(modelBuilder, context);

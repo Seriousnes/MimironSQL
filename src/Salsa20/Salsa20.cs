@@ -12,13 +12,10 @@ public sealed class Salsa20 : IDisposable
     private const int StateSizeInts = 16;
     private const int BlockSizeBytes = 64;
 
-    // The internal state: 16 uints (64 bytes)
-    // Layout: Constants, Key, Nonce, Stream Position
     private readonly uint[] _state = new uint[StateSizeInts];
 
-    // "expand 32-byte k"
     private static ReadOnlySpan<uint> Sigma => [0x61707865, 0x3320646E, 0x79622D32, 0x6B206574];
-    // "expand 16-byte k"
+
     private static ReadOnlySpan<uint> Tau => [0x61707865, 0x3120646E, 0x79622D36, 0x6B206574];
 
     /// <summary>
@@ -131,8 +128,6 @@ public sealed class Salsa20 : IDisposable
     private static void Xor(ReadOnlySpan<byte> input, ReadOnlySpan<byte> key, Span<byte> output)
     {
         int i = 0;
-        // Vectorized loop can be added here using Vector<T> or Vector128<T>
-        // The JIT is generally very good at unrolling this specific simple loop.
         for (; i < input.Length; i++)
         {
             output[i] = (byte)(input[i] ^ key[i]);
@@ -202,6 +197,7 @@ public sealed class Salsa20 : IDisposable
         }
     }
 
+    /// <inheritdoc/>
     public void Dispose()
     {
         // Zero out key material in memory

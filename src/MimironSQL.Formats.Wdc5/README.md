@@ -1,6 +1,20 @@
 # MimironSQL.Formats.Wdc5
 
-WDC5 binary format reader for World of Warcraft DB2 files. Implements `IDb2Format` from `MimironSQL.Contracts`.
+WDC5 binary format reader for World of Warcraft DB2 files.
+
+## Overview
+
+This package implements `IDb2Format` from `MimironSQL.Contracts` for the WDC5 binary format used by World of Warcraft DB2 files. It handles header parsing, field decoding (including packed/pallet/common compression), sparse and dense record layouts, copy tables, and TACT-encrypted sections.
+
+In most scenarios this package is consumed as a transitive dependency via `MimironSQL.EntityFrameworkCore` and does not need to be referenced directly.
+
+## Installation
+
+```shell
+dotnet add package MimironSQL.Formats.Wdc5
+```
+
+> **Note:** If you already reference `MimironSQL.EntityFrameworkCore`, this package is included transitively.
 
 ## Usage
 
@@ -46,111 +60,73 @@ var registry = new Db2FormatRegistry();
 Wdc5Format.Register(registry);
 ```
 
-## Public API
+## Key Types
 
-### `Wdc5Format`
+| Type | Kind | Description |
+| --- | --- | --- |
+| `Wdc5Format` | class | `IDb2Format` implementation — entry point for opening files and registering the format. |
+| `Wdc5File` | class | Parsed WDC5 file. Implements `IDb2File<RowHandle>` for row enumeration and field reading. |
+| `Wdc5FileOptions` | record | Options controlling parsing and decryption (TACT key provider, nonce strategy). |
+| `Wdc5Header` | record struct | Parsed file header (schema hash, field counts, flags, section count, etc.). |
+| `Wdc5SectionHeader` | record struct | Per-section header (TACT key lookup, record count, string table size, copy table count). |
+| `Wdc5Section` | class | Parsed section data including record bytes, string table, index data, and copy table entries. |
+| `FieldMetaData` | record struct | Per-field bit width and offset within a record. |
+| `ColumnMetaData` | struct | Extended column metadata including compression type, pallet, and common-data parameters. |
+| `CompressionType` | enum | Column compression mode: `None`, `Immediate`, `Common`, `Pallet`, `PalletArray`, `SignedImmediate`. |
+| `Wdc5FileLookupTracker` | static class | Diagnostic helper for tracking `TryGetRowById` call counts. |
 
-```csharp
-public sealed class Wdc5Format : IDb2Format
-{
-    public Db2Format Format { get; }
+## Header Structure
 
-    public static void Register(Db2FormatRegistry registry);
-    public IDb2File OpenFile(Stream stream);
-    public Db2FileLayout GetLayout(IDb2File file);
-}
-```
+### `Wdc5Header`
 
-### `Wdc5File`
+| Field | Type | Description |
+| --- | --- | --- |
+| `SchemaVersion` | `uint` | Schema version from the file header. |
+| `SchemaString` | `string` | Schema string identifier. |
+| `RecordsCount` | `int` | Total number of records. |
+| `FieldsCount` | `int` | Number of logical fields per record. |
+| `RecordSize` | `int` | Size of each record in bytes. |
+| `StringTableSize` | `int` | Size of the string table in bytes. |
+| `TableHash` | `uint` | Table hash. |
+| `LayoutHash` | `uint` | Layout hash. |
+| `MinIndex` / `MaxIndex` | `int` | Record index range. |
+| `Flags` | `Db2Flags` | DB2 flags (e.g., sparse, has offset map). |
+| `IdFieldIndex` | `ushort` | Zero-based index of the ID field. |
+| `TotalFieldsCount` | `int` | Total fields including hidden fields. |
+| `SectionsCount` | `int` | Number of sections in the file. |
 
-Implements `IDb2File<RowHandle>` and `IDb2DenseStringTableIndexProvider<RowHandle>`.
+### `Wdc5SectionHeader`
 
-```csharp
-public sealed class Wdc5File
-{
-    public Wdc5File(Stream stream);
-    public Wdc5File(Stream stream, Wdc5FileOptions? options);
+| Field | Type | Description |
+| --- | --- | --- |
+| `TactKeyLookup` | `ulong` | TACT key lookup identifier (`0` for unencrypted sections). |
+| `FileOffset` | `int` | Absolute file offset where the section begins. |
+| `NumRecords` | `int` | Number of records in the section. |
+| `StringTableSize` | `int` | String table size for the section. |
+| `IndexDataSize` | `int` | Index data size in bytes. |
+| `CopyTableCount` | `int` | Number of copy-table entries. |
 
-    public Wdc5Header Header { get; }
-    public IReadOnlyList<Wdc5SectionHeader> Sections { get; }
-    public IReadOnlyList<Wdc5Section> ParsedSections { get; }
-    public FieldMetaData[] FieldMeta { get; }
-    public ColumnMetaData[] ColumnMeta { get; }
-    public Db2Flags Flags { get; }
-    public int RecordsCount { get; }
+## Encryption Support
 
-    public IEnumerable<RowHandle> EnumerateRowHandles();
-    public IEnumerable<RowHandle> EnumerateRows();
-    public T ReadField<T>(RowHandle handle, int fieldIndex);
-    public void ReadAllFields(RowHandle handle, Span<object> values);
-    public bool TryGetRowHandle<TId>(TId id, out RowHandle handle);
-    public bool TryGetRowById<TId>(TId id, out RowHandle row);
-    public bool TryGetDenseStringTableIndex(RowHandle row, int fieldIndex, out int stringTableIndex);
-}
-```
-
-### `Wdc5FileOptions`
-
-```csharp
-public sealed record Wdc5FileOptions(
-    ITactKeyProvider? TactKeyProvider = null,
-    Wdc5EncryptedRowNonceStrategy EncryptedRowNonceStrategy = Wdc5EncryptedRowNonceStrategy.SourceId);
-```
-
-### `Wdc5EncryptedRowNonceStrategy`
-
-Controls how the nonce is derived when decrypting encrypted rows.
+WDC5 files may contain TACT-encrypted sections. To decrypt them, supply an `ITactKeyProvider` via `Wdc5FileOptions`:
 
 ```csharp
-public enum Wdc5EncryptedRowNonceStrategy { DestinationId, SourceId }
+var options = new Wdc5FileOptions(
+    TactKeyProvider: myTactKeyProvider,
+    EncryptedRowNonceStrategy: Wdc5EncryptedRowNonceStrategy.SourceId);
+
+var file = new Wdc5File(stream, options);
 ```
 
-### Header / Section Types
+The `Wdc5EncryptedRowNonceStrategy` enum controls how per-row decryption nonces are derived:
 
-```csharp
-public readonly record struct Wdc5Header(
-    uint SchemaVersion, string SchemaString, int RecordsCount, int FieldsCount,
-    int RecordSize, int StringTableSize, uint TableHash, uint LayoutHash,
-    int MinIndex, int MaxIndex, int Locale, Db2Flags Flags, ushort IdFieldIndex,
-    int TotalFieldsCount, int PackedDataOffset, int LookupColumnCount,
-    int ColumnMetaDataSize, int CommonDataSize, int PalletDataSize, int SectionsCount);
+| Value | Description |
+| --- | --- |
+| `SourceId` | Use the source row ID from the raw record (default). |
+| `DestinationId` | Use the destination (post-copy) row ID. |
 
-public readonly record struct Wdc5SectionHeader(
-    ulong TactKeyLookup, int FileOffset, int NumRecords, int StringTableSize,
-    int OffsetRecordsEndOffset, int IndexDataSize, int ParentLookupDataSize,
-    int OffsetMapIDCount, int CopyTableCount);
-```
+Decryption is performed via the `Salsa20` cipher bundled as a project dependency.
 
-### Field Metadata
+## License
 
-```csharp
-public readonly record struct FieldMetaData(short Bits, short Offset);
-
-public struct ColumnMetaData
-{
-    public ushort RecordOffset;
-    public ushort Size;
-    public uint AdditionalDataSize;
-    public CompressionType CompressionType;
-    public ColumnCompressionDataImmediate Immediate;
-    public ColumnCompressionDataPallet Pallet;
-    public ColumnCompressionDataCommon Common;
-}
-
-public enum CompressionType : uint
-{
-    None, Immediate, Common, Pallet, PalletArray, SignedImmediate
-}
-```
-
-### Lookup Tracking
-
-```csharp
-public static class Wdc5FileLookupTracker
-{
-    public static IDisposable Start();
-    public static Wdc5FileLookupSnapshot Snapshot();
-}
-
-public readonly record struct Wdc5FileLookupSnapshot(int TotalTryGetRowByIdCalls);
-```
+[MIT](../../LICENSE.txt)

@@ -14,6 +14,9 @@ using MimironSQL.Formats.Wdc5;
 
 namespace MimironSQL.EntityFrameworkCore;
 
+/// <summary>
+/// Registers core services for the MimironDB2 EF Core provider.
+/// </summary>
 public static class MimironDb2ServiceCollectionExtensions
 {
     internal static void AddCoreServices(IServiceCollection services)

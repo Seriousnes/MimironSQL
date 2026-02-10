@@ -26,6 +26,7 @@ public sealed class DbdTests
     public void DbdColumnParser_TryParse_ReferenceTable_ParsesReferenceAndVerifiedFlag()
     {
         DbdColumnParser.TryParse("int<Map::ID> ParentMapID?", out var name, out var col).ShouldBeTrue();
+        col.ShouldNotBeNull();
         name.ShouldBe("ParentMapID");
         col.ValueType.ShouldBe(Db2ValueType.Int64);
         col.ReferencedTableName.ShouldBe("Map");
@@ -41,6 +42,7 @@ public sealed class DbdTests
         };
 
         DbdLayoutEntryParser.TryParse("$noninline,relation$ Name[3]", columns, out var entry).ShouldBeTrue();
+        entry.ShouldNotBeNull();
         entry.Name.ShouldBe("Name");
         entry.ValueType.ShouldBe(Db2ValueType.String);
         entry.ElementCount.ShouldBe(3);
@@ -53,6 +55,7 @@ public sealed class DbdTests
     public void DbdLayoutEntryParser_TryParse_InlineType_MapsValueTypeAndCapturesToken()
     {
         DbdLayoutEntryParser.TryParse("SomeField<u32>", new Dictionary<string, DbdColumn>(), out var entry).ShouldBeTrue();
+        entry.ShouldNotBeNull();
         entry.Name.ShouldBe("SomeField");
         entry.ValueType.ShouldBe(Db2ValueType.UInt64);
         entry.InlineTypeToken.ShouldBe("u32");
@@ -157,16 +160,16 @@ public sealed class DbdTests
     {
         DbdColumnParser.TryParse("locstring Title", out var name1, out var col1).ShouldBeTrue();
         name1.ShouldBe("Title");
-        col1.ValueType.ShouldBe(Db2ValueType.LocString);
+        col1.ShouldNotBeNull().ValueType.ShouldBe(Db2ValueType.LocString);
         col1.IsVerified.ShouldBeTrue();
 
         DbdColumnParser.TryParse("float F", out var nameFloat, out var colFloat).ShouldBeTrue();
         nameFloat.ShouldBe("F");
-        colFloat.ValueType.ShouldBe(Db2ValueType.Single);
+        colFloat.ShouldNotBeNull().ValueType.ShouldBe(Db2ValueType.Single);
 
         DbdColumnParser.TryParse("byte Foo", out var name2, out var col2).ShouldBeTrue();
         name2.ShouldBe("Foo");
-        col2.ValueType.ShouldBe(Db2ValueType.Unknown);
+        col2.ShouldNotBeNull().ValueType.ShouldBe(Db2ValueType.Unknown);
     }
 
     [Fact]
@@ -174,16 +177,16 @@ public sealed class DbdTests
     {
         DbdColumnParser.TryParse("int<::ID> Foo", out var name1, out var col1).ShouldBeTrue();
         name1.ShouldBe("Foo");
-        col1.ValueType.ShouldBe(Db2ValueType.Int64);
+        col1.ShouldNotBeNull().ValueType.ShouldBe(Db2ValueType.Int64);
         col1.ReferencedTableName.ShouldBeNull();
 
         DbdColumnParser.TryParse("int<Map::ID> Bar", out var name2, out var col2).ShouldBeTrue();
         name2.ShouldBe("Bar");
-        col2.ReferencedTableName.ShouldBe("Map");
+        col2.ShouldNotBeNull().ReferencedTableName.ShouldBe("Map");
 
         DbdColumnParser.TryParse("int<Map::ID Bar", out var name3, out var col3).ShouldBeTrue();
         name3.ShouldBe("Bar");
-        col3.ValueType.ShouldBe(Db2ValueType.Int64);
+        col3.ShouldNotBeNull().ValueType.ShouldBe(Db2ValueType.Int64);
         col3.ReferencedTableName.ShouldBeNull();
     }
 
@@ -330,7 +333,7 @@ public sealed class DbdTests
         };
 
         DbdLayoutEntryParser.TryParse("$,id,,relation,$ Field", columns, out var entry).ShouldBeTrue();
-        entry.IsId.ShouldBeTrue();
+        entry.ShouldNotBeNull().IsId.ShouldBeTrue();
         entry.IsRelation.ShouldBeTrue();
         entry.IsNonInline.ShouldBeFalse();
     }
@@ -339,17 +342,17 @@ public sealed class DbdTests
     public void DbdLayoutEntryParser_TryParse_InlineType_MapsMultipleTypeShapes()
     {
         DbdLayoutEntryParser.TryParse("A<u16>", new Dictionary<string, DbdColumn>(), out var u).ShouldBeTrue();
-        u.ValueType.ShouldBe(Db2ValueType.UInt64);
+        u.ShouldNotBeNull().ValueType.ShouldBe(Db2ValueType.UInt64);
         u.InlineTypeToken.ShouldBe("u16");
 
         DbdLayoutEntryParser.TryParse("B<f32>", new Dictionary<string, DbdColumn>(), out var f).ShouldBeTrue();
-        f.ValueType.ShouldBe(Db2ValueType.Single);
+        f.ShouldNotBeNull().ValueType.ShouldBe(Db2ValueType.Single);
 
         DbdLayoutEntryParser.TryParse("C<16>", new Dictionary<string, DbdColumn>(), out var i).ShouldBeTrue();
-        i.ValueType.ShouldBe(Db2ValueType.Int64);
+        i.ShouldNotBeNull().ValueType.ShouldBe(Db2ValueType.Int64);
 
         DbdLayoutEntryParser.TryParse("D<weird>", new Dictionary<string, DbdColumn>(), out var d).ShouldBeTrue();
-        d.ValueType.ShouldBe(Db2ValueType.Int64);
+        d.ShouldNotBeNull().ValueType.ShouldBe(Db2ValueType.Int64);
     }
 
     [Fact]
@@ -361,7 +364,7 @@ public sealed class DbdTests
         };
 
         DbdLayoutEntryParser.TryParse("ParentMapID<u32>", columns, out var entry).ShouldBeTrue();
-        entry.ReferencedTableName.ShouldBe("Map");
+        entry.ShouldNotBeNull().ReferencedTableName.ShouldBe("Map");
         entry.IsVerified.ShouldBeFalse();
         entry.ValueType.ShouldBe(Db2ValueType.UInt64);
         entry.InlineTypeToken.ShouldBe("u32");
@@ -371,13 +374,13 @@ public sealed class DbdTests
     public void DbdLayoutEntryParser_TryParse_DoesNotTreatUnclosedModifiersOrBadArraysAsModifiersOrArrays()
     {
         DbdLayoutEntryParser.TryParse("$$ Name", new Dictionary<string, DbdColumn>(), out var e1).ShouldBeTrue();
-        e1.Name.ShouldBe("$$ Name");
+        e1.ShouldNotBeNull().Name.ShouldBe("$$ Name");
 
         DbdLayoutEntryParser.TryParse("$noninline Name", new Dictionary<string, DbdColumn>(), out var e2).ShouldBeTrue();
-        e2.Name.ShouldBe("$noninline Name");
+        e2.ShouldNotBeNull().Name.ShouldBe("$noninline Name");
 
         DbdLayoutEntryParser.TryParse("Name[3", new Dictionary<string, DbdColumn>(), out var e3).ShouldBeTrue();
-        e3.ElementCount.ShouldBe(1);
-        e3.Name.ShouldBe("Name[3");
+        e3.ShouldNotBeNull().ElementCount.ShouldBe(1);
+        e3.ShouldNotBeNull().Name.ShouldBe("Name[3");
     }
 }

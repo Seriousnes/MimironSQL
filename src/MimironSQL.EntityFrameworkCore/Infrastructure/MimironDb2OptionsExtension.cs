@@ -16,10 +16,17 @@ public class MimironDb2OptionsExtension : IDbContextOptionsExtension
 {
     private DbContextOptionsExtensionInfo? _info;
 
+    /// <summary>
+    /// Initializes a new instance of the extension.
+    /// </summary>
     public MimironDb2OptionsExtension()
     {
     }
 
+    /// <summary>
+    /// Initializes a new instance of the extension by copying configuration from an existing instance.
+    /// </summary>
+    /// <param name="copyFrom">The instance to copy configuration from.</param>
     protected MimironDb2OptionsExtension(MimironDb2OptionsExtension copyFrom)
     {
         ProviderKey = copyFrom.ProviderKey;
@@ -27,6 +34,7 @@ public class MimironDb2OptionsExtension : IDbContextOptionsExtension
         ApplyProviderServices = copyFrom.ApplyProviderServices;
     }
 
+    /// <inheritdoc />
     public virtual DbContextOptionsExtensionInfo Info => _info ??= new ExtensionInfo(this);
 
     /// <summary>
@@ -66,6 +74,10 @@ public class MimironDb2OptionsExtension : IDbContextOptionsExtension
         return clone;
     }
 
+    /// <summary>
+    /// Creates a copy of this extension.
+    /// </summary>
+    /// <returns>A copy of this extension.</returns>
     protected virtual MimironDb2OptionsExtension Clone() => new(this);
 
     /// <summary>

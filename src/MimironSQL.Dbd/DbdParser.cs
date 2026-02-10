@@ -1,7 +1,9 @@
 namespace MimironSQL.Dbd;
 
+/// <inheritdoc />
 public sealed class DbdParser : IDbdParser
 {
+    /// <inheritdoc />
     public IDbdFile Parse(Stream stream)
     {
         if (stream is null)
@@ -9,6 +11,7 @@ public sealed class DbdParser : IDbdParser
         return DbdFile.Parse(stream);
     }
 
+    /// <inheritdoc />
     public IDbdFile Parse(string path)
     {
         if (path is null)

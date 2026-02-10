@@ -367,8 +367,8 @@ internal static class Db2NavigationQueryCompiler
     {
         protected override Expression VisitBinary(BinaryExpression node)
         {
-            var left = node.Left.UnwrapConvert();
-            var right = node.Right.UnwrapConvert();
+            var left = node.Left.UnwrapConvert()!;
+            var right = node.Right.UnwrapConvert()!;
 
             if (TryRewrite(left, right, node.NodeType, out var rewritten) || TryRewrite(right, left, Flip(node.NodeType), out rewritten))
             {

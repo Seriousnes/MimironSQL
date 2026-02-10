@@ -1,17 +1,43 @@
 using MimironSQL.Db2;
 
+using System.Diagnostics.CodeAnalysis;
+
 namespace MimironSQL.Dbd;
 
-public sealed class DbdColumn(Db2ValueType valueType, string? referencedTableName, bool isVerified) : IDbdColumn
+/// <summary>
+/// Represents a column definition from the COLUMNS section of a DBD file.
+/// </summary>
+public sealed class DbdColumn : IDbdColumn
 {
-    public Db2ValueType ValueType { get; } = valueType;
-    public string? ReferencedTableName { get; } = referencedTableName;
-    public bool IsVerified { get; } = isVerified;
+    /// <summary>
+    /// Initializes a new instance of the <see cref="DbdColumn"/> class.
+    /// </summary>
+    public DbdColumn(Db2ValueType valueType, string? referencedTableName, bool isVerified)
+    {
+        ValueType = valueType;
+        ReferencedTableName = referencedTableName;
+        IsVerified = isVerified;
+    }
+
+    /// <inheritdoc />
+    public Db2ValueType ValueType { get; }
+
+    /// <inheritdoc />
+    public string? ReferencedTableName { get; }
+
+    /// <inheritdoc />
+    public bool IsVerified { get; }
 }
 
+/// <summary>
+/// Parses column declarations in the COLUMNS section of a DBD file.
+/// </summary>
 public static class DbdColumnParser
 {
-    public static bool TryParse(string line, out string name, out DbdColumn column)
+    /// <summary>
+    /// Attempts to parse a column declaration line.
+    /// </summary>
+    public static bool TryParse(string line, out string name, out DbdColumn? column)
     {
         var text = line.AsSpan();
         var space = text.IndexOf(' ');

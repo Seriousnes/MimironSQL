@@ -116,6 +116,38 @@ Map<32>
         foo.SourceText.ShouldContain("public virtual Map? MapEntity { get; set; }");
     }
 
+    [Fact]
+    public void Generator_warns_when_no_sources_generated()
+    {
+        var parseOptions = new CSharpParseOptions(LanguageVersion.Preview);
+
+        var compilation = CSharpCompilation.Create(
+            assemblyName: "GeneratorTests",
+            syntaxTrees: [CSharpSyntaxTree.ParseText("namespace MimironSQL; public sealed class Dummy {}", parseOptions)],
+            references: GetReferences(),
+            options: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+
+        var generator = new MimironSQL.DbContextGenerator.DbContextGenerator();
+        GeneratorDriver driver = CSharpGeneratorDriver.Create(
+            generators: [generator.AsSourceGenerator()],
+            additionalTexts: [],
+            parseOptions: parseOptions,
+            optionsProvider: new TestAnalyzerConfigOptionsProvider([]));
+
+        driver = driver.RunGenerators(compilation);
+
+        var runResult = driver.GetRunResult();
+        runResult.Diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error).ShouldBeEmpty();
+
+        runResult.Diagnostics.Any(d => d.Id == "MSQLDBD004" && d.Severity == DiagnosticSeverity.Warning).ShouldBeTrue();
+
+        runResult.Results
+            .Single()
+            .GeneratedSources
+            .Length
+            .ShouldBe(0);
+    }
+
     private static ImmutableArray<(string HintName, string SourceText)> RunGenerator((string Path, string Content)[] additionalFiles)
     {
         var parseOptions = new CSharpParseOptions(LanguageVersion.Preview);

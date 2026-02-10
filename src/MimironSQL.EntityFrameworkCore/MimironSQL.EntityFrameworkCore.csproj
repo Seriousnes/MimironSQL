@@ -28,8 +28,8 @@
 
 	<ItemGroup>
 		<ProjectReference Include="..\MimironSQL.Contracts\MimironSQL.Contracts.csproj" />
-		<ProjectReference Include="..\MimironSQL.Dbd\MimironSQL.Dbd.csproj" PrivateAssets="all" />
-		<ProjectReference Include="..\MimironSQL.Formats.Wdc5\MimironSQL.Formats.Wdc5.csproj" />
+		<ProjectReference Include="..\MimironSQL.Dbd\MimironSQL.Dbd.csproj" PrivateAssets="all" AdditionalProperties="NoWarn=1591" />
+		<ProjectReference Include="..\MimironSQL.Formats.Wdc5\MimironSQL.Formats.Wdc5.csproj" AdditionalProperties="NoWarn=1591" />
 	</ItemGroup>
 
 	<ItemGroup>

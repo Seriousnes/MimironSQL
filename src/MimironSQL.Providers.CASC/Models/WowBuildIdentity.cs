@@ -7,8 +7,9 @@ namespace MimironSQL.Providers;
 /// <param name="BuildNumber">The numeric build number, when available.</param>
 /// <param name="Version">The version string, when available.</param>
 /// <param name="BuildConfigKey">The build config key string.</param>
-internal sealed record WowBuildIdentity(
+public sealed record WowBuildIdentity(
     string BuildKey,
     int? BuildNumber,
     string? Version,
     string BuildConfigKey);
+

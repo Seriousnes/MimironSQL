@@ -12,6 +12,7 @@ public sealed class FileSystemManifestProvider(CascDb2ProviderOptions options) :
     private readonly SemaphoreSlim _lock = new(1, 1);
     private Dictionary<string, int>? _db2ByTableName;
 
+    /// <inheritdoc />
     public Task EnsureManifestExistsAsync(CancellationToken cancellationToken = default)
     {
         _ = cancellationToken;
@@ -23,6 +24,7 @@ public sealed class FileSystemManifestProvider(CascDb2ProviderOptions options) :
         return Task.CompletedTask;
     }
 
+    /// <inheritdoc />
     public async Task<int?> TryResolveDb2FileDataIdAsync(string db2NameOrPath, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(db2NameOrPath))

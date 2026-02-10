@@ -54,6 +54,17 @@ The source generator needs a WoW build version to select the correct DBD layout.
 WOW_VERSION=12.0.0.65655
 ```
 
+### 1.1 Provide generator inputs
+
+The generator only reads local files provided via MSBuild `AdditionalFiles`. Add your `.env` and the `.dbd` definitions you want to generate from:
+
+```xml
+<ItemGroup>
+    <AdditionalFiles Include=".env" />
+    <AdditionalFiles Include="path/to/dbd/definitions/**/*.dbd" />
+</ItemGroup>
+```
+
 ### 2. Define your DbContext
 
 The `MimironSQL.DbContextGenerator` package generates a `WoWDb2Context` with `DbSet<T>` properties for every `.dbd` table definition. You can extend the generated context with a partial class:

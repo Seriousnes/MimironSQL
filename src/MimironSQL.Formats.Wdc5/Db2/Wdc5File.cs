@@ -10,30 +10,71 @@ using Security.Cryptography;
 
 namespace MimironSQL.Formats.Wdc5.Db2;
 
+/// <summary>
+/// Represents an opened WDC5 DB2 file.
+/// </summary>
 public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexProvider<RowHandle>
 {
     private const int HeaderSize = 200;
     private const uint Wdc5Magic = 0x35434457; // "WDC5"
 
+    /// <summary>
+    /// Gets the parsed WDC5 header.
+    /// </summary>
     public Wdc5Header Header { get; }
+
+    /// <summary>
+    /// Gets the raw section headers.
+    /// </summary>
     public IReadOnlyList<Wdc5SectionHeader> Sections { get; }
+
+    /// <summary>
+    /// Gets the parsed sections.
+    /// </summary>
     public IReadOnlyList<Wdc5Section> ParsedSections { get; }
+
+    /// <summary>
+    /// Gets per-field metadata.
+    /// </summary>
     public FieldMetaData[] FieldMeta { get; }
+
+    /// <summary>
+    /// Gets per-column metadata.
+    /// </summary>
     public ColumnMetaData[] ColumnMeta { get; }
+
+    /// <summary>
+    /// Gets pallet data blocks per field.
+    /// </summary>
     public uint[][] PalletData { get; }
+
+    /// <summary>
+    /// Gets common-value dictionaries per field.
+    /// </summary>
     public Dictionary<int, uint>[] CommonData { get; }
 
+    /// <inheritdoc />
     public ReadOnlyMemory<byte> DenseStringTableBytes { get; } = ReadOnlyMemory<byte>.Empty;
+
+    /// <summary>
+    /// Gets the total size in bytes of the concatenated record data blob.
+    /// </summary>
     public int RecordsBlobSizeBytes { get; }
 
+    /// <inheritdoc />
     public Type RowType => typeof(RowHandle);
 
     IDb2FileHeader IDb2File.Header => Header;
 
+    /// <inheritdoc />
     public Db2Flags Flags => Header.Flags;
 
+    /// <inheritdoc />
     public int RecordsCount => Header.RecordsCount;
 
+    /// <summary>
+    /// Gets the total number of records across all parsed sections.
+    /// </summary>
     public int TotalSectionRecordCount => ParsedSections.Sum(s => s.NumRecords);
 
     private Dictionary<int, (int SectionIndex, int RowIndexInSection, int GlobalRecordIndex)>? _idIndex;
@@ -41,10 +82,19 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
 
     internal Wdc5FileOptions Options { get; }
 
+    /// <summary>
+    /// Opens and parses a WDC5 file from a stream.
+    /// </summary>
+    /// <param name="stream">A seekable stream containing WDC5 data.</param>
     public Wdc5File(Stream stream) : this(stream, options: null)
     {
     }
 
+    /// <summary>
+    /// Opens and parses a WDC5 file from a stream.
+    /// </summary>
+    /// <param name="stream">A seekable stream containing WDC5 data.</param>
+    /// <param name="options">Optional parsing and decryption options.</param>
     public Wdc5File(Stream stream, Wdc5FileOptions? options)
     {
         ArgumentNullException.ThrowIfNull(stream);
@@ -362,6 +412,7 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
             throw new NotSupportedException("All WDC5 sections are encrypted or unreadable (missing TACT keys or placeholder section data).");
     }
 
+    /// <inheritdoc />
     public IEnumerable<RowHandle> EnumerateRowHandles()
     {
         for (var sectionIndex = 0; sectionIndex < ParsedSections.Count; sectionIndex++)
@@ -377,6 +428,7 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
     }
 
 
+    /// <inheritdoc />
     public bool TryGetRowHandle<TId>(TId id, out RowHandle handle) where TId : IEquatable<TId>, IComparable<TId>
     {
         var key = id switch
@@ -411,6 +463,7 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
         return true;
     }
 
+    /// <inheritdoc />
     public bool TryGetDenseStringTableIndex(RowHandle row, int fieldIndex, out int stringTableIndex)
     {
         // For dense-mode strings, the stored value is an int offset into the string block.
@@ -476,9 +529,11 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
         return true;
     }
 
+    /// <inheritdoc />
     public bool TryGetRowById<TId>(TId id, out RowHandle row) where TId : IEquatable<TId>, IComparable<TId>
         => TryGetRowHandle(id, out row);
 
+    /// <inheritdoc />
     public IEnumerable<RowHandle> EnumerateRows()
         => EnumerateRowHandles();
 
@@ -584,6 +639,7 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
         return [.. MemoryMarshal.Cast<byte, T>(bytes)];
     }
 
+    /// <inheritdoc />
     public T ReadField<T>(RowHandle handle, int fieldIndex)
     {
         if ((uint)handle.SectionIndex >= (uint)ParsedSections.Count)
@@ -776,6 +832,14 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
         throw new NotSupportedException($"Unsupported scalar type {typeof(T).FullName}.");
     }
 
+    /// <summary>
+    /// Reads all fields for a row into a caller-provided buffer.
+    /// </summary>
+    /// <param name="handle">A row handle obtained from this file.</param>
+    /// <param name="values">
+    /// Destination buffer. Must contain at least <c>Header.FieldsCount + 2</c> elements,
+    /// where the first two slots are reserved for virtual fields (ID and parent relation).
+    /// </param>
     public void ReadAllFields(RowHandle handle, Span<object> values)
     {
         if (values.Length < Header.FieldsCount + 2)

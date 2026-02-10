@@ -1,17 +1,45 @@
 namespace MimironSQL.Dbd;
 
-public sealed class DbdFile(Dictionary<string, DbdColumn> columnsByName, List<DbdLayout> layouts, List<DbdBuildBlock> globalBuilds) : IDbdFile
+/// <summary>
+/// Represents the parsed contents of a DBD file.
+/// </summary>
+public sealed class DbdFile : IDbdFile
 {
-    private readonly IReadOnlyDictionary<string, IDbdColumn> _columnsByNameContract = columnsByName.ToDictionary(static x => x.Key, static x => (IDbdColumn)x.Value);
+    private readonly IReadOnlyDictionary<string, IDbdColumn> _columnsByNameContract;
 
-    public IReadOnlyDictionary<string, DbdColumn> ColumnsByName { get; } = columnsByName;
-    public IReadOnlyList<DbdLayout> Layouts { get; } = layouts;
-    public IReadOnlyList<DbdBuildBlock> GlobalBuilds { get; } = globalBuilds;
+    /// <summary>
+    /// Initializes a new instance of the <see cref="DbdFile"/> class.
+    /// </summary>
+    public DbdFile(Dictionary<string, DbdColumn> columnsByName, List<DbdLayout> layouts, List<DbdBuildBlock> globalBuilds)
+    {
+        ColumnsByName = columnsByName;
+        Layouts = layouts;
+        GlobalBuilds = globalBuilds;
+        _columnsByNameContract = columnsByName.ToDictionary(static x => x.Key, static x => (IDbdColumn)x.Value);
+    }
+
+    /// <summary>
+    /// Gets the columns declared in the DBD file, keyed by name.
+    /// </summary>
+    public IReadOnlyDictionary<string, DbdColumn> ColumnsByName { get; }
+
+    /// <summary>
+    /// Gets the layouts declared in the DBD file.
+    /// </summary>
+    public IReadOnlyList<DbdLayout> Layouts { get; }
+
+    /// <summary>
+    /// Gets the global BUILD blocks that are not associated with a specific layout.
+    /// </summary>
+    public IReadOnlyList<DbdBuildBlock> GlobalBuilds { get; }
 
     IReadOnlyDictionary<string, IDbdColumn> IDbdFile.ColumnsByName => _columnsByNameContract;
     IReadOnlyList<IDbdLayout> IDbdFile.Layouts => Layouts;
     IReadOnlyList<IDbdBuildBlock> IDbdFile.GlobalBuilds => GlobalBuilds;
 
+    /// <summary>
+    /// Parses a DBD file from a stream.
+    /// </summary>
     public static DbdFile Parse(Stream stream)
     {
         using var reader = new StreamReader(stream);
@@ -84,7 +112,7 @@ public sealed class DbdFile(Dictionary<string, DbdColumn> columnsByName, List<Db
             if (inColumns)
             {
                 if (DbdColumnParser.TryParse(line.ToString(), out var name, out var column))
-                    columnsByName[name] = column;
+                    columnsByName[name] = column!;
                 continue;
             }
 
@@ -94,7 +122,7 @@ public sealed class DbdFile(Dictionary<string, DbdColumn> columnsByName, List<Db
                 {
                     entriesStartedForActiveBuilds = true;
                     foreach (var b in activeBuilds)
-                        b.Entries.Add(entry);
+                        b.Entries.Add(entry!);
                 }
             }
         }
@@ -102,6 +130,7 @@ public sealed class DbdFile(Dictionary<string, DbdColumn> columnsByName, List<Db
         return new DbdFile(columnsByName, layouts, globalBuilds);
     }
 
+    /// <inheritdoc />
     public bool TryGetLayout(uint layoutHash, out DbdLayout layout)
     {
         foreach (var candidate in Layouts)

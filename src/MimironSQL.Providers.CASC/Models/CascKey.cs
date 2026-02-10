@@ -3,10 +3,10 @@ using System.Diagnostics;
 
 namespace MimironSQL.Providers;
 
-[DebuggerDisplay("{ToString()}")]
 /// <summary>
 /// Represents a 16-byte CASC content or encoding key.
 /// </summary>
+[DebuggerDisplay("{ToString()}")]
 internal readonly struct CascKey : IEquatable<CascKey>
 {
     /// <summary>

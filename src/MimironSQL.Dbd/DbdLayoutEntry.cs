@@ -4,31 +4,73 @@ using MimironSQL.Db2;
 
 namespace MimironSQL.Dbd;
 
-public sealed class DbdLayoutEntry(
-    string name,
-    Db2ValueType valueType,
-    string? referencedTableName,
-    int elementCount,
-    bool isVerified,
-    bool isNonInline,
-    bool isId,
-    bool isRelation,
-    string? inlineTypeToken) : IDbdLayoutEntry
+/// <summary>
+/// Represents a single entry within a BUILD block.
+/// </summary>
+public sealed class DbdLayoutEntry : IDbdLayoutEntry
 {
-    public string Name { get; } = name;
-    public Db2ValueType ValueType { get; } = valueType;
-    public string? ReferencedTableName { get; } = referencedTableName;
-    public int ElementCount { get; } = elementCount;
-    public bool IsVerified { get; } = isVerified;
-    public bool IsNonInline { get; } = isNonInline;
-    public bool IsId { get; } = isId;
-    public bool IsRelation { get; } = isRelation;
-    public string? InlineTypeToken { get; } = inlineTypeToken;
+    /// <summary>
+    /// Initializes a new instance of the <see cref="DbdLayoutEntry"/> class.
+    /// </summary>
+    public DbdLayoutEntry(
+        string name,
+        Db2ValueType valueType,
+        string? referencedTableName,
+        int elementCount,
+        bool isVerified,
+        bool isNonInline,
+        bool isId,
+        bool isRelation,
+        string? inlineTypeToken)
+    {
+        Name = name;
+        ValueType = valueType;
+        ReferencedTableName = referencedTableName;
+        ElementCount = elementCount;
+        IsVerified = isVerified;
+        IsNonInline = isNonInline;
+        IsId = isId;
+        IsRelation = isRelation;
+        InlineTypeToken = inlineTypeToken;
+    }
+
+    /// <inheritdoc />
+    public string Name { get; }
+
+    /// <inheritdoc />
+    public Db2ValueType ValueType { get; }
+
+    /// <inheritdoc />
+    public string? ReferencedTableName { get; }
+
+    /// <inheritdoc />
+    public int ElementCount { get; }
+
+    /// <inheritdoc />
+    public bool IsVerified { get; }
+
+    /// <inheritdoc />
+    public bool IsNonInline { get; }
+
+    /// <inheritdoc />
+    public bool IsId { get; }
+
+    /// <inheritdoc />
+    public bool IsRelation { get; }
+
+    /// <inheritdoc />
+    public string? InlineTypeToken { get; }
 }
 
+/// <summary>
+/// Parses layout entry lines within a BUILD block.
+/// </summary>
 public static class DbdLayoutEntryParser
 {
-    public static bool TryParse(string line, IReadOnlyDictionary<string, DbdColumn> columnsByName, out DbdLayoutEntry entry)
+    /// <summary>
+    /// Attempts to parse a layout entry line.
+    /// </summary>
+    public static bool TryParse(string line, IReadOnlyDictionary<string, DbdColumn> columnsByName, out DbdLayoutEntry? entry)
     {
         var text = line.AsSpan().Trim();
         if (text is { Length: 0 })

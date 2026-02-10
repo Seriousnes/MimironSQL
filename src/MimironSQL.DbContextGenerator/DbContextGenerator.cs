@@ -17,28 +17,12 @@ namespace MimironSQL.DbContextGenerator;
 [Generator(LanguageNames.CSharp)]
 public sealed class DbContextGenerator : IIncrementalGenerator
 {
-    private static readonly DiagnosticDescriptor MissingEnvFile = new(
-        id: "MSQLDBD001",
-        title: "Missing .env file",
-        messageFormat: "MimironSQL.DbContextGenerator requires a .env file provided via AdditionalFiles",
+    private static readonly DiagnosticDescriptor NoSourcesGenerated = new(
+        id: "MSQLDBD004",
+        title: "No sources generated",
+        messageFormat: "MimironSQL.DbContextGenerator emitted no sources: {0}",
         category: "MimironSQL.DbContextGenerator",
-        defaultSeverity: DiagnosticSeverity.Error,
-        isEnabledByDefault: true);
-
-    private static readonly DiagnosticDescriptor MissingWowVersion = new(
-        id: "MSQLDBD002",
-        title: "Missing WOW_VERSION",
-        messageFormat: "MimironSQL.DbContextGenerator requires WOW_VERSION=... in .env.",
-        category: "MimironSQL.DbContextGenerator",
-        defaultSeverity: DiagnosticSeverity.Error,
-        isEnabledByDefault: true);
-
-    private static readonly DiagnosticDescriptor InvalidWowVersion = new(
-        id: "MSQLDBD003",
-        title: "Invalid WOW_VERSION",
-        messageFormat: "WOW_VERSION value '{0}' could not be parsed. Expected 'major.minor.patch' or 'major.minor.patch.build'.",
-        category: "MimironSQL.DbContextGenerator",
-        defaultSeverity: DiagnosticSeverity.Error,
+        defaultSeverity: DiagnosticSeverity.Warning,
         isEnabledByDefault: true);
 
     /// <summary>
@@ -48,7 +32,12 @@ public sealed class DbContextGenerator : IIncrementalGenerator
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
         var envProvider = context.AdditionalTextsProvider
-            .Where(static f => string.Equals(Path.GetFileName(f.Path), ".env", StringComparison.OrdinalIgnoreCase))
+            .Where(static f =>
+            {
+                var fileName = Path.GetFileName(f.Path);
+                return string.Equals(fileName, ".env", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(fileName, ".env.local", StringComparison.OrdinalIgnoreCase);
+            })
             .Collect()
             .Select(static (files, cancellationToken) =>
             {
@@ -57,7 +46,20 @@ public sealed class DbContextGenerator : IIncrementalGenerator
                 if (files.Length == 0)
                     return EnvResult.Missing;
 
-                var text = files[0].GetText(cancellationToken);
+                AdditionalText? selected = null;
+                foreach (var f in files)
+                {
+                    var fileName = Path.GetFileName(f.Path);
+                    if (string.Equals(fileName, ".env.local", StringComparison.OrdinalIgnoreCase))
+                    {
+                        selected = f;
+                        break;
+                    }
+                }
+
+                selected ??= files[0];
+
+                var text = selected.GetText(cancellationToken);
                 if (text is null)
                     return EnvResult.Missing;
 
@@ -71,20 +73,10 @@ public sealed class DbContextGenerator : IIncrementalGenerator
                 return new EnvResult(EnvResultKind.Ok, version, value);
             });
 
-        context.RegisterSourceOutput(envProvider, static (spc, env) =>
-        {
-            if (env.Kind == EnvResultKind.MissingEnv)
-                spc.ReportDiagnostic(Diagnostic.Create(MissingEnvFile, Location.None));
-
-            if (env.Kind == EnvResultKind.MissingWowVersion)
-                spc.ReportDiagnostic(Diagnostic.Create(MissingWowVersion, Location.None));
-
-            if (env.Kind == EnvResultKind.InvalidWowVersion)
-                spc.ReportDiagnostic(Diagnostic.Create(InvalidWowVersion, Location.None, env.RawValue ?? string.Empty));
-        });
-
         var dbdFilesProvider = context.AdditionalTextsProvider
             .Where(static f => f.Path.EndsWith(".dbd", StringComparison.OrdinalIgnoreCase));
+
+        var dbdFilesCollectedProvider = dbdFilesProvider.Collect();
 
         var entitySpecsProvider = dbdFilesProvider
             .Combine(envProvider)
@@ -134,6 +126,62 @@ public sealed class DbContextGenerator : IIncrementalGenerator
             var contextSource = RenderContext(entities);
             spc.AddSource("WoWDb2Context.g.cs", SourceText.From(contextSource, Encoding.UTF8));
         });
+
+        var diagnosticsProvider = envProvider
+            .Combine(dbdFilesCollectedProvider)
+            .Combine(entitySpecsProvider.Collect())
+            .Select(static (input, cancellationToken) =>
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                var ((env, dbdFiles), entities) = input;
+                return new GenerationStatus(env, dbdFiles.Length, entities.Length);
+            });
+
+        context.RegisterSourceOutput(diagnosticsProvider, static (spc, status) =>
+        {
+            if (status.EntitiesGeneratedCount != 0)
+                return;
+
+            var reasons = new List<string>(capacity: 3);
+
+            if (status.Env.Kind == EnvResultKind.MissingEnv)
+                reasons.Add("no .env (or .env.local) file was provided via AdditionalFiles");
+
+            if (status.Env.Kind == EnvResultKind.MissingWowVersion)
+                reasons.Add("WOW_VERSION is missing from .env");
+
+            if (status.Env.Kind == EnvResultKind.InvalidWowVersion)
+                reasons.Add($"WOW_VERSION value '{status.Env.RawValue ?? string.Empty}' is invalid");
+
+            if (status.DbdFilesCount == 0)
+                reasons.Add("no .dbd files were provided via AdditionalFiles");
+
+            if (reasons.Count == 0 && status.Env.Kind == EnvResultKind.Ok && status.DbdFilesCount > 0)
+                reasons.Add($"no compatible BUILD blocks were found for WOW_VERSION={status.Env.RawValue}");
+
+            if (reasons.Count == 0)
+                reasons.Add("inputs were present but no entities could be produced");
+
+            var message = string.Join("; ", reasons);
+            spc.ReportDiagnostic(Diagnostic.Create(NoSourcesGenerated, Location.None, message));
+        });
+    }
+
+    private readonly struct GenerationStatus
+    {
+        public GenerationStatus(EnvResult env, int dbdFilesCount, int entitiesGeneratedCount)
+        {
+            Env = env;
+            DbdFilesCount = dbdFilesCount;
+            EntitiesGeneratedCount = entitiesGeneratedCount;
+        }
+
+        public EnvResult Env { get; }
+
+        public int DbdFilesCount { get; }
+
+        public int EntitiesGeneratedCount { get; }
     }
 
     private static DbdFile ParseDbd(SourceText text)

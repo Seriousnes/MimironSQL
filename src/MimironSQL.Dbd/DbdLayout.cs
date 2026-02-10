@@ -2,17 +2,41 @@ using System.Globalization;
 
 namespace MimironSQL.Dbd;
 
-public sealed class DbdLayout(uint[] hashes) : IDbdLayout
+/// <summary>
+/// Represents a LAYOUT section within a DBD file.
+/// </summary>
+public sealed class DbdLayout : IDbdLayout
 {
-    public uint[] Hashes { get; } = hashes;
+    /// <summary>
+    /// Initializes a new instance of the <see cref="DbdLayout"/> class.
+    /// </summary>
+    public DbdLayout(uint[] hashes)
+    {
+        Hashes = hashes;
+    }
+
+    /// <summary>
+    /// Gets the layout hashes declared on the LAYOUT header line.
+    /// </summary>
+    public uint[] Hashes { get; }
+
+    /// <summary>
+    /// Gets the build blocks declared for this layout.
+    /// </summary>
     public List<DbdBuildBlock> Builds { get; } = [];
 
     IReadOnlyList<uint> IDbdLayout.Hashes => Hashes;
     IReadOnlyList<IDbdBuildBlock> IDbdLayout.Builds => Builds;
 
+    /// <summary>
+    /// Returns <see langword="true"/> if this layout contains the specified hash.
+    /// </summary>
     public bool ContainsHash(uint hash)
         => Hashes.Contains(hash);
 
+    /// <summary>
+    /// Parses a LAYOUT header line.
+    /// </summary>
     public static DbdLayout ParseHeader(string line)
     {
         // "LAYOUT 2273DFFF, 60BB6C3F"
@@ -44,6 +68,9 @@ public sealed class DbdLayout(uint[] hashes) : IDbdLayout
         return new DbdLayout(hashes);
     }
 
+    /// <summary>
+    /// Attempts to select a build that matches the expected physical column count.
+    /// </summary>
     public bool TrySelectBuildByPhysicalColumnCount(int expected, out DbdBuildBlock build, out int[] availableCounts)
     {
         var counts = new int[Builds.Count];

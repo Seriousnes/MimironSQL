@@ -63,9 +63,9 @@ FirstRewardQuestID<32>[6]
                 ("MapChallengeMode.dbd", sourceDbd),
             ]);
 
-        var mapChallengeMode = results.Single(s => s.HintName.EndsWith("MapChallengeMode.g.cs", StringComparison.Ordinal));
+        var mapChallengeMode = results.Single(s => s.HintName.EndsWith("MapChallengeModeEntity.g.cs", StringComparison.Ordinal));
         mapChallengeMode.SourceText.ShouldContain("public int MapID { get; set; }");
-        mapChallengeMode.SourceText.ShouldContain("public virtual Map? Map { get; set; }");
+        mapChallengeMode.SourceText.ShouldContain("public virtual MapEntity? Map { get; set; }");
         mapChallengeMode.SourceText.ShouldNotContain("MapIDKey");
 
         mapChallengeMode.SourceText.ShouldNotContain("[ForeignKey(");
@@ -75,7 +75,7 @@ FirstRewardQuestID<32>[6]
         dbContext.SourceText.ShouldContain("modelBuilder.ApplyConfigurationsFromAssembly(typeof(WoWDb2Context).Assembly);");
         dbContext.SourceText.ShouldContain("OnModelCreatingPartial(modelBuilder);");
 
-        var mapChallengeModeConfig = results.Single(s => s.HintName.EndsWith("MapChallengeModeConfiguration.g.cs", StringComparison.Ordinal));
+        var mapChallengeModeConfig = results.Single(s => s.HintName.EndsWith("MapChallengeModeEntityConfiguration.g.cs", StringComparison.Ordinal));
         mapChallengeModeConfig.SourceText.ShouldContain("builder.HasOne(x => x.Map).WithMany().HasForeignKey(x => x.MapID);");
     }
 
@@ -111,9 +111,9 @@ Map<32>
                 ("Foo.dbd", sourceDbd),
             ]);
 
-        var foo = results.Single(s => s.HintName.EndsWith("Foo.g.cs", StringComparison.Ordinal));
+        var foo = results.Single(s => s.HintName.EndsWith("FooEntity.g.cs", StringComparison.Ordinal));
         foo.SourceText.ShouldContain("public int Map { get; set; }");
-        foo.SourceText.ShouldContain("public virtual Map? MapEntity { get; set; }");
+        foo.SourceText.ShouldContain("public virtual MapEntity? MapEntity { get; set; }");
     }
 
     [Fact]
@@ -146,6 +146,89 @@ Map<32>
             .GeneratedSources
             .Length
             .ShouldBe(0);
+    }
+
+    [Fact]
+    public void Generator_does_not_crash_when_build_has_no_id_entry()
+    {
+        var env = "WOW_VERSION=1.0.0.1\n";
+
+        var sourceDbd = """
+COLUMNS
+int ID
+int Foo
+
+BUILD 1.0.0.1
+Foo<32>
+""";
+
+        var results = RunGenerator(
+            additionalFiles:
+            [
+                (".env", env),
+                ("NoIdTable.dbd", sourceDbd),
+            ]);
+
+        var entity = results.Single(s => s.HintName.EndsWith("NoIdTableEntity.g.cs", StringComparison.Ordinal));
+        entity.SourceText.ShouldContain("public int Id { get; set; }");
+    }
+
+    [Fact]
+    public void Generator_replaces_hyphens_without_colliding_with_existing_type_names()
+    {
+        var env = "WOW_VERSION=1.0.0.1\n";
+
+        var minimal = """
+COLUMNS
+int ID
+
+BUILD 1.0.0.1
+$id$ID<32>
+""";
+
+        var results = RunGenerator(
+            additionalFiles:
+            [
+                (".env", env),
+                ("ItemSparse.dbd", minimal),
+                ("Item-sparse.dbd", minimal),
+            ]);
+
+        results.Any(s => s.HintName.EndsWith("ItemSparseEntity.g.cs", StringComparison.Ordinal)).ShouldBeTrue();
+        results.Any(s => s.HintName.EndsWith("Item__SparseEntity.g.cs", StringComparison.Ordinal)).ShouldBeTrue();
+
+        var itemSparse = results.Single(s => s.HintName.EndsWith("ItemSparseEntity.g.cs", StringComparison.Ordinal));
+        itemSparse.SourceText.ShouldContain("public partial class ItemSparseEntity");
+
+        var itemHyphenSparse = results.Single(s => s.HintName.EndsWith("Item__SparseEntity.g.cs", StringComparison.Ordinal));
+        itemHyphenSparse.SourceText.ShouldContain("public partial class Item__SparseEntity");
+    }
+
+    [Fact]
+    public void Generator_does_not_rename_property_when_it_matches_sanitized_table_name()
+    {
+        var env = "WOW_VERSION=1.0.0.1\n";
+
+        var dbd = """
+COLUMNS
+int ID
+int Foo
+
+BUILD 1.0.0.1
+$id$ID<32>
+Foo<32>
+""";
+
+        var results = RunGenerator(
+            additionalFiles:
+            [
+                (".env", env),
+                ("Foo.dbd", dbd),
+            ]);
+
+        var foo = results.Single(s => s.HintName.EndsWith("FooEntity.g.cs", StringComparison.Ordinal));
+        foo.SourceText.ShouldContain("public partial class FooEntity");
+        foo.SourceText.ShouldContain("public int Foo { get; set; }");
     }
 
     private static ImmutableArray<(string HintName, string SourceText)> RunGenerator((string Path, string Content)[] additionalFiles)

@@ -1,6 +1,6 @@
 ﻿namespace MimironSQL;
 
-public partial class Map
+public partial class MapEntity
 {
-    public ICollection<MapChallengeMode> MapChallengeModes { get; set; } = [];
+    public ICollection<MapChallengeModeEntity> MapChallengeModes { get; set; } = [];
 }

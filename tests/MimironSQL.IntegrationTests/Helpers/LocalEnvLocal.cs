@@ -39,7 +39,7 @@ internal static class LocalEnvLocal
     public static string GetEnvLocalPath()
     {
         var baseDir = AppContext.BaseDirectory;
-        return Path.GetFullPath(Path.Combine(baseDir, "..", "..", "..", ".env.local"));
+        return System.IO.Path.GetFullPath(System.IO.Path.Combine(baseDir, "..", "..", "..", ".env.local"));
     }
 
     private static string TrimOptionalQuotes(string value)

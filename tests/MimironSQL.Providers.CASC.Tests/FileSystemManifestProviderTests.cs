@@ -12,7 +12,7 @@ public sealed class FileSystemManifestProviderTests
         {
             var options = new CascDb2ProviderOptions
             {
-                ManifestCacheDirectory = dir,
+                ManifestDirectory = dir,
                 ManifestAssetName = "manifest.json",
             };
 
@@ -35,7 +35,7 @@ public sealed class FileSystemManifestProviderTests
 
             var options = new CascDb2ProviderOptions
             {
-                ManifestCacheDirectory = dir,
+                ManifestDirectory = dir,
                 ManifestAssetName = "manifest.json",
             };
 
@@ -60,7 +60,7 @@ public sealed class FileSystemManifestProviderTests
 
             var options = new CascDb2ProviderOptions
             {
-                ManifestCacheDirectory = dir,
+                ManifestDirectory = dir,
                 ManifestAssetName = "manifest.json",
             };
 

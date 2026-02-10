@@ -100,9 +100,9 @@ public sealed class FileSystemManifestProvider(CascDb2ProviderOptions options) :
 
     private string GetManifestPath()
     {
-        var directory = !string.IsNullOrWhiteSpace(_options.ManifestCacheDirectory)
-            ? _options.ManifestCacheDirectory
-            : throw new InvalidOperationException("ManifestCacheDirectory is required when using FileSystemManifestProvider.");
+        var directory = !string.IsNullOrWhiteSpace(_options.ManifestDirectory)
+            ? _options.ManifestDirectory
+            : throw new InvalidOperationException("ManifestDirectory is required when using FileSystemManifestProvider.");
 
         return Path.Combine(directory, _options.ManifestAssetName);
     }

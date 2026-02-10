@@ -18,7 +18,7 @@ public static class ServiceCollectionExtensions
     public static IServiceCollection AddCasc(
         this IServiceCollection services,
         CascDb2ProviderOptions options)
-        => AddCascInternal(services, configuration: null, options);
+        => AddCasc(services, configuration: null, options);
 
     /// <summary>
     /// Registers CASC services required to open DB2 streams from a World of Warcraft installation.
@@ -29,9 +29,9 @@ public static class ServiceCollectionExtensions
     public static IServiceCollection AddCasc(
         this IServiceCollection services,
         IConfiguration configuration)
-        => AddCascInternal(services, configuration, options: null);
+        => AddCasc(services, configuration, options: null);
 
-    private static IServiceCollection AddCascInternal(
+    private static IServiceCollection AddCasc(
         IServiceCollection services,
         IConfiguration? configuration,
         CascDb2ProviderOptions? options)
@@ -43,22 +43,20 @@ public static class ServiceCollectionExtensions
 
         var bound = options ?? BindOptions(configuration!);
 
-        const string InstallRootRequiredMessage =
-            "WoW install root is required. Configure 'Casc:WowInstallRoot' (e.g. appsettings.json).";
-
         if (string.IsNullOrWhiteSpace(bound.WowInstallRoot))
-            throw new InvalidOperationException(InstallRootRequiredMessage);
+            throw new InvalidOperationException("WoW install root is required. Configure 'Casc:WowInstallRoot'.");
+
+        var hasManifestProvider = services.Any(x => x.ServiceType == typeof(IManifestProvider));
+        if (!hasManifestProvider && string.IsNullOrWhiteSpace(bound.ManifestDirectory))
+            throw new ArgumentException("Manifest directory is required. Configure 'Casc:ManifestDirectory'.", options is null ? nameof(configuration) : nameof(options));
 
         services.TryAddSingleton(bound);
 
         services.TryAddSingleton<IWowBuildIdentityProvider, WowBuildIdentityProvider>();
-
-        // Default manifest provider is local-only.
         services.TryAddSingleton<IManifestProvider, FileSystemManifestProvider>();
-
         services.TryAddSingleton<CascStorageService>();
         services.TryAddSingleton<IDb2StreamProvider>(sp => sp.GetRequiredService<CascStorageService>());
-
+        
         return services;
     }
 
@@ -71,19 +69,15 @@ public static class ServiceCollectionExtensions
 
         var wowInstallRoot = ReadString(casc, configuration, "WowInstallRoot") ?? string.Empty;
         var dbdDefsDir = ReadString(casc, configuration, "DbdDefinitionsDirectory");
-        var cacheDir = ReadString(casc, configuration, "ManifestCacheDirectory");
+        var manifestDir = ReadString(casc, configuration, "ManifestDirectory") ?? string.Empty;
 
-        var assetName = casc["ManifestAssetName"]?.Trim();
-        if (string.IsNullOrWhiteSpace(assetName))
-            assetName = configuration["ManifestAssetName"]?.Trim();
-        if (string.IsNullOrWhiteSpace(assetName))
-            assetName = "manifest.json";
+        var assetName = casc["ManifestAssetName"]?.Trim() ?? configuration["ManifestAssetName"]?.Trim() ?? "manifest.json";
 
         return new CascDb2ProviderOptions
         {
             WowInstallRoot = wowInstallRoot,
             DbdDefinitionsDirectory = dbdDefsDir,
-            ManifestCacheDirectory = cacheDir,
+            ManifestDirectory = manifestDir,
             ManifestAssetName = assetName,
         };
     }

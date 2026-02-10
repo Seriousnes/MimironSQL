@@ -83,9 +83,12 @@ jobs:
       - name: Restore
         run: dotnet restore MimironSQL.slnx
 
+      - name: Clean (stale outputs)
+        run: dotnet clean MimironSQL.slnx --configuration Release /m:1 /p:BuildInParallel=false
+
       - name: Test
         run: |
-          dotnet test "${{ matrix.path }}" --configuration Release --no-restore --collect:"XPlat Code Coverage" --settings tests/coverlet.runsettings --results-directory "TestResults/${{ matrix.name }}"
+          dotnet test "${{ matrix.path }}" --configuration Release --no-restore --collect:"XPlat Code Coverage" --settings tests/coverlet.runsettings --results-directory "TestResults/${{ matrix.name }}" /m:1 /p:BuildInParallel=false
 
       - name: Upload raw coverage
         uses: actions/upload-artifact@v4

@@ -41,16 +41,20 @@ public sealed class MimironDb2EfCoreQueryCompilerTests
     }
 
     [Fact]
-    public void Async_and_precompilation_apis_throw_not_supported()
+    public async Task Async_and_precompilation_apis_support_async_over_sync()
     {
         var executor = Substitute.For<IMimironDb2QueryExecutor>();
         var compiler = new MimironDb2EfCoreQueryCompiler(executor);
         var query = Expression.Constant(123);
 
-        var compiledAsync = compiler.CreateCompiledAsyncQuery<int>(query);
-        Should.Throw<NotSupportedException>(() => compiledAsync(null!));
+        executor.Execute<int>(query).Returns(7);
 
-        Should.Throw<NotSupportedException>(() => compiler.ExecuteAsync<int>(query, CancellationToken.None));
-        Should.Throw<NotSupportedException>(() => compiler.PrecompileQuery<int>(query, async: false));
+        var compiledAsync = compiler.CreateCompiledAsyncQuery<Task<int>>(query);
+        (await compiledAsync(null!)).ShouldBe(7);
+
+        (await compiler.ExecuteAsync<Task<int>>(query, CancellationToken.None)).ShouldBe(7);
+
+        var precompiled = compiler.PrecompileQuery<int>(query, async: false).Compile();
+        precompiled(null!).ShouldBe(7);
     }
 }

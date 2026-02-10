@@ -88,8 +88,6 @@ var map = context.Maps.Find(2222);
 ## Limitations
 
 - **Read-only.** `SaveChanges()` and `SaveChangesAsync()` throw `NotSupportedException`.
-- **No async queries.** `ToListAsync()`, `FirstOrDefaultAsync()`, etc. throw `NotSupportedException`. Use synchronous equivalents.
-- **No query precompilation.** Compiled queries are not supported.
 
 ## Configuration
 

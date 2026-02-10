@@ -57,7 +57,7 @@ public static class MimironDb2CascOptionsBuilderExtensions
         {
             casc.WowInstallRoot = bound.WowInstallRoot;
             casc.DbdDefinitionsDirectory = bound.DbdDefinitionsDirectory;
-            casc.ManifestCacheDirectory = bound.ManifestCacheDirectory;
+            casc.ManifestDirectory = bound.ManifestDirectory;
             casc.ManifestAssetName = bound.ManifestAssetName;
         });
     }
@@ -71,19 +71,17 @@ public static class MimironDb2CascOptionsBuilderExtensions
 
         var wowInstallRoot = ReadString(casc, configuration, "WowInstallRoot") ?? string.Empty;
         var dbdDefsDir = ReadString(casc, configuration, "DbdDefinitionsDirectory");
-        var cacheDir = ReadString(casc, configuration, "ManifestCacheDirectory");
+        var cacheDir = ReadString(casc, configuration, "ManifestDirectory");
 
-        var assetName = casc["ManifestAssetName"]?.Trim();
-        if (string.IsNullOrWhiteSpace(assetName))
-            assetName = configuration["ManifestAssetName"]?.Trim();
-        if (string.IsNullOrWhiteSpace(assetName))
-            assetName = "manifest.json";
+        var assetName = casc["ManifestAssetName"]?.Trim() ?? 
+                        configuration["ManifestAssetName"]?.Trim() ?? 
+                        "manifest.json";
 
         return new CascDb2ProviderOptions
         {
             WowInstallRoot = wowInstallRoot,
             DbdDefinitionsDirectory = dbdDefsDir,
-            ManifestCacheDirectory = cacheDir,
+            ManifestDirectory = cacheDir,
             ManifestAssetName = assetName,
         };
     }
@@ -115,9 +113,11 @@ public static class MimironDb2CascOptionsBuilderExtensions
         public string? DbdDefinitionsDirectory { get; set; }
 
         /// <summary>
-        /// Optional cache directory for the WoWDBDefs DB2 manifest.
+        /// Directory for the WoWDBDefs DB2 manifest.
+        /// Required when using the default <see cref="FileSystemManifestProvider"/>.
+        /// Optional when a custom <see cref="IManifestProvider"/> is configured.
         /// </summary>
-        public string? ManifestCacheDirectory { get; set; }
+        public string? ManifestDirectory { get; set; }
 
         /// <summary>
         /// The manifest asset name (default: <c>manifest.json</c>).
@@ -186,9 +186,13 @@ public static class MimironDb2CascOptionsBuilderExtensions
         /// <summary>
         /// Configures the manifest cache directory and optional asset name.
         /// </summary>
-        public CascDb2ProviderBuilder WithManifest(string manifestCacheDirectory, string? manifestAssetName = null)
+        public CascDb2ProviderBuilder WithManifest(string manifestDirectory, string? manifestAssetName = null)
         {
-            ManifestCacheDirectory = manifestCacheDirectory;
+            ManifestDirectory = manifestDirectory;
+            _manifestProviderType = null;
+            ManifestProvider = null;
+            ManifestProviderFactory = null;
+
             if (!string.IsNullOrWhiteSpace(manifestAssetName))
                 ManifestAssetName = manifestAssetName;
 
@@ -231,7 +235,7 @@ public static class MimironDb2CascOptionsBuilderExtensions
             {
                 WowInstallRoot = WowInstallRoot,
                 DbdDefinitionsDirectory = DbdDefinitionsDirectory,
-                ManifestCacheDirectory = ManifestCacheDirectory,
+                ManifestDirectory = ManifestDirectory,
                 ManifestAssetName = ManifestAssetName,
             };
 
@@ -239,7 +243,7 @@ public static class MimironDb2CascOptionsBuilderExtensions
                 cascOptions.WowInstallRoot,
                 hasCustomDbdProvider ? (_dbdProviderType?.FullName ?? DbdProvider?.GetType().FullName ?? "factory") : cascOptions.DbdDefinitionsDirectory,
                 _manifestProviderType?.FullName ?? ManifestProvider?.GetType().FullName ?? (ManifestProviderFactory is not null ? "factory" : null),
-                cascOptions.ManifestCacheDirectory,
+                cascOptions.ManifestDirectory,
                 cascOptions.ManifestAssetName);
 
             return _builder.ConfigureProvider(

@@ -931,9 +931,12 @@ public sealed class Db2NavigationQueryCompilerTests
                 _ => throw new InvalidOperationException($"Unknown table: {tableName}"),
             };
 
-        Expression<Func<ScalarChild, bool>> predicate = c => c.Parent!.IsActive == true && c.Parent.ByteValue == (byte)5;
+        Expression<Func<ScalarChild, bool>> predicate1 = c => c.Parent!.IsActive == true && c.Parent.ByteValue == (byte)5;
+        Expression<Func<ScalarChild, bool>> predicate2 = c => c.Parent!.IsActive && c.Parent.ByteValue == (byte)5;
 
-        Db2NavigationQueryCompiler.TryCompileSemiJoinPredicate(model, children, TableResolver, predicate, out var rowPredicate)
+        Db2NavigationQueryCompiler.TryCompileSemiJoinPredicate(model, children, TableResolver, predicate1, out var rowPredicate)
+            .ShouldBeTrue();
+        Db2NavigationQueryCompiler.TryCompileSemiJoinPredicate(model, children, TableResolver, predicate2, out rowPredicate)
             .ShouldBeTrue();
 
         children.EnumerateRows().Where(rowPredicate).Select(r => r.RowId).ToArray()

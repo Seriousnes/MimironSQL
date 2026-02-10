@@ -73,7 +73,7 @@ Or pass options explicitly:
 services.AddCasc(new CascDb2ProviderOptions
 {
     WowInstallRoot = @"C:\Games\World of Warcraft",
-    ManifestCacheDirectory = @"C:\cache"
+    ManifestDirectory = @"C:\cache"
 });
 ```
 
@@ -91,9 +91,11 @@ Keys are read from the `Casc` section of `IConfiguration`, with a fallback to ro
 | Key | Required | Default | Description |
 |---|---|---|---|
 | `Casc:WowInstallRoot` | Yes | — | Path to the World of Warcraft installation directory. |
-| `Casc:ManifestCacheDirectory` | No | Implementation-defined | Directory where the DB2 manifest file is cached. |
+| `Casc:ManifestDirectory` | Yes* | — | Directory where the DB2 manifest file is located when using the default `FileSystemManifestProvider`. |
 | `Casc:ManifestAssetName` | No | `manifest.json` | File name of the manifest asset. |
 | `Casc:DbdDefinitionsDirectory` | No* | — | Directory containing WoWDBDefs `.dbd` files. Required when using the `UseCasc(configuration)` EF Core overload. |
+
+\* `Casc:ManifestDirectory` is only optional when you register a custom `IManifestProvider` (e.g. via `WithManifestProvider<T>()`, `ManifestProvider`, or `ManifestProviderFactory`).
 
 Example `appsettings.json`:
 
@@ -102,7 +104,7 @@ Example `appsettings.json`:
   "Casc": {
     "WowInstallRoot": "C:\\Games\\World of Warcraft",
     "DbdDefinitionsDirectory": "C:\\WoWDBDefs\\definitions",
-    "ManifestCacheDirectory": "C:\\cache"
+    "ManifestDirectory": "C:\\cache"
   }
 }
 ```

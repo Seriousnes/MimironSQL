@@ -151,15 +151,6 @@ Db2Format format = Db2FormatDetector.Detect(headerBytes);
 Db2Format format = Db2FormatDetector.DetectOrThrow(headerBytes); // throws on Unknown
 ```
 
-### Db2FormatRegistry
-
-Maintains a registry of `IDb2Format` implementations. Register custom formats to extend MimironSQL with support for additional DB2 versions.
-
-```csharp
-var registry = new Db2FormatRegistry();
-registry.Register(myCustomFormat);
-```
-
 ## License
 
 This project is licensed under the [MIT License](https://github.com/Seriousnes/MimironSQL/blob/main/LICENSE.txt).

@@ -28,21 +28,36 @@ public sealed class MimironDb2DatabaseAndTypeMappingTests
     }
 
     [Fact]
-    public void CompileQuery_throws_for_async_and_executes_via_executor_for_sync()
+    public async Task CompileQuery_executes_via_executor_for_sync_and_async_over_sync()
     {
         var queryExecutor = Substitute.For<IMimironDb2QueryExecutor>();
         var db = new MimironDb2Database(queryExecutor);
 
         var query = Expression.Constant(123);
 
-        var asyncFunc = db.CompileQuery<int>(query, async: true);
-        Should.Throw<NotSupportedException>(() => asyncFunc(null!))
-            .Message.ShouldContain("Async query execution");
-
         queryExecutor.Execute<int>(query).Returns(123);
 
         var syncFunc = db.CompileQuery<int>(query, async: false);
         syncFunc(null!).ShouldBe(123);
+
+        var asyncFunc = db.CompileQuery<Task<int>>(query, async: true);
+        (await asyncFunc(null!)).ShouldBe(123);
+    }
+
+    [Fact]
+    public async Task CompileQueryExpression_can_be_compiled_for_sync_and_async_over_sync()
+    {
+        var queryExecutor = Substitute.For<IMimironDb2QueryExecutor>();
+        var db = new MimironDb2Database(queryExecutor);
+
+        var query = Expression.Constant(123);
+        queryExecutor.Execute<int>(query).Returns(5);
+
+        var sync = db.CompileQueryExpression<int>(query, async: false).Compile();
+        sync(null!).ShouldBe(5);
+
+        var async = db.CompileQueryExpression<Task<int>>(query, async: true).Compile();
+        (await async(null!)).ShouldBe(5);
     }
 
     [Fact]

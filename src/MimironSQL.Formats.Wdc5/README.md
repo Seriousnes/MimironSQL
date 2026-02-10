@@ -53,18 +53,11 @@ if (file.TryGetRowHandle(2222, out var handle))
 }
 ```
 
-### Registering with the format registry
-
-```csharp
-var registry = new Db2FormatRegistry();
-Wdc5Format.Register(registry);
-```
-
 ## Key Types
 
 | Type | Kind | Description |
 | --- | --- | --- |
-| `Wdc5Format` | class | `IDb2Format` implementation — entry point for opening files and registering the format. |
+| `Wdc5Format` | class | `IDb2Format` implementation — entry point for opening files. |
 | `Wdc5File` | class | Parsed WDC5 file. Implements `IDb2File<RowHandle>` for row enumeration and field reading. |
 | `Wdc5FileOptions` | record | Options controlling parsing and decryption (TACT key provider, nonce strategy). |
 | `Wdc5Header` | record struct | Parsed file header (schema hash, field counts, flags, section count, etc.). |

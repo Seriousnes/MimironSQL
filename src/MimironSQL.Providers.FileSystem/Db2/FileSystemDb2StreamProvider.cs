@@ -30,7 +30,7 @@ public sealed class FileSystemDb2StreamProvider(FileSystemDb2StreamProviderOptio
         ArgumentNullException.ThrowIfNull(tableName);
         if (_pathsByTableName.TryGetValue(tableName, out var path))
         {
-            return Task.FromResult<Stream>(new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, bufferSize: 4096, useAsync: true));
+            return Task.FromResult<Stream>(File.OpenRead(path));
         }
         throw new FileNotFoundException($"No .db2 file found for table '{tableName}' in '{options.Db2DirectoryPath}'.");
     }

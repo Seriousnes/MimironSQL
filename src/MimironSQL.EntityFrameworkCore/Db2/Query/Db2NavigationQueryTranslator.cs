@@ -498,6 +498,41 @@ internal static class Db2NavigationQueryTranslator
 
         expression = expression.UnwrapConvert()!;
 
+        // Support boolean scalar predicates expressed as a bare member access:
+        //   e => e.Nav.BoolMember
+        // and its negation:
+        //   e => !e.Nav.BoolMember
+        // These are equivalent to `== true` / `== false`.
+        if (expression is MemberExpression && TryGetNavThenMemberAccess(expression, rootParam, out navMember, out targetMember))
+        {
+            scalarType = expression.Type;
+            if (scalarType.UnwrapNullable() != typeof(bool))
+                return false;
+
+            comparisonKind = Db2ScalarComparisonKind.Equal;
+            comparisonValueExpression = scalarType == typeof(bool?)
+                ? Expression.Constant((bool?)true, scalarType)
+                : Expression.Constant(true, scalarType);
+
+            return true;
+        }
+
+        if (expression is UnaryExpression { NodeType: ExpressionType.Not } notExpr &&
+            notExpr.Operand.UnwrapConvert() is MemberExpression operand &&
+            TryGetNavThenMemberAccess(operand, rootParam, out navMember, out targetMember))
+        {
+            scalarType = operand.Type;
+            if (scalarType.UnwrapNullable() != typeof(bool))
+                return false;
+
+            comparisonKind = Db2ScalarComparisonKind.Equal;
+            comparisonValueExpression = scalarType == typeof(bool?)
+                ? Expression.Constant((bool?)false, scalarType)
+                : Expression.Constant(false, scalarType);
+
+            return true;
+        }
+
         if (expression is not BinaryExpression bin)
             return false;
 

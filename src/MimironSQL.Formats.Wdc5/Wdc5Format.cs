@@ -11,16 +11,6 @@ public sealed class Wdc5Format : IDb2Format
     /// <inheritdoc />
     public Db2Format Format => Db2Format.Wdc5;
 
-    /// <summary>
-    /// Registers the WDC5 reader with a format registry.
-    /// </summary>
-    /// <param name="registry">The registry to register with.</param>
-    public static void Register(Db2FormatRegistry registry)
-    {
-        ArgumentNullException.ThrowIfNull(registry);
-        registry.Register(new Wdc5Format());
-    }
-
     /// <inheritdoc />
     public IDb2File OpenFile(Stream stream) => new Wdc5File(stream);
 

@@ -165,9 +165,6 @@ public sealed class CascStorageService(IManifestProvider manifestProvider, CascD
 
     private async Task EnsureInitializedAsync(CancellationToken cancellationToken)
     {
-        if (_initialized)
-            return;
-
         await _initLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {

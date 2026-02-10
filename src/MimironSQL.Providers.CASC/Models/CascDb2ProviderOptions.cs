@@ -17,10 +17,12 @@ public sealed record CascDb2ProviderOptions
     public string? DbdDefinitionsDirectory { get; init; }
 
     /// <summary>
-    /// Directory where the DB2 manifest (e.g. <c>manifest.json</c>) is cached.
-    /// If not specified, an implementation-defined default is used.
+    /// Directory where the DB2 manifest asset file (e.g. <c>manifest.json</c>) is located.
+    /// Required when using the default DI registration (<c>AddCasc</c>) which wires up the local
+    /// <see cref="FileSystemManifestProvider"/>.
+    /// This setting is not required when a custom <see cref="IManifestProvider"/> is registered.
     /// </summary>
-    public string? ManifestCacheDirectory { get; init; }
+    public string ManifestDirectory { get; init; } = string.Empty;
 
     /// <summary>
     /// Name of the manifest asset file (default: <c>manifest.json</c>).

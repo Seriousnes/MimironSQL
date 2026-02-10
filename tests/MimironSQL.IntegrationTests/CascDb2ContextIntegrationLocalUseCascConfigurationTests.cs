@@ -70,7 +70,7 @@ public sealed class CascDb2ContextIntegrationLocalUseCascConfigurationTests
         var cascSection = Substitute.For<IConfigurationSection>();
         cascSection["WowInstallRoot"].Returns(wowInstallRoot);
         cascSection["DbdDefinitionsDirectory"].Returns(testDataDir);
-        cascSection["ManifestCacheDirectory"].Returns(testDataDir);
+        cascSection["ManifestDirectory"].Returns(testDataDir);
         cascSection["ManifestAssetName"].Returns("manifest.json");
 
         var configuration = Substitute.For<IConfiguration>();

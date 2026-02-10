@@ -63,22 +63,6 @@ public sealed class ContractsTests
     }
 
     [Fact]
-    public void Db2FormatRegistry_Register_Null_Throws()
-    {
-        var registry = new Db2FormatRegistry();
-        Should.Throw<ArgumentNullException>(() => registry.Register(null!));
-    }
-
-    [Fact]
-    public void Db2FormatRegistry_Register_Valid_ExposesInFormats()
-    {
-        var registry = new Db2FormatRegistry();
-        registry.Register(new FakeFormat());
-        registry.Formats.Count.ShouldBe(1);
-        registry.Formats[0].Format.ShouldBe(Db2Format.Unknown);
-    }
-
-    [Fact]
     public void RowHandle_Properties_RoundTrip()
     {
         var h = new RowHandle(sectionIndex: 2, rowIndexInSection: 7, rowId: 123);
@@ -86,12 +70,5 @@ public sealed class ContractsTests
         h.RowIndexInSection.ShouldBe(7);
         h.RowId.ShouldBe(123);
         h.Handle.ShouldBe(h);
-    }
-
-    private sealed class FakeFormat : IDb2Format
-    {
-        public Db2Format Format => Db2Format.Unknown;
-        public IDb2File OpenFile(Stream stream) => throw new NotSupportedException();
-        public Db2FileLayout GetLayout(IDb2File file) => throw new NotSupportedException();
     }
 }

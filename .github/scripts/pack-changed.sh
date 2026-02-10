@@ -2,9 +2,11 @@
 set -euo pipefail
 
 : "${GITHUB_OUTPUT:?GITHUB_OUTPUT is required (GitHub Actions step output file)}"
-: "${BASE_SHA:?BASE_SHA is required}"
-: "${HEAD_SHA:?HEAD_SHA is required}"
 : "${PACKAGE_VERSION:?PACKAGE_VERSION is required}"
+
+BASE_SHA="${BASE_SHA:-}"
+HEAD_SHA="${HEAD_SHA:-}"
+FORCE_PACKAGE_IDS="${FORCE_PACKAGE_IDS:-}"
 
 repo_root="$(git rev-parse --show-toplevel)"
 cd "$repo_root"
@@ -25,34 +27,46 @@ try_fetch_commit() {
   git fetch --no-tags --prune --depth=1 origin "$1" >/dev/null 2>&1 || true
 }
 
+pack_all=false
+manual_select=false
+
+if [[ -n "$FORCE_PACKAGE_IDS" ]]; then
+  manual_select=true
+fi
+
 base_sha="$BASE_SHA"
 head_sha="$HEAD_SHA"
 
-if ! git_commit_exists "$head_sha"; then
-  echo "HEAD_SHA '$head_sha' is not a valid commit in this checkout." >&2
-  exit 1
-fi
+if [[ "$manual_select" != true ]]; then
+  : "${BASE_SHA:?BASE_SHA is required unless FORCE_PACKAGE_IDS is set}"
+  : "${HEAD_SHA:?HEAD_SHA is required unless FORCE_PACKAGE_IDS is set}"
 
-if [[ "$base_sha" == "0000000000000000000000000000000000000000" ]]; then
-  base_sha=""
-fi
+  if ! git_commit_exists "$head_sha"; then
+    echo "HEAD_SHA '$head_sha' is not a valid commit in this checkout." >&2
+    exit 1
+  fi
 
-if [[ -n "$base_sha" ]] && ! git_commit_exists "$base_sha"; then
-  try_fetch_commit "$base_sha"
-fi
+  if [[ "$base_sha" == "0000000000000000000000000000000000000000" ]]; then
+    base_sha=""
+  fi
 
-pack_all=false
-if [[ -z "$base_sha" ]] || ! git_commit_exists "$base_sha"; then
-  ensure_origin_main_ref
-
-  base_sha="$(git merge-base "$head_sha" "origin/main" 2>/dev/null || true)"
-  if [[ -z "$base_sha" ]] || [[ "$base_sha" == "$head_sha" ]]; then
-    base_sha="$(git rev-parse "$head_sha^" 2>/dev/null || true)"
+  if [[ -n "$base_sha" ]] && ! git_commit_exists "$base_sha"; then
+    try_fetch_commit "$base_sha"
   fi
 
   if [[ -z "$base_sha" ]] || ! git_commit_exists "$base_sha"; then
-    echo "BASE_SHA '$BASE_SHA' is not available (force-push/history rewrite?). Packing all packable projects." >&2
-    pack_all=true
+    ensure_origin_main_ref
+
+    base_sha="$(git merge-base "$head_sha" "origin/main" 2>/dev/null || true)"
+    if [[ -z "$base_sha" ]] || [[ "$base_sha" == "$head_sha" ]]; then
+      base_sha="$(git rev-parse "$head_sha^" 2>/dev/null || true)"
+    fi
+
+    if [[ -z "$base_sha" ]] || ! git_commit_exists "$base_sha"; then
+      echo "BASE_SHA '$BASE_SHA' is not available (force-push/history rewrite?)." >&2
+      echo "Set FORCE_PACKAGE_IDS to force packing specific packages." >&2
+      exit 1
+    fi
   fi
 fi
 
@@ -61,9 +75,15 @@ changed_files_path="$repo_root/changed_files.txt"
 mapfile -t csprojs < <(git ls-files '*.csproj')
 
 declare -A packable
+declare -A project_for_package_id
 for project in "${csprojs[@]}"; do
   if grep -q '<PackageId>' "$project" && ! grep -q '<IsPackable>false</IsPackable>' "$project"; then
     packable["$project"]=1
+
+    package_id="$(sed -n 's:.*<PackageId>[[:space:]]*\([^<]*\)[[:space:]]*</PackageId>.*:\1:p' "$project" | head -n 1 | tr -d '\r')"
+    if [[ -n "$package_id" ]]; then
+      project_for_package_id["$package_id"]="$project"
+    fi
   fi
 done
 
@@ -81,6 +101,36 @@ if [[ "$pack_all" == true ]]; then
   done
 fi
 
+if [[ "$manual_select" == true ]]; then
+  while IFS= read -r package_id; do
+    package_id="${package_id//$'\r'/}"
+    [[ -z "$package_id" ]] && continue
+
+    if [[ "$package_id" == "ALL" ]]; then
+      pack_all=true
+      continue
+    fi
+
+    project="${project_for_package_id[$package_id]:-}"
+    if [[ -z "$project" ]]; then
+      echo "Unknown PackageId '$package_id'." >&2
+      echo "Known packable PackageIds:" >&2
+      for known in "${!project_for_package_id[@]}"; do
+        echo "- $known" >&2
+      done | sort >&2
+      exit 1
+    fi
+
+    selected["$project"]=1
+  done < <(printf '%s\n' "$FORCE_PACKAGE_IDS")
+
+  if [[ "$pack_all" == true ]]; then
+    for project in "${!packable[@]}"; do
+      selected["$project"]=1
+    done
+  fi
+fi
+
 declare -A referenced_by
 declare -A references
 for project in "${csprojs[@]}"; do
@@ -96,7 +146,7 @@ for project in "${csprojs[@]}"; do
   done < <(sed -n 's/.*<ProjectReference Include="\([^"]*\)".*/\1/p' "$project")
 done
 
-if [[ "$pack_all" != true ]]; then
+if [[ "$manual_select" != true ]]; then
   git diff --name-only "$base_sha" "$head_sha" > "$changed_files_path"
 
   declare -A changed_projects

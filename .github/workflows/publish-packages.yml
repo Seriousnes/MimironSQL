@@ -5,6 +5,12 @@ on:
     branches: [ main ]
   pull_request:
     branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      package_ids:
+        description: "PackageIds to force pack/publish (one per line), or ALL"
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -61,7 +67,7 @@ jobs:
   pack:
     name: Build and Pack Changed Packages
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
     outputs:
       any: ${{ steps.packages.outputs.any }}
 
@@ -88,6 +94,7 @@ jobs:
         env:
           BASE_SHA: ${{ github.event.before }}
           HEAD_SHA: ${{ github.sha }}
+          FORCE_PACKAGE_IDS: ${{ github.event_name == 'workflow_dispatch' && inputs.package_ids || '' }}
           PACKAGE_VERSION: 1.0.${{ github.run_number }}
         run: |
           bash ./.github/scripts/pack-changed.sh

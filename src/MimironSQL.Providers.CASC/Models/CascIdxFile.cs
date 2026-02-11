@@ -84,7 +84,7 @@ internal sealed class CascIdxFile
             int recordStart = i * header.RecordSize;
             var record = entriesBytes.AsSpan(recordStart, header.RecordSize);
 
-            var key = record[..header.Spec.Key].ToArray();
+            var key = entriesBytes.AsMemory(recordStart, header.Spec.Key);
             var offsetBytes = record.Slice(header.Spec.Key, header.Spec.Offset);
             var raw = EndianBitConverter.ReadUIntBigEndian(offsetBytes);
 

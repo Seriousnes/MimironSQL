@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Text.RegularExpressions;
 
 namespace MimironSQL.Providers;
@@ -8,8 +9,10 @@ internal sealed partial class CascLocalArchiveReader
     private static partial Regex GetIdxNameRegex();
     private static readonly Regex IdxNameRegex = GetIdxNameRegex();
 
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, Lazy<CascIdxFile>> IdxByPathCache = new(StringComparer.OrdinalIgnoreCase);
+
     private readonly string _dataDataDirectory;
-    private readonly Dictionary<byte, CascIdxFile> _activeIdxByBucket;
+    private readonly Dictionary<byte, string> _activeIdxPathByBucket;
 
     public CascLocalArchiveReader(string dataDataDirectory)
     {
@@ -18,7 +21,7 @@ internal sealed partial class CascLocalArchiveReader
             throw new DirectoryNotFoundException(dataDataDirectory);
 
         _dataDataDirectory = dataDataDirectory;
-        _activeIdxByBucket = LoadActiveIdxByBucket(dataDataDirectory);
+        _activeIdxPathByBucket = SelectActiveIdxPathsByBucket(dataDataDirectory);
     }
 
     public bool TryGetEncodedLocation(CascKey ekey, out CascIdxEntry entry)
@@ -27,15 +30,30 @@ internal sealed partial class CascLocalArchiveReader
         ekey.CopyTo(keyBytes);
 
         var bucket = CascBucket.GetBucketIndex(keyBytes);
-        if (_activeIdxByBucket.TryGetValue(bucket, out var idx) && TryFindEntry(idx, keyBytes, out entry))
+        if (TryGetIdx(bucket) is { } idx && TryFindEntry(idx, keyBytes, out entry))
             return true;
 
         var crossBucket = CascBucket.GetBucketIndexCrossReference(keyBytes);
-        if (_activeIdxByBucket.TryGetValue(crossBucket, out var crossIdx) && TryFindEntry(crossIdx, keyBytes, out entry))
+        if (TryGetIdx(crossBucket) is { } crossIdx && TryFindEntry(crossIdx, keyBytes, out entry))
             return true;
 
         entry = default;
         return false;
+    }
+
+    private CascIdxFile? TryGetIdx(byte bucket)
+    {
+        if (!_activeIdxPathByBucket.TryGetValue(bucket, out var path))
+            return null;
+
+        var lazy = IdxByPathCache.GetOrAdd(path, static p => new Lazy<CascIdxFile>(() => ReadIdx(p)));
+        return lazy.Value;
+
+        static CascIdxFile ReadIdx(string path)
+        {
+            using var fs = File.OpenRead(path);
+            return CascIdxFile.Read(fs);
+        }
     }
 
     public async Task<byte[]> ReadBlteBytesAsync(CascKey ekey, CancellationToken cancellationToken = default)
@@ -78,28 +96,42 @@ internal sealed partial class CascLocalArchiveReader
 
         // Fallback: many installs point .idx offsets at a small record header followed by BLTE.
         // In that case, entry.Size refers to the total record size at entry.Offset (header + BLTE).
-        fs.Seek(entry.Offset, SeekOrigin.Begin);
-        var record = new byte[blteSize];
-        await ReadExactlyAsync(fs, record, cancellationToken).ConfigureAwait(false);
-
         // BLTE commonly starts at +0x1E, but do not hardcode; scan a small prefix.
-        int scanLimit = Math.Min(record.Length - 4, 0x80);
-        int blteOffset = -1;
-        for (int i = 0; i <= scanLimit; i++)
+        // This avoids allocating a full record buffer and then copying the BLTE tail.
+        int prefixLen = Math.Min(blteSize, 0x80 + 4);
+        byte[] rented = ArrayPool<byte>.Shared.Rent(prefixLen);
+        try
         {
-            if (record[i + 0] == (byte)'B' && record[i + 1] == (byte)'L' && record[i + 2] == (byte)'T' && record[i + 3] == (byte)'E')
+            fs.Seek(entry.Offset, SeekOrigin.Begin);
+            await ReadExactlyAsync(fs, rented.AsMemory(0, prefixLen), cancellationToken).ConfigureAwait(false);
+
+            int scanLimit = prefixLen - 4;
+            int blteOffset = -1;
+            for (int i = 0; i <= scanLimit; i++)
             {
-                blteOffset = i;
-                break;
+                if (rented[i + 0] == (byte)'B' && rented[i + 1] == (byte)'L' && rented[i + 2] == (byte)'T' && rented[i + 3] == (byte)'E')
+                {
+                    blteOffset = i;
+                    break;
+                }
             }
+
+            if (blteOffset < 0)
+                throw new InvalidDataException("Unable to locate BLTE signature within archive record.");
+
+            int blteLen = blteSize - blteOffset;
+            if (blteLen <= 0)
+                throw new InvalidDataException("Invalid BLTE length.");
+
+            var blteBytes = new byte[blteLen];
+            fs.Seek(entry.Offset + blteOffset, SeekOrigin.Begin);
+            await ReadExactlyAsync(fs, blteBytes, cancellationToken).ConfigureAwait(false);
+            return blteBytes;
         }
-
-        if (blteOffset < 0)
-            throw new InvalidDataException("Unable to locate BLTE signature within archive record.");
-
-        var blteBytes = new byte[record.Length - blteOffset];
-        Buffer.BlockCopy(record, blteOffset, blteBytes, 0, blteBytes.Length);
-        return blteBytes;
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(rented);
+        }
     }
 
     private static bool TryFindEntry(CascIdxFile idx, ReadOnlySpan<byte> ekeyBytes, out CascIdxEntry entry)
@@ -146,7 +178,7 @@ internal sealed partial class CascLocalArchiveReader
         return a.Length - b.Length;
     }
 
-    private static Dictionary<byte, CascIdxFile> LoadActiveIdxByBucket(string dataDataDirectory)
+    private static Dictionary<byte, string> SelectActiveIdxPathsByBucket(string dataDataDirectory)
     {
         var idxPaths = Directory.EnumerateFiles(dataDataDirectory, "*.idx", SearchOption.TopDirectoryOnly);
 
@@ -204,15 +236,7 @@ internal sealed partial class CascLocalArchiveReader
             chosenPaths[bucket] = best.path;
         }
 
-        var idxByBucket = new Dictionary<byte, CascIdxFile>();
-        foreach (var (bucket, path) in chosenPaths)
-        {
-            using var fs = File.OpenRead(path);
-            var idx = CascIdxFile.Read(fs);
-            idxByBucket[bucket] = idx;
-        }
-
-        return idxByBucket;
+        return chosenPaths;
     }
 
     private static uint[]? TryReadShmemVersions(string shmemPath)
@@ -241,15 +265,8 @@ internal sealed partial class CascLocalArchiveReader
         return versions;
     }
 
-    private static async Task ReadExactlyAsync(Stream stream, byte[] buffer, CancellationToken cancellationToken)
+    private static async Task ReadExactlyAsync(Stream stream, Memory<byte> buffer, CancellationToken cancellationToken)
     {
-        int readTotal = 0;
-        while (readTotal < buffer.Length)
-        {
-            int read = await stream.ReadAsync(buffer.AsMemory(readTotal), cancellationToken).ConfigureAwait(false);
-            if (read <= 0)
-                throw new EndOfStreamException();
-            readTotal += read;
-        }
+        await stream.ReadExactlyAsync(buffer, cancellationToken).ConfigureAwait(false);
     }
 }

@@ -19,7 +19,7 @@ public sealed class MimironDb2ThenIncludeTests
         var optionsBuilder = new DbContextOptionsBuilder<ThenIncludeContext>();
         optionsBuilder.UseMimironDb2(o => o.UseFileSystem(
             db2DirectoryPath: testDataDir,
-            dbdDefinitionsDirectory: testDataDir));
+            dbdDefinitionsDirectory: Path.Combine(testDataDir, "definitions")));
 
         using var context = new ThenIncludeContext(optionsBuilder.Options);
 
@@ -51,7 +51,7 @@ public sealed class MimironDb2ThenIncludeTests
         var optionsBuilder = new DbContextOptionsBuilder<ThenIncludeContext>();
         optionsBuilder.UseMimironDb2(o => o.UseFileSystem(
             db2DirectoryPath: testDataDir,
-            dbdDefinitionsDirectory: testDataDir));
+            dbdDefinitionsDirectory: Path.Combine(testDataDir, "definitions")));
 
         using var context = new ThenIncludeContext(optionsBuilder.Options);
 
@@ -68,8 +68,21 @@ public sealed class MimironDb2ThenIncludeTests
 
     private sealed class ThenIncludeContext(DbContextOptions<ThenIncludeContext> options) : DbContext(options)
     {
-        public DbSet<Map> Maps => Set<Map>();
-        public DbSet<MapChallengeMode> MapChallengeModes => Set<MapChallengeMode>();
+        public DbSet<Map> Maps
+        {
+            get
+            {
+                return field ??= Set<Map>();
+            }
+        }
+
+        public DbSet<MapChallengeMode> MapChallengeModes
+        {
+            get
+            {
+                return field ??= Set<MapChallengeMode>();
+            }
+        }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {

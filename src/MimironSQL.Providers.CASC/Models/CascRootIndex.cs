@@ -11,37 +11,21 @@ internal sealed class CascRootIndex
     private const uint FlagEncrypted = 0x0800_0000;
     private const uint FlagNoNameHash = 0x1000_0000;
 
-    private readonly Dictionary<int, Entry> _bestByFileDataId;
+    private readonly Dictionary<int, CascKey> _contentKeyByFileDataId;
 
-    internal int EntryCount => _bestByFileDataId.Count;
+    internal int EntryCount => _contentKeyByFileDataId.Count;
 
-    private CascRootIndex(Dictionary<int, Entry> bestByFileDataId) => _bestByFileDataId = bestByFileDataId;
+    private CascRootIndex(Dictionary<int, CascKey> contentKeyByFileDataId) => _contentKeyByFileDataId = contentKeyByFileDataId;
 
     public bool TryGetContentKey(int fileDataId, out CascKey contentKey)
     {
-        if (_bestByFileDataId.TryGetValue(fileDataId, out var entry))
+        if (_contentKeyByFileDataId.TryGetValue(fileDataId, out var entry))
         {
-            contentKey = entry.ContentKey;
+            contentKey = entry;
             return true;
         }
 
         contentKey = default;
-        return false;
-    }
-
-    internal bool TryGetDebug(int fileDataId, out CascKey contentKey, out uint flags, out uint locale)
-    {
-        if (_bestByFileDataId.TryGetValue(fileDataId, out var entry))
-        {
-            contentKey = entry.ContentKey;
-            flags = entry.Flags;
-            locale = entry.Locale;
-            return true;
-        }
-
-        contentKey = default;
-        flags = 0;
-        locale = 0;
         return false;
     }
 
@@ -165,6 +149,7 @@ internal sealed class CascRootIndex
 
         uint rootVersion;
         bool allowNonNamedFiles;
+        uint? totalFilesHint = null;
 
         // Prefer 50893+ header if it looks valid.
         if (mfst.Length >= 20)
@@ -184,6 +169,7 @@ internal sealed class CascRootIndex
             {
                 rootVersion = version;
                 allowNonNamedFiles = totalFiles != filesWithNameHash;
+                totalFilesHint = totalFiles;
                 offset = checked((int)sizeOfHeader);
             }
             else
@@ -212,10 +198,14 @@ internal sealed class CascRootIndex
 
             allowNonNamedFiles = totalFiles != filesWithNameHash;
             rootVersion = 0;
+            totalFilesHint = totalFiles;
             offset = 12;
         }
 
-        var best = new Dictionary<int, Entry>();
+        int capacityHint = totalFilesHint is { } hint && hint <= int.MaxValue ? (int)hint : 0;
+        var best = capacityHint > 0
+            ? new Dictionary<int, (CascKey contentKey, byte rank)>(capacityHint)
+            : new Dictionary<int, (CascKey contentKey, byte rank)>();
 
         while (offset < mfst.Length)
         {
@@ -303,9 +293,9 @@ internal sealed class CascRootIndex
                 var ckeySpan = contentKeys.Slice(i * CascKey.Length, CascKey.Length);
                 var ckey = new CascKey(ckeySpan);
 
-                var candidate = new Entry(ckey, flags, locale);
-                if (!best.TryGetValue(fdid, out var existing) || candidate.IsBetterThan(existing))
-                    best[fdid] = candidate;
+                var candidateRank = Rank(flags, locale);
+                if (!best.TryGetValue(fdid, out var existing) || candidateRank < existing.rank)
+                    best[fdid] = (ckey, candidateRank);
 
                 // CascLib advances by one after each record.
                 fileDataId++;
@@ -314,31 +304,25 @@ internal sealed class CascRootIndex
             _ = allowNonNamedFiles;
         }
 
-        return new CascRootIndex(best);
+        var map = new Dictionary<int, CascKey>(best.Count);
+        foreach (var (fdid, entry) in best)
+            map[fdid] = entry.contentKey;
+        return new CascRootIndex(map);
     }
 
-    private readonly record struct Entry(CascKey ContentKey, uint Flags, uint Locale)
+    private static byte Rank(uint flags, uint locale)
     {
-        public bool IsBetterThan(Entry other)
-        {
-            // Priority: non-encrypted, then enUS, then LoadOnWindows.
-            int score = 0;
-            if ((Flags & FlagEncrypted) != 0)
-                score += 1000;
-            if ((Locale & LocaleEnUs) == 0)
-                score += 100;
-            if ((Flags & FlagLoadOnWindows) == 0)
-                score += 10;
-
-            int otherScore = 0;
-            if ((other.Flags & FlagEncrypted) != 0)
-                otherScore += 1000;
-            if ((other.Locale & LocaleEnUs) == 0)
-                otherScore += 100;
-            if ((other.Flags & FlagLoadOnWindows) == 0)
-                otherScore += 10;
-
-            return score < otherScore;
-        }
+        // Lower is better.
+        // Priority: non-encrypted, then enUS, then LoadOnWindows.
+        byte rank = 0;
+        if ((flags & FlagEncrypted) != 0)
+            rank |= 0b100;
+        if ((locale & LocaleEnUs) == 0)
+            rank |= 0b010;
+        if ((flags & FlagLoadOnWindows) == 0)
+            rank |= 0b001;
+        return rank;
     }
+
+    // Debug metadata (flags/locale) is not retained to reduce memory usage.
 }

@@ -1,0 +1,57 @@
+COLUMNS
+int ID
+float Field_12_0_0_64339_000?
+int Field_12_0_0_64339_001?
+int Field_12_0_0_64339_002?
+float Field_12_0_0_64339_003?
+float Field_12_0_0_64339_004?
+int Field_12_0_0_64339_005?
+int Field_12_0_0_64339_006?
+float Field_12_0_0_64741_000?
+float Field_12_0_0_64741_001?
+int Field_12_0_0_64741_002?
+int<DecalProperties::ID> DecalPropertiesID?
+int Field_12_0_0_64741_004?
+int Field_12_0_0_64741_005?
+float Field_12_0_0_64741_006?
+float Field_12_0_0_64741_007?
+float Field_12_0_0_64741_008?
+float Field_12_0_0_64741_009?
+int Priority? // override for DecalProperties::Priority if != -1?
+float FadeIn? // override for DecalProperties::FadeIn?
+float FadeOut? // override for DecalProperties::FadeOut?
+float ArbitraryBoxHeight? // override for DecalProperties::ArbitraryBoxHeight if != 0?
+int Field_12_0_0_64741_014?
+int<Spell::ID> SpellID?
+
+LAYOUT 953A9E08
+BUILD 12.0.0.64339, 12.0.0.64499, 12.0.0.64507, 12.0.0.64529, 12.0.0.64611
+$noninline,id$ID<32>
+Field_12_0_0_64339_000[2]
+Field_12_0_0_64339_001<32>
+Field_12_0_0_64339_002<32>
+Field_12_0_0_64339_003
+Field_12_0_0_64339_004
+Field_12_0_0_64339_005<32>
+Field_12_0_0_64339_006<32>
+
+LAYOUT 30408167
+BUILD 12.0.1.64889, 12.0.1.64914, 12.0.1.65337, 12.0.1.65448, 12.0.1.65617, 12.0.1.65701, 12.0.1.65769
+BUILD 12.0.0.64741, 12.0.0.64774, 12.0.0.64975, 12.0.0.65028, 12.0.0.65294, 12.0.0.65390, 12.0.0.65459, 12.0.0.65512, 12.0.0.65535, 12.0.0.65560, 12.0.0.65614, 12.0.0.65655, 12.0.0.65699, 12.0.0.65727
+$noninline,id$ID<32>
+Field_12_0_0_64741_000[2]
+Field_12_0_0_64741_001[2]
+Field_12_0_0_64741_002<32>
+DecalPropertiesID<32>
+Field_12_0_0_64741_004<32>
+Field_12_0_0_64741_005<32>
+Field_12_0_0_64741_006
+Field_12_0_0_64741_007
+Field_12_0_0_64741_008
+Field_12_0_0_64741_009
+Priority<32>
+FadeIn
+FadeOut
+ArbitraryBoxHeight
+Field_12_0_0_64741_014<32>
+SpellID<32>

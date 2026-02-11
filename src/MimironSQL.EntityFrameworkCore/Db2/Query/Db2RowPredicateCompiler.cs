@@ -132,6 +132,25 @@ internal static class Db2RowPredicateCompiler
 
         protected override Expression VisitMethodCall(MethodCallExpression node)
         {
+            if (node.Method is { Name: nameof(Microsoft.EntityFrameworkCore.EF.Property), DeclaringType: { } declaring }
+                && declaring.FullName == "Microsoft.EntityFrameworkCore.EF"
+                && node.Arguments is { Count: 2 }
+                && node.Arguments[1] is ConstantExpression { Value: string propertyName })
+            {
+                var instance = node.Arguments[0];
+                if (instance == entityParam
+                    || instance is UnaryExpression { NodeType: ExpressionType.Convert or ExpressionType.ConvertChecked, Operand: var operand } && operand == entityParam)
+                {
+                    var property = entityType.ClrType.GetProperty(propertyName, BindingFlags.Instance | BindingFlags.Public);
+                    if (property is null)
+                        throw new NotSupportedException($"EF.Property refers to '{entityType.ClrType.FullName}.{propertyName}', but that property does not exist on the CLR type.");
+
+                    var memberAccess = Expression.Property(entityParam, property);
+                    var visited = VisitMember(memberAccess);
+                    return visited.Type == node.Type ? visited : Expression.Convert(visited, node.Type);
+                }
+            }
+
             if (node.Method.DeclaringType == typeof(string) && node.Object is MemberExpression m && m.Expression == entityParam)
             {
                 var methodName = node.Method.Name;

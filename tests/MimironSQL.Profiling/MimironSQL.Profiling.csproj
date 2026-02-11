@@ -1,0 +1,23 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<OutputType>Exe</OutputType>
+		<TargetFramework>net10.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\..\src\MimironSQL.EntityFrameworkCore\MimironSQL.EntityFrameworkCore.csproj" />
+		<ProjectReference Include="..\..\src\MimironSQL.Providers.CASC\MimironSQL.Providers.CASC.csproj" />
+		<ProjectReference Include="..\..\src\MimironSQL.Contracts\MimironSQL.Contracts.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="true" AdditionalProperties="TargetFramework=netstandard2.0" />
+		<ProjectReference Include="..\..\src\MimironSQL.DbContextGenerator\MimironSQL.DbContextGenerator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+		<ProjectReference Include="..\..\src\MimironSQL.Dbd\MimironSQL.Dbd.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" AdditionalProperties="TargetFramework=netstandard2.0" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<AdditionalFiles Include=".env.local" />
+		<AdditionalFiles Include="..\MimironSQL.IntegrationTests\TestData\**\*.dbd" />
+	</ItemGroup>
+	
+</Project>

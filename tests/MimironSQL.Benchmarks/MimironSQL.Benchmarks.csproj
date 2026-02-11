@@ -8,12 +8,27 @@
 	</PropertyGroup>
 
 	<ItemGroup>
+	  <Content Include=".env.local" />
+	</ItemGroup>
+
+	<ItemGroup>
 		<ProjectReference Include="..\..\src\MimironSQL.EntityFrameworkCore\MimironSQL.EntityFrameworkCore.csproj" />
+		<ProjectReference Include="..\..\src\MimironSQL.Providers.CASC\MimironSQL.Providers.CASC.csproj" />
 		<ProjectReference Include="..\..\src\MimironSQL.Providers.FileSystem\MimironSQL.Providers.FileSystem.csproj" />
 	</ItemGroup>
 
 	<ItemGroup>
 		<PackageReference Include="BenchmarkDotNet" Version="0.15.8" />
+	</ItemGroup>
+
+	<ItemGroup>
+	  <Folder Include="BenchmarkDotNet.Artifacts\" />
+	</ItemGroup>
+
+	<ItemGroup>
+	  <Compile Update="BenchmarkDb2Context.cs">
+	    <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+	  </Compile>
 	</ItemGroup>
 
 </Project>

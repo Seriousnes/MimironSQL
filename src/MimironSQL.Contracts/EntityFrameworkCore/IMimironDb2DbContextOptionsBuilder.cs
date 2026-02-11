@@ -8,6 +8,13 @@ namespace MimironSQL.EntityFrameworkCore;
 public interface IMimironDb2DbContextOptionsBuilder
 {
     /// <summary>
+    /// Sets how the internal DB2 model is built (eager or lazy).
+    /// </summary>
+    /// <param name="buildMode">The DB2 model build mode.</param>
+    /// <returns>The same builder instance to enable chaining.</returns>
+    IMimironDb2DbContextOptionsBuilder WithDb2ModelBuildMode(Db2ModelBuildMode buildMode);
+
+    /// <summary>
     /// Configures the provider implementation and registers any provider-specific services.
     /// </summary>
     /// <param name="providerKey">A stable identifier for the provider.</param>

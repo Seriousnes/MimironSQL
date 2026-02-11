@@ -224,6 +224,8 @@ public static class MimironDb2CascOptionsBuilderExtensions
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(WowInstallRoot);
 
+            _builder.WithDb2ModelBuildMode(Db2ModelBuildMode.Lazy);
+
             var hasCustomDbdProvider = _dbdProviderType is not null || DbdProvider is not null || DbdProviderFactory is not null;
             if (!hasCustomDbdProvider && string.IsNullOrWhiteSpace(DbdDefinitionsDirectory))
             {

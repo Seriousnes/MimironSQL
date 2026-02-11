@@ -18,7 +18,7 @@ public sealed class MimironDb2AutoIncludeAndLazyLoadingTests
         var optionsBuilder = new DbContextOptionsBuilder<AutoIncludeContext>();
         optionsBuilder.UseMimironDb2(o => o.UseFileSystem(
             db2DirectoryPath: testDataDir,
-            dbdDefinitionsDirectory: testDataDir));
+            dbdDefinitionsDirectory: Path.Combine(testDataDir, "definitions")));
 
         using var context = new AutoIncludeContext(optionsBuilder.Options);
 
@@ -38,7 +38,7 @@ public sealed class MimironDb2AutoIncludeAndLazyLoadingTests
         var optionsBuilder = new DbContextOptionsBuilder<AutoIncludeContext>();
         optionsBuilder.UseMimironDb2(o => o.UseFileSystem(
             db2DirectoryPath: testDataDir,
-            dbdDefinitionsDirectory: testDataDir));
+            dbdDefinitionsDirectory: Path.Combine(testDataDir, "definitions")));
 
         using var context = new AutoIncludeContext(optionsBuilder.Options);
 
@@ -59,7 +59,7 @@ public sealed class MimironDb2AutoIncludeAndLazyLoadingTests
         optionsBuilder.UseLazyLoadingProxies();
         optionsBuilder.UseMimironDb2(o => o.UseFileSystem(
             db2DirectoryPath: testDataDir,
-            dbdDefinitionsDirectory: testDataDir));
+            dbdDefinitionsDirectory: Path.Combine(testDataDir, "definitions")));
 
         using var context = new LazyLoadingContext(optionsBuilder.Options);
 
@@ -76,8 +76,21 @@ public sealed class MimironDb2AutoIncludeAndLazyLoadingTests
 
     private sealed class AutoIncludeContext(DbContextOptions<AutoIncludeContext> options) : DbContext(options)
     {
-        public DbSet<Map> Maps => Set<Map>();
-        public DbSet<MapChallengeMode> MapChallengeModes => Set<MapChallengeMode>();
+        public DbSet<Map> Maps
+        {
+            get
+            {
+                return field ??= Set<Map>();
+            }
+        }
+
+        public DbSet<MapChallengeMode> MapChallengeModes
+        {
+            get
+            {
+                return field ??= Set<MapChallengeMode>();
+            }
+        }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -97,8 +110,21 @@ public sealed class MimironDb2AutoIncludeAndLazyLoadingTests
 
     private sealed class LazyLoadingContext(DbContextOptions<LazyLoadingContext> options) : DbContext(options)
     {
-        public DbSet<Map> Maps => Set<Map>();
-        public DbSet<MapChallengeMode> MapChallengeModes => Set<MapChallengeMode>();
+        public DbSet<Map> Maps
+        {
+            get
+            {
+                return field ??= Set<Map>();
+            }
+        }
+
+        public DbSet<MapChallengeMode> MapChallengeModes
+        {
+            get
+            {
+                return field ??= Set<MapChallengeMode>();
+            }
+        }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {

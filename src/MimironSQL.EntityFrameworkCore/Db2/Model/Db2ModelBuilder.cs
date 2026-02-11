@@ -1,5 +1,6 @@
 using System.Reflection;
 using System.ComponentModel.DataAnnotations.Schema;
+using System.Threading;
 
 using MimironSQL.EntityFrameworkCore.Db2.Schema;
 using MimironSQL.EntityFrameworkCore.Extensions;
@@ -216,6 +217,214 @@ internal sealed class Db2ModelBuilder
                     default:
                         throw new NotSupportedException($"Collection navigation '{nav.NavigationMember.Name}' on '{clrType.FullName}' has unsupported kind '{kind}'.");
                 }
+            }
+        }
+
+        return new Db2Model(built, navigations, collectionNavigations, autoIncludes);
+    }
+
+    internal Db2Model BuildLazy(Func<string, Db2TableSchema> schemaResolver)
+    {
+        ArgumentNullException.ThrowIfNull(schemaResolver);
+
+        var built = new Dictionary<Type, Lazy<Db2EntityType>>(_entityTypes.Count);
+
+        var navigations = new Dictionary<(Type SourceClrType, MemberInfo NavigationMember), Lazy<Db2ReferenceNavigation>>();
+        var collectionNavigations = new Dictionary<(Type SourceClrType, MemberInfo NavigationMember), Lazy<Db2CollectionNavigation>>();
+        var autoIncludes = new Dictionary<Type, IReadOnlyList<MemberInfo>>(_entityTypes.Count);
+
+        foreach (var (clrType, m) in _entityTypes)
+        {
+            var tableName = m.TableName ?? clrType.Name;
+            var columnNameMappings = new Dictionary<string, string>(m.ColumnNameMappings, StringComparer.Ordinal);
+
+            built.Add(clrType, new Lazy<Db2EntityType>(() =>
+            {
+                try
+                {
+                    var schema = schemaResolver(tableName);
+
+                    var pkMember = ResolvePrimaryKeyMember(m);
+                    if (HasAnyColumnMapping(m, pkMember))
+                    {
+                        throw new NotSupportedException(
+                            $"Primary key member '{clrType.FullName}.{pkMember.Name}' cannot configure column mapping via [Column] or HasColumnName().");
+                    }
+
+                    var pkFieldSchema = ResolveFieldSchema(schema, m, pkMember, $"primary key member '{pkMember.Name}' of entity '{clrType.FullName}'");
+
+                    return new Db2EntityType(
+                        clrType,
+                        tableName,
+                        schema,
+                        pkMember,
+                        pkFieldSchema,
+                        columnNameMappings);
+                }
+                catch (FileNotFoundException ex)
+                {
+                    throw new FileNotFoundException(
+                        $"DB2 file not found for table '{tableName}' (CLR type '{clrType.FullName}').",
+                        ex);
+                }
+            }, LazyThreadSafetyMode.ExecutionAndPublication));
+
+            if (m.AutoIncludeNavigations.Count != 0)
+                autoIncludes[clrType] = [.. m.AutoIncludeNavigations.OrderBy(static m => m.Name, StringComparer.Ordinal)];
+        }
+
+        foreach (var (clrType, m) in _entityTypes)
+        {
+            var sourceTableName = m.TableName ?? clrType.Name;
+
+            foreach (var nav in m.Navigations)
+            {
+                var navigationMember = nav.NavigationMember;
+                var targetClrType = nav.TargetClrType;
+
+                navigations[(clrType, navigationMember)] = new Lazy<Db2ReferenceNavigation>(() =>
+                {
+                    if (nav.Kind is not { } kind)
+                        throw new NotSupportedException($"Navigation '{navigationMember.Name}' on '{clrType.FullName}' must be configured (e.g., WithSharedPrimaryKey).");
+
+                    var sourceKeyMember = nav.SourceKeyMember;
+                    var targetKeyMember = nav.TargetKeyMember;
+
+                    switch (kind)
+                    {
+                        case Db2ReferenceNavigationKind.SharedPrimaryKeyOneToOne when (sourceKeyMember is null || targetKeyMember is null):
+                            throw new NotSupportedException($"Shared primary key navigation '{navigationMember.Name}' on '{clrType.FullName}' must specify both key selectors.");
+
+                        case Db2ReferenceNavigationKind.ForeignKeyToPrimaryKey when sourceKeyMember is null:
+                            throw new NotSupportedException($"FK navigation '{navigationMember.Name}' on '{clrType.FullName}' must specify a foreign key selector (WithForeignKey).");
+
+                        case Db2ReferenceNavigationKind.ForeignKeyToPrimaryKey when targetKeyMember is null:
+                            {
+                                var targetMetadata = Entity(targetClrType);
+                                targetKeyMember = ResolvePrimaryKeyMember(targetMetadata);
+                                break;
+                            }
+                    }
+
+                    if (kind == Db2ReferenceNavigationKind.ForeignKeyToPrimaryKey && targetKeyMember is null)
+                        throw new NotSupportedException($"FK navigation '{navigationMember.Name}' on '{clrType.FullName}' must resolve a target primary key.");
+
+                    if (sourceKeyMember is null || targetKeyMember is null)
+                        throw new NotSupportedException($"Navigation '{navigationMember.Name}' on '{clrType.FullName}' has invalid key configuration.");
+
+                    try
+                    {
+                        var sourceSchema = schemaResolver(sourceTableName);
+
+                        var targetMetadata = Entity(targetClrType);
+                        var targetTableName = targetMetadata.TableName ?? targetClrType.Name;
+                        var targetSchema = schemaResolver(targetTableName);
+
+                        var sourceKeyFieldSchema = ResolveFieldSchema(sourceSchema, m, sourceKeyMember, $"source key member '{sourceKeyMember.Name}' in navigation '{clrType.FullName}.{navigationMember.Name}'");
+                        var targetKeyFieldSchema = ResolveFieldSchema(targetSchema, targetMetadata, targetKeyMember, $"target key member '{targetKeyMember.Name}' in navigation '{clrType.FullName}.{navigationMember.Name}'");
+
+                        return new Db2ReferenceNavigation(
+                            sourceClrType: clrType,
+                            navigationMember: navigationMember,
+                            targetClrType: targetClrType,
+                            kind: kind,
+                            sourceKeyMember: sourceKeyMember,
+                            targetKeyMember: targetKeyMember,
+                            sourceKeyFieldSchema: sourceKeyFieldSchema,
+                            targetKeyFieldSchema: targetKeyFieldSchema);
+                    }
+                    catch (FileNotFoundException ex)
+                    {
+                        throw new FileNotFoundException(
+                            $"DB2 file not found while resolving navigation '{clrType.FullName}.{navigationMember.Name}'.",
+                            ex);
+                    }
+                }, LazyThreadSafetyMode.ExecutionAndPublication);
+            }
+
+            foreach (var nav in m.CollectionNavigations)
+            {
+                var navigationMember = nav.NavigationMember;
+                var targetClrType = nav.TargetClrType;
+
+                collectionNavigations[(clrType, navigationMember)] = new Lazy<Db2CollectionNavigation>(() =>
+                {
+                    if (nav.Kind is not { } kind)
+                        throw new NotSupportedException($"Collection navigation '{navigationMember.Name}' on '{clrType.FullName}' must be configured (e.g., WithForeignKeyArray). ");
+
+                    ValidateCollectionNavigationMemberType(clrType, navigationMember, targetClrType);
+
+                    try
+                    {
+                        switch (kind)
+                        {
+                            case Db2CollectionNavigationKind.ForeignKeyArrayToPrimaryKey:
+                                {
+                                    if (nav.SourceKeyCollectionMember is null)
+                                        throw new NotSupportedException($"Collection navigation '{navigationMember.Name}' on '{clrType.FullName}' must specify a source key collection member (WithForeignKeyArray). ");
+
+                                    var sourceSchema = schemaResolver(sourceTableName);
+
+                                    var sourceKeyCollectionType = nav.SourceKeyCollectionMember.GetMemberType();
+                                    if (!IsIntKeyEnumerableType(sourceKeyCollectionType))
+                                    {
+                                        throw new NotSupportedException(
+                                            $"Collection navigation '{clrType.FullName}.{navigationMember.Name}' expects an integer key collection (e.g., int[] or ICollection<int>) but found '{sourceKeyCollectionType.FullName}'.");
+                                    }
+
+                                    var sourceKeyFieldSchema = ResolveFieldSchema(sourceSchema, m, nav.SourceKeyCollectionMember, $"source key member '{nav.SourceKeyCollectionMember.Name}' in collection navigation '{clrType.FullName}.{navigationMember.Name}'");
+
+                                    return new Db2CollectionNavigation(
+                                        sourceClrType: clrType,
+                                        navigationMember: navigationMember,
+                                        targetClrType: targetClrType,
+                                        kind: kind,
+                                        sourceKeyCollectionMember: nav.SourceKeyCollectionMember,
+                                        sourceKeyFieldSchema: sourceKeyFieldSchema,
+                                        dependentForeignKeyMember: null,
+                                        dependentForeignKeyFieldSchema: null,
+                                        principalKeyMember: null);
+                                }
+
+                            case Db2CollectionNavigationKind.DependentForeignKeyToPrimaryKey:
+                                {
+                                    if (nav.DependentForeignKeyMember is null)
+                                        throw new NotSupportedException($"Collection navigation '{navigationMember.Name}' on '{clrType.FullName}' must specify a dependent foreign key selector (WithForeignKey). ");
+
+                                    var principalKeyMember = nav.PrincipalKeyMember ?? ResolvePrimaryKeyMember(m);
+                                    var principalKeyType = principalKeyMember.GetMemberType();
+                                    if (!principalKeyType.IsScalarType())
+                                        throw new NotSupportedException($"Principal key member '{clrType.FullName}.{principalKeyMember.Name}' must be a scalar type.");
+
+                                    var dependentMetadata = Entity(targetClrType);
+                                    var dependentTableName = dependentMetadata.TableName ?? targetClrType.Name;
+                                    var dependentSchema = schemaResolver(dependentTableName);
+
+                                    var dependentFkFieldSchema = ResolveFieldSchema(dependentSchema, dependentMetadata, nav.DependentForeignKeyMember, $"dependent FK member '{nav.DependentForeignKeyMember.Name}' in collection navigation '{clrType.FullName}.{navigationMember.Name}'");
+
+                                    return new Db2CollectionNavigation(
+                                        sourceClrType: clrType,
+                                        navigationMember: navigationMember,
+                                        targetClrType: targetClrType,
+                                        kind: kind,
+                                        sourceKeyCollectionMember: null,
+                                        sourceKeyFieldSchema: null,
+                                        dependentForeignKeyMember: nav.DependentForeignKeyMember,
+                                        dependentForeignKeyFieldSchema: dependentFkFieldSchema,
+                                        principalKeyMember: principalKeyMember);
+                                }
+
+                            default:
+                                throw new NotSupportedException($"Collection navigation '{navigationMember.Name}' on '{clrType.FullName}' has unsupported kind '{kind}'.");
+                        }
+                    }
+                    catch (FileNotFoundException ex)
+                    {
+                        throw new FileNotFoundException(
+                            $"DB2 file not found while resolving collection navigation '{clrType.FullName}.{navigationMember.Name}'.",
+                            ex);
+                    }
+                }, LazyThreadSafetyMode.ExecutionAndPublication);
             }
         }
 

@@ -24,7 +24,7 @@ public sealed class MimironDb2QueryExecutionTests
         var optionsBuilder = new DbContextOptionsBuilder<GarrTypeContext>();
         optionsBuilder.UseMimironDb2(o => o.UseFileSystem(
             db2DirectoryPath: testDataDir,
-            dbdDefinitionsDirectory: testDataDir));
+            dbdDefinitionsDirectory: Path.Combine(testDataDir, "definitions")));
         var options = optionsBuilder.Options;
 
         using var context = new GarrTypeContext(options);
@@ -45,7 +45,7 @@ public sealed class MimironDb2QueryExecutionTests
         var optionsBuilder = new DbContextOptionsBuilder<GarrTypeContext>();
         optionsBuilder.UseMimironDb2(o => o.UseFileSystem(
             db2DirectoryPath: testDataDir,
-            dbdDefinitionsDirectory: testDataDir));
+            dbdDefinitionsDirectory: Path.Combine(testDataDir, "definitions")));
         var options = optionsBuilder.Options;
 
         using var context = new GarrTypeContext(options);
@@ -62,7 +62,13 @@ public sealed class MimironDb2QueryExecutionTests
 
     private sealed class GarrTypeContext(DbContextOptions<GarrTypeContext> options) : DbContext(options)
     {
-        public DbSet<GarrType> GarrTypes => Set<GarrType>();
+        public DbSet<GarrType> GarrTypes
+        {
+            get
+            {
+                return field ??= Set<GarrType>();
+            }
+        }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {

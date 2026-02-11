@@ -35,8 +35,7 @@ public sealed class DbContextGenerator : IIncrementalGenerator
             .Where(static f =>
             {
                 var fileName = Path.GetFileName(f.Path);
-                return string.Equals(fileName, ".env", StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(fileName, ".env.local", StringComparison.OrdinalIgnoreCase);
+                return string.Equals(fileName, ".env", StringComparison.OrdinalIgnoreCase) || string.Equals(fileName, ".env.local", StringComparison.OrdinalIgnoreCase);
             })
             .Collect()
             .Select(static (files, cancellationToken) =>
@@ -318,10 +317,16 @@ public sealed class DbContextGenerator : IIncrementalGenerator
                 : e.ClassName;
 
             dbSetName = NameNormalizer.MakeUnique(dbSetName, usedDbSetNames);
-            sb.AppendLine($"    public DbSet<{e.ClassName}> {dbSetName} => Set<{e.ClassName}>();");
+            sb.AppendLine($"    public DbSet<{e.ClassName}> {dbSetName}");
+            sb.AppendLine("    {");
+            sb.AppendLine("        get");
+            sb.AppendLine("        {");
+            sb.AppendLine($"            return field ??= Set<{e.ClassName}>();");
+            sb.AppendLine("        }");
+            sb.AppendLine("    }");
+            sb.AppendLine();
         }
 
-        sb.AppendLine();
         sb.AppendLine("    protected override void OnModelCreating(ModelBuilder modelBuilder)");
         sb.AppendLine("    {");
         sb.AppendLine("        base.OnModelCreating(modelBuilder);");
@@ -337,6 +342,14 @@ public sealed class DbContextGenerator : IIncrementalGenerator
 
         sb.AppendLine("}");
         return sb.ToString();
+    }
+
+    private static string? MyField 
+    {
+        get
+        {
+            return field ??= "default";
+        }
     }
 
     private static string RenderEntity(EntitySpec entity, IReadOnlyDictionary<string, EntitySpec> byTableName)

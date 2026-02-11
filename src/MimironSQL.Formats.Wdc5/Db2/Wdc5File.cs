@@ -241,7 +241,8 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
         }
 
         var parsedSections = new List<Wdc5Section>(sections.Count);
-        var denseStringTableBytes = new List<byte>(Math.Max(0, stringTableSize));
+        var denseStringTableBytes = stringTableSize > 0 ? new byte[stringTableSize] : [];
+        var denseStringWriteOffset = 0;
         var recordsBlobSizeBytes = 0;
 
         if (sectionsCount != 0 && recordsCount != 0)
@@ -258,23 +259,27 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
                     _ = Options.TactKeyProvider.TryGetKey(section.TactKeyLookup, out tactKey);
 
                 byte[] recordsData;
-                byte[] stringTableBytes;
                 int recordDataSizeBytes;
                 if (!flags.HasFlag(Db2Flags.Sparse))
                 {
                     recordDataSizeBytes = section.NumRecords * recordSize;
-                    recordsData = reader.ReadBytes(recordDataSizeBytes);
-                    Array.Resize(ref recordsData, recordsData.Length + 8);
-                    stringTableBytes = reader.ReadBytes(section.StringTableSize);
+                    recordsData = new byte[checked(recordDataSizeBytes + 8)];
+                    ReadExactly(reader, recordsData, recordDataSizeBytes);
 
-                    denseStringTableBytes.AddRange(stringTableBytes);
+                    if (section.StringTableSize > 0)
+                    {
+                        if (denseStringWriteOffset + section.StringTableSize > denseStringTableBytes.Length)
+                            throw new InvalidDataException("WDC5 dense string table overflow: section string table exceeds declared size.");
+
+                        ReadExactly(reader, denseStringTableBytes, start: denseStringWriteOffset, count: section.StringTableSize);
+                        denseStringWriteOffset += section.StringTableSize;
+                    }
                 }
                 else
                 {
                     recordDataSizeBytes = section.OffsetRecordsEndOffset - section.FileOffset;
-                    recordsData = reader.ReadBytes(recordDataSizeBytes);
-                    Array.Resize(ref recordsData, recordsData.Length + 8);
-                    stringTableBytes = [];
+                    recordsData = new byte[checked(recordDataSizeBytes + 8)];
+                    ReadExactly(reader, recordsData, recordDataSizeBytes);
 
                     if (reader.BaseStream.Position != section.OffsetRecordsEndOffset)
                         throw new InvalidDataException("WDC5 sparse section parsing desynced: expected OffsetRecordsEndOffset.");
@@ -377,7 +382,7 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
                         RecordDataSizeBytes = recordDataSizeBytes,
                         RecordsBaseOffsetInBlob = previousRecordBlobSizeBytes,
                         StringTableBaseOffset = previousStringTableSize,
-                        StringTableBytes = stringTableBytes,
+                        StringTableBytes = [],
                         IndexData = indexData,
                         CopyData = copyData,
                         ParentLookupEntries = parentLookupEntries,
@@ -405,11 +410,26 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
         ColumnMeta = columnMeta;
         PalletData = palletData;
         CommonData = commonData;
-        DenseStringTableBytes = new ReadOnlyMemory<byte>([.. denseStringTableBytes]);
+        DenseStringTableBytes = new ReadOnlyMemory<byte>(denseStringTableBytes);
         RecordsBlobSizeBytes = recordsBlobSizeBytes;
 
         if (recordsCount > 0 && parsedSections is { Count: 0 })
             throw new NotSupportedException("All WDC5 sections are encrypted or unreadable (missing TACT keys or placeholder section data).");
+    }
+
+    private static void ReadExactly(BinaryReader reader, byte[] buffer, int count)
+        => ReadExactly(reader, buffer, start: 0, count);
+
+    private static void ReadExactly(BinaryReader reader, byte[] buffer, int start, int count)
+    {
+        var totalRead = 0;
+        while (totalRead < count)
+        {
+            var read = reader.Read(buffer, start + totalRead, count - totalRead);
+            if (read <= 0)
+                throw new EndOfStreamException("Unexpected end of stream while reading WDC5 section data.");
+            totalRead += read;
+        }
     }
 
     /// <inheritdoc />

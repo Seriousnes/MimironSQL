@@ -19,6 +19,17 @@ internal sealed class Db2QueryProvider<TEntity, TRow>(
     where TRow : struct, IRowHandle
 {
     private static readonly ConcurrentDictionary<Type, Func<Db2QueryProvider<TEntity, TRow>, Expression, IEnumerable>> ExecuteEnumerableDelegates = new();
+    private static readonly MethodInfo QueryableWhereMethod = typeof(Queryable)
+        .GetMethods(BindingFlags.Public | BindingFlags.Static)
+        .Single(m => m.Name == nameof(Queryable.Where)
+                    && m.IsGenericMethodDefinition
+                    && m.GetParameters() is [{ ParameterType: { IsGenericType: true } p0 }, { ParameterType: { IsGenericType: true } p1 }]
+                    && p0.GetGenericTypeDefinition() == typeof(IQueryable<>)
+                    && p1.GetGenericTypeDefinition() == typeof(Expression<>)
+                    && p1.GetGenericArguments()[0] is { IsGenericType: true } predicateDelegate
+                    && predicateDelegate.GetGenericTypeDefinition() == typeof(Func<,>)
+                    && predicateDelegate.GetGenericArguments() is [_, var predicateReturnType]
+                    && predicateReturnType == typeof(bool));
 
     private readonly Db2EntityType _rootEntityType = model.GetEntityType(typeof(TEntity));
     private readonly IDb2EntityFactory _entityFactory = entityFactory ?? throw new ArgumentNullException(nameof(entityFactory));
@@ -458,26 +469,57 @@ internal sealed class Db2QueryProvider<TEntity, TRow>(
         if (!TryGetEnumerableElementType(pipeline.ExpressionWithoutFinalOperator.Type, out var sequenceElementType))
             throw new NotSupportedException("Unable to determine sequence element type for scalar execution.");
 
+        // Db2QueryPipeline.Parse captures predicate overloads for terminal operators (e.g. SingleOrDefault(x => ...))
+        // but the scalar execution path evaluates the source sequence separately.
+        // Reapply the terminal predicate here so it is not dropped.
+        var enumerableExpression = pipeline.ExpressionWithoutFinalOperator;
+        if (pipeline.FinalPredicate is not null && pipeline.FinalOperator is not Db2FinalOperator.All)
+        {
+            var predicate = pipeline.FinalPredicate;
+            if (predicate.Parameters is { Count: 1 }
+                && predicate.Parameters[0].Type != sequenceElementType)
+            {
+                var originalParam = predicate.Parameters[0];
+                var newParam = Expression.Parameter(sequenceElementType, originalParam.Name ?? "e");
+                var replacement = Expression.Convert(newParam, originalParam.Type);
+                var newBody = new ParameterReplaceVisitor(originalParam, replacement).Visit(predicate.Body)
+                    ?? throw new InvalidOperationException("Unable to rewrite scalar predicate.");
+
+                predicate = Expression.Lambda(newBody, newParam);
+            }
+
+            var typedQueryableType = typeof(IQueryable<>).MakeGenericType(sequenceElementType);
+            if (!typedQueryableType.IsAssignableFrom(enumerableExpression.Type))
+            {
+                enumerableExpression = Expression.Convert(enumerableExpression, typedQueryableType);
+            }
+
+            enumerableExpression = Expression.Call(
+                QueryableWhereMethod.MakeGenericMethod(sequenceElementType),
+                enumerableExpression,
+                Expression.Quote(predicate));
+        }
+
         switch (pipeline.FinalOperator)
         {
             case Db2FinalOperator.First:
                 {
-                    var sequence = ExecuteEnumerable<TResult>(pipeline.ExpressionWithoutFinalOperator);
+                    var sequence = ExecuteEnumerable<TResult>(enumerableExpression);
                     return Enumerable.First(sequence);
                 }
             case Db2FinalOperator.FirstOrDefault:
                 {
-                    var sequence = ExecuteEnumerable<TResult>(pipeline.ExpressionWithoutFinalOperator);
+                    var sequence = ExecuteEnumerable<TResult>(enumerableExpression);
                     return Enumerable.FirstOrDefault(sequence)!;
                 }
             case Db2FinalOperator.Single:
                 {
-                    var sequence = ExecuteEnumerable<TResult>(pipeline.ExpressionWithoutFinalOperator);
+                    var sequence = ExecuteEnumerable<TResult>(enumerableExpression);
                     return Enumerable.Single(sequence);
                 }
             case Db2FinalOperator.SingleOrDefault:
                 {
-                    var sequence = ExecuteEnumerable<TResult>(pipeline.ExpressionWithoutFinalOperator);
+                    var sequence = ExecuteEnumerable<TResult>(enumerableExpression);
                     return Enumerable.SingleOrDefault(sequence)!;
                 }
             case Db2FinalOperator.Any:
@@ -485,7 +527,7 @@ internal sealed class Db2QueryProvider<TEntity, TRow>(
                     if (typeof(TResult) != typeof(bool))
                         throw new NotSupportedException("Queryable.Any must return bool.");
 
-                    var sequence = GetExecuteEnumerableDelegate(sequenceElementType)(this, pipeline.ExpressionWithoutFinalOperator);
+                    var sequence = GetExecuteEnumerableDelegate(sequenceElementType)(this, enumerableExpression);
                     var any = EnumerableDispatch.GetAny(sequenceElementType)(sequence);
                     return Unsafe.As<bool, TResult>(ref any);
                 }
@@ -494,7 +536,7 @@ internal sealed class Db2QueryProvider<TEntity, TRow>(
                     if (typeof(TResult) != typeof(int))
                         throw new NotSupportedException("Queryable.Count must return int.");
 
-                    var sequence = GetExecuteEnumerableDelegate(sequenceElementType)(this, pipeline.ExpressionWithoutFinalOperator);
+                    var sequence = GetExecuteEnumerableDelegate(sequenceElementType)(this, enumerableExpression);
                     var count = EnumerableDispatch.GetCount(sequenceElementType)(sequence);
                     return Unsafe.As<int, TResult>(ref count);
                 }
@@ -640,6 +682,12 @@ internal sealed class Db2QueryProvider<TEntity, TRow>(
                     break;
                 }
         }
+    }
+
+    private sealed class ParameterReplaceVisitor(ParameterExpression from, Expression to) : ExpressionVisitor
+    {
+        protected override Expression VisitParameter(ParameterExpression node)
+            => node == from ? to : base.VisitParameter(node);
     }
 
     private static IEnumerable ApplyWhere(IEnumerable source, Type sourceElementType, LambdaExpression predicate)

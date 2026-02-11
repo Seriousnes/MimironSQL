@@ -1,3 +1,4 @@
 using System.Runtime.CompilerServices;
 
 [assembly: InternalsVisibleTo("MimironSQL.Providers.CASC.Tests")]
+[assembly: InternalsVisibleTo("MimironSQL.Benchmarks")]

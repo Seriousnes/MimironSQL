@@ -117,6 +117,8 @@ public sealed class FileSystemManifestProvider(CascDb2ProviderOptions options) :
 
         if (!TryGetIntProperty(element, "db2FileDataID", out fileDataId)
             && !TryGetIntProperty(element, "db2FileDataId", out fileDataId)
+            && !TryGetIntProperty(element, "dbcFileDataID", out fileDataId)
+            && !TryGetIntProperty(element, "dbcFileDataId", out fileDataId)
             && !TryGetIntProperty(element, "fileDataId", out fileDataId)
             && !TryGetIntProperty(element, "fdid", out fileDataId))
         {

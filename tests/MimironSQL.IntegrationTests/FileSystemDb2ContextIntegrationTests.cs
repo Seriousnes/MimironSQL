@@ -1,4 +1,6 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.Extensions.DependencyInjection;
 
 using MimironSQL.EntityFrameworkCore;
 using MimironSQL.IntegrationTests.Helpers;
@@ -7,6 +9,8 @@ using MimironSQL.Providers;
 using NSubstitute;
 
 using Shouldly;
+
+using System.Reflection;
 
 namespace MimironSQL.IntegrationTests;
 
@@ -20,7 +24,7 @@ public sealed class FileSystemDb2ContextIntegrationTests
         var optionsBuilder = new DbContextOptionsBuilder<WoWDb2Context>();
         optionsBuilder.UseMimironDb2(o => o.UseFileSystem(
             db2DirectoryPath: testDataDir,
-            dbdDefinitionsDirectory: testDataDir));
+            dbdDefinitionsDirectory: Path.Combine(testDataDir, "definitions")));
 
         return new WoWDb2Context(optionsBuilder.Options);
     }
@@ -37,6 +41,57 @@ public sealed class FileSystemDb2ContextIntegrationTests
 
         results.Count.ShouldBeGreaterThan(0);
         results.All(x => x.Id > 0).ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task Can_query_db2context_for_spell()
+    {
+        await using var context = CreateContext();
+
+        var result = context.Set<SpellEntity>()
+            .SingleOrDefault(x => x.Id == 454009);
+        result.ShouldNotBeNull();
+        result.Id.ShouldBe(454009);
+        result.Description.ShouldBe("""
+            $?s137040[Each Maelstrom spent has a ${$s1/100}.2% chance to upgrade][Each Maelstrom Weapon spent has a ${$s2/100}.2% chance to upgrade] your next Lightning Bolt to Tempest.
+
+            $@spelltooltip452201
+            """);
+    }
+
+    [Fact]
+    public async Task Key_lookup_does_not_populate_full_table_cache()
+    {
+        await using var context = CreateContext();
+
+        var sp = ((IInfrastructure<IServiceProvider>)context).Instance;
+        var efAssembly = typeof(MimironDb2ServiceCollectionExtensions).Assembly;
+        var storeServiceType = efAssembly.GetType("MimironSQL.EntityFrameworkCore.Storage.IMimironDb2Store", throwOnError: true)!;
+        var store = sp.GetRequiredService(storeServiceType);
+
+        var storeType = store.GetType();
+
+        var cacheField = storeType.GetField("_cache", BindingFlags.Instance | BindingFlags.NonPublic);
+        cacheField.ShouldNotBeNull();
+
+        var cache = cacheField!.GetValue(store);
+        cache.ShouldNotBeNull();
+
+        // Clear any prior state (service provider caching can reuse singletons across tests).
+        var clearMethod = cache!.GetType().GetMethod("Clear", BindingFlags.Instance | BindingFlags.Public);
+        clearMethod.ShouldNotBeNull();
+        clearMethod!.Invoke(cache, parameters: null);
+
+        var result = context.Set<SpellEntity>().SingleOrDefault(x => x.Id == 454009);
+        result.ShouldNotBeNull();
+        result.Id.ShouldBe(454009);
+
+        var countProp = cache.GetType().GetProperty("Count", BindingFlags.Instance | BindingFlags.Public);
+        countProp.ShouldNotBeNull();
+        var count = (int)countProp!.GetValue(cache)!;
+
+        // The key-lookup path should not create a cached full table file.
+        count.ShouldBe(0);
     }
 
     [Fact]

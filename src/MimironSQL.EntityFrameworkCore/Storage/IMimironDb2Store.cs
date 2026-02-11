@@ -1,4 +1,6 @@
 using MimironSQL.EntityFrameworkCore.Db2.Schema;
+using MimironSQL.EntityFrameworkCore.Db2.Model;
+using MimironSQL.EntityFrameworkCore.Db2.Query;
 using MimironSQL.Formats;
 
 namespace MimironSQL.EntityFrameworkCore.Storage;
@@ -11,7 +13,12 @@ internal interface IMimironDb2Store
 
     Db2TableSchema GetSchema(string tableName);
 
+    Db2TableSchema GetSchemaFromMetadata(string tableName);
+
     (IDb2File File, Db2TableSchema Schema) OpenTableWithSchema(string tableName);
 
     (IDb2File<TRow> File, Db2TableSchema Schema) OpenTableWithSchema<TRow>(string tableName) where TRow : struct;
+
+    bool TryMaterializeById<TEntity>(string tableName, int id, Db2Model model, IDb2EntityFactory entityFactory, out TEntity? entity)
+        where TEntity : class;
 }

@@ -7,11 +7,45 @@ namespace MimironSQL.Benchmarks;
 public sealed class BenchmarkDb2Context(DbContextOptions<BenchmarkDb2Context> options)
     : DbContext(options)
 {
-    public DbSet<Map> Map => Set<Map>();
-    public DbSet<MapChallengeMode> MapChallengeMode => Set<MapChallengeMode>();
-    public DbSet<QuestV2> QuestV2 => Set<QuestV2>();
-    public DbSet<Spell> Spell => Set<Spell>();
-    public DbSet<SpellName> SpellName => Set<SpellName>();
+    public DbSet<Map> Map
+    {
+        get
+        {
+            return field ??= Set<Map>();
+        }
+    }
+
+    public DbSet<MapChallengeMode> MapChallengeMode
+    {
+        get
+        {
+            return field ??= Set<MapChallengeMode>();
+        }
+    }
+
+    public DbSet<QuestV2> QuestV2
+    {
+        get
+        {
+            return field ??= Set<QuestV2>();
+        }
+    }
+
+    public DbSet<Spell> Spell
+    {
+        get
+        {
+            return field ??= Set<Spell>();
+        }
+    }
+
+    public DbSet<SpellName> SpellName
+    {
+        get
+        {
+            return field ??= Set<SpellName>();
+        }
+    }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

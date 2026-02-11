@@ -38,7 +38,7 @@ public sealed class CascDb2ContextIntegrationLocalUseCascConfigurationTests
 
             casc.DbdProviderFactory = sp =>
                 new FileSystemDbdProvider(
-                    new FileSystemDbdProviderOptions(testDataDir),
+                    new FileSystemDbdProviderOptions(Path.Combine(testDataDir, "definitions")),
                     sp.GetRequiredService<IDbdParser>());
         }));
 
@@ -69,7 +69,7 @@ public sealed class CascDb2ContextIntegrationLocalUseCascConfigurationTests
 
         var cascSection = Substitute.For<IConfigurationSection>();
         cascSection["WowInstallRoot"].Returns(wowInstallRoot);
-        cascSection["DbdDefinitionsDirectory"].Returns(testDataDir);
+        cascSection["DbdDefinitionsDirectory"].Returns(Path.Combine(testDataDir, "definitions"));
         cascSection["ManifestDirectory"].Returns(testDataDir);
         cascSection["ManifestAssetName"].Returns("manifest.json");
 

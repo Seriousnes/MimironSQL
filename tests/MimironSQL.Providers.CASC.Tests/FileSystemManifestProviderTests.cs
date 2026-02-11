@@ -51,6 +51,30 @@ public sealed class FileSystemManifestProviderTests
     }
 
     [Fact]
+    public async Task TryResolveDb2FileDataIdAsync_ResolvesFromArrayManifest_WithDbcFileDataId()
+    {
+        var dir = CreateTempDirectory();
+        try
+        {
+            File.WriteAllText(Path.Combine(dir, "manifest.json"), "[\n  {\"tableName\":\"FileData\",\"dbcFileDataID\":801625}\n]");
+
+            var options = new CascDb2ProviderOptions
+            {
+                ManifestDirectory = dir,
+                ManifestAssetName = "manifest.json",
+            };
+
+            var provider = new FileSystemManifestProvider(options);
+            (await provider.TryResolveDb2FileDataIdAsync("FileData")).ShouldBe(801625);
+            (await provider.TryResolveDb2FileDataIdAsync("DBFilesClient\\FileData.db2")).ShouldBe(801625);
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task TryResolveDb2FileDataIdAsync_ResolvesFromObjectManifest()
     {
         var dir = CreateTempDirectory();

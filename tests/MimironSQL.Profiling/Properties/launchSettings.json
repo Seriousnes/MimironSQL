@@ -1,0 +1,9 @@
+{
+  "profiles": {
+    "MimironSQL.Profiling": {
+      "commandName": "Project",
+      "commandLineArgs": "--scenario casc-spell --warmup 10 --iterations 1000",
+      "workingDirectory": "$(ProjectDir)"
+    }
+  }
+}

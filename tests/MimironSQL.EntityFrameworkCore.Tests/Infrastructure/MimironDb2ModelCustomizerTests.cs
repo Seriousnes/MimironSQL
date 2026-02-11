@@ -41,7 +41,13 @@ public sealed class MimironDb2ModelCustomizerTests
 
     private sealed class TestContext(DbContextOptions options) : DbContext(options)
     {
-        public DbSet<EntityWithAttributes> Entities => Set<EntityWithAttributes>();
+        public DbSet<EntityWithAttributes> Entities
+        {
+            get
+            {
+                return field ??= Set<EntityWithAttributes>();
+            }
+        }
     }
 
     [Table("MyTable")]

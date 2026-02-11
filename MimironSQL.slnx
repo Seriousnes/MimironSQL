@@ -1,4 +1,16 @@
 <Solution>
+  <Folder Name="/tests/">
+    <Project Path="tests/MimironSQL.Benchmarks/MimironSQL.Benchmarks.csproj" />
+    <Project Path="tests/MimironSQL.Contracts.Tests/MimironSQL.Contracts.Tests.csproj" />
+    <Project Path="tests/MimironSQL.DbContextGenerator.Tests/MimironSQL.DbContextGenerator.Tests.csproj" />
+    <Project Path="tests/MimironSQL.Dbd.Tests/MimironSQL.Dbd.Tests.csproj" />
+    <Project Path="tests/MimironSQL.EntityFrameworkCore.Tests/MimironSQL.EntityFrameworkCore.Tests.csproj" />
+    <Project Path="tests/MimironSQL.Formats.Wdc5.Tests/MimironSQL.Formats.Wdc5.Tests.csproj" />
+    <Project Path="tests/MimironSQL.IntegrationTests/MimironSQL.IntegrationTests.csproj" />
+    <Project Path="tests/MimironSQL.Profiling/MimironSQL.Profiling.csproj" />
+    <Project Path="tests/MimironSQL.Providers.CASC.Tests/MimironSQL.Providers.CASC.Tests.csproj" />
+    <Project Path="tests/MimironSQL.Providers.FileSystem.Tests/MimironSQL.Providers.FileSystem.Tests.csproj" />
+  </Folder>
   <Project Path="src/MimironSQL.Contracts/MimironSQL.Contracts.csproj" />
   <Project Path="src/MimironSQL.DbContextGenerator/MimironSQL.DbContextGenerator.csproj" />
   <Project Path="src/MimironSQL.Dbd/MimironSQL.Dbd.csproj" />
@@ -7,13 +19,4 @@
   <Project Path="src/MimironSQL.Providers.CASC/MimironSQL.Providers.CASC.csproj" />
   <Project Path="src/MimironSQL.Providers.FileSystem/MimironSQL.Providers.FileSystem.csproj" />
   <Project Path="src/Salsa20/Salsa20.csproj" />
-  <Project Path="tests/MimironSQL.Contracts.Tests/MimironSQL.Contracts.Tests.csproj" />
-  <Project Path="tests/MimironSQL.Dbd.Tests/MimironSQL.Dbd.Tests.csproj" />
-  <Project Path="tests/MimironSQL.EntityFrameworkCore.Tests/MimironSQL.EntityFrameworkCore.Tests.csproj" />
-  <Project Path="tests/MimironSQL.Formats.Wdc5.Tests/MimironSQL.Formats.Wdc5.Tests.csproj" />
-  <Project Path="tests/MimironSQL.Providers.FileSystem.Tests/MimironSQL.Providers.FileSystem.Tests.csproj" />
-  <Project Path="tests/MimironSQL.IntegrationTests/MimironSQL.IntegrationTests.csproj" />
-  <Project Path="tests/MimironSQL.Providers.CASC.Tests/MimironSQL.Providers.CASC.Tests.csproj" />
-  <Project Path="tests/MimironSQL.DbContextGenerator.Tests/MimironSQL.DbContextGenerator.Tests.csproj" />
-  <Project Path="tests/MimironSQL.Benchmarks/MimironSQL.Benchmarks.csproj" />
 </Solution>

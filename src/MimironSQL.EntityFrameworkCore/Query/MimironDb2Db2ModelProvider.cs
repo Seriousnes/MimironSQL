@@ -9,6 +9,7 @@ using Microsoft.EntityFrameworkCore.Metadata;
 
 using MimironSQL.Db2.Model;
 using MimironSQL.EntityFrameworkCore.Db2.Model;
+using MimironSQL.EntityFrameworkCore.Infrastructure;
 using MimironSQL.EntityFrameworkCore.Storage;
 
 namespace MimironSQL.EntityFrameworkCore.Query;
@@ -20,12 +21,14 @@ internal interface IMimironDb2Db2ModelProvider
 
 internal sealed class MimironDb2Db2ModelProvider(
     ICurrentDbContext currentDbContext,
-    IMimironDb2Store store) : IMimironDb2Db2ModelProvider
+    IMimironDb2Store store,
+    IDbContextOptions contextOptions) : IMimironDb2Db2ModelProvider
 {
     private static readonly ConcurrentDictionary<Type, MethodInfo> EntityGenericMethodCache = new();
 
     private readonly DbContext _context = currentDbContext?.Context ?? throw new ArgumentNullException(nameof(currentDbContext));
     private readonly IMimironDb2Store _store = store ?? throw new ArgumentNullException(nameof(store));
+    private readonly IDbContextOptions _contextOptions = contextOptions ?? throw new ArgumentNullException(nameof(contextOptions));
 
     private Db2Model? _model;
 
@@ -34,6 +37,10 @@ internal sealed class MimironDb2Db2ModelProvider(
     private Db2Model BuildDb2Model()
     {
         var efModel = _context.Model;
+
+        var buildMode = _contextOptions.Extensions.OfType<MimironDb2OptionsExtension>().FirstOrDefault()?.Db2ModelBuildMode
+            ?? Db2ModelBuildMode.Eager;
+        var useLazyBuild = buildMode == Db2ModelBuildMode.Lazy;
 
         var builder = new Db2ModelBuilder();
 
@@ -53,7 +60,12 @@ internal sealed class MimironDb2Db2ModelProvider(
             ConfigureNavigations(builder, entityType);
         }
 
-        return builder.Build(tableName => _store.GetSchema(tableName));
+        var schemaResolver = (string tableName) => useLazyBuild
+            ? _store.GetSchemaFromMetadata(tableName)
+            : _store.GetSchema(tableName);
+        return useLazyBuild
+            ? builder.BuildLazy(schemaResolver)
+            : builder.Build(schemaResolver);
     }
 
     private static void ConfigureEntity(Db2ModelBuilder builder, IEntityType entityType)

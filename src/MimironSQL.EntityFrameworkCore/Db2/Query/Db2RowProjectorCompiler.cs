@@ -121,16 +121,16 @@ internal static class Db2RowProjectorCompiler
         }
 
         protected override Expression VisitBinary(BinaryExpression node)
-            => throw new NotSupportedException("Computed selectors are not supported in Phase 3.5.");
+            => throw new NotSupportedException("Computed selectors are not supported.");
 
         protected override Expression VisitMethodCall(MethodCallExpression node)
-            => throw new NotSupportedException("Method calls in selectors are not supported in Phase 3.5.");
+            => throw new NotSupportedException("Method calls in selectors are not supported.");
 
         protected override Expression VisitConditional(ConditionalExpression node)
-            => throw new NotSupportedException("Conditional expressions in selectors are not supported in Phase 3.5.");
+            => throw new NotSupportedException("Conditional expressions in selectors are not supported.");
 
         protected override Expression VisitNewArray(NewArrayExpression node)
-            => throw new NotSupportedException("Array creation in selectors is not supported in Phase 3.5.");
+            => throw new NotSupportedException("Array creation in selectors is not supported.");
 
         private Expression BuildReadExpression(Db2FieldSchema field, Type targetType)
         {

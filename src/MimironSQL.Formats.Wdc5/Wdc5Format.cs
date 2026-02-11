@@ -20,4 +20,7 @@ public sealed class Wdc5Format : IDb2Format
         ArgumentNullException.ThrowIfNull(file);
         return new Db2FileLayout(file.Header.LayoutHash, file.Header.FieldsCount);
     }
+
+    /// <inheritdoc />
+    public Db2FileLayout ReadLayout(Stream stream) => Wdc5LayoutReader.ReadLayout(stream);
 }

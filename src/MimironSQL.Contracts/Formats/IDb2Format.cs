@@ -25,4 +25,11 @@ public interface IDb2Format
     /// <param name="file">The DB2 file.</param>
     /// <returns>The resolved layout.</returns>
     Db2FileLayout GetLayout(IDb2File file);
+
+    /// <summary>
+    /// Reads layout information directly from the DB2 stream.
+    /// </summary>
+    /// <param name="stream">The input stream containing the DB2 binary data.</param>
+    /// <returns>The resolved layout.</returns>
+    Db2FileLayout ReadLayout(Stream stream);
 }

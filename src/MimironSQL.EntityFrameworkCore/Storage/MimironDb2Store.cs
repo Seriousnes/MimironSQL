@@ -5,12 +5,11 @@ using MimironSQL.EntityFrameworkCore.Db2.Model;
 using MimironSQL.EntityFrameworkCore.Db2.Query;
 using MimironSQL.EntityFrameworkCore.Db2.Schema;
 using MimironSQL.Formats;
-using MimironSQL.Formats.Wdc5.Db2;
 using MimironSQL.Providers;
 
 namespace MimironSQL.EntityFrameworkCore.Storage;
 
-internal sealed class MimironDb2Store : IMimironDb2Store
+internal sealed class MimironDb2Store : IMimironDb2Store, IDisposable
 {
     private readonly IDb2StreamProvider _db2StreamProvider;
     private readonly IDbdProvider _dbdProvider;
@@ -32,7 +31,7 @@ internal sealed class MimironDb2Store : IMimironDb2Store
         _schemaMapper = new SchemaMapper(dbdProvider);
     }
 
-    private sealed record KeyLookupTable(Wdc5KeyLookupMetadata Metadata, Db2TableSchema Schema);
+    private sealed record KeyLookupTable(IDb2File<RowHandle> File, Db2TableSchema Schema);
 
     public IDb2File OpenTable(string tableName)
     {
@@ -60,17 +59,8 @@ internal sealed class MimironDb2Store : IMimironDb2Store
         {
             using var stream = _db2StreamProvider.OpenDb2Stream(key);
 
-            try
-            {
-                var layout = Wdc5LayoutReader.ReadLayout(stream);
-                return _schemaMapper.GetSchema(key, layout);
-            }
-            catch (InvalidDataException)
-            {
-                // Fallback for non-WDC5 formats: schema resolution requires opening the file.
-                // This may populate the full-table cache.
-                return GetSchema(key);
-            }
+            var layout = _format.ReadLayout(stream);
+            return _schemaMapper.GetSchema(key, layout);
         }));
 
         return lazy.Value;
@@ -82,11 +72,19 @@ internal sealed class MimironDb2Store : IMimironDb2Store
 
         var lazy = _cache.GetOrAdd(tableName, key => new Lazy<(IDb2File File, Db2TableSchema Schema)>(() =>
         {
-            using var stream = _db2StreamProvider.OpenDb2Stream(key);
-            var file = _format.OpenFile(stream);
-            var layout = _format.GetLayout(file);
-            var schema = _schemaMapper.GetSchema(key, layout);
-            return (file, schema);
+            var stream = _db2StreamProvider.OpenDb2Stream(key);
+            try
+            {
+                var file = _format.OpenFile(stream);
+                var layout = _format.GetLayout(file);
+                var schema = _schemaMapper.GetSchema(key, layout);
+                return (file, schema);
+            }
+            catch
+            {
+                stream.Dispose();
+                throw;
+            }
         }));
 
         return lazy.Value;
@@ -101,17 +99,27 @@ internal sealed class MimironDb2Store : IMimironDb2Store
 
         var table = _keyLookupCache.GetOrAdd(tableName, key => new Lazy<KeyLookupTable>(() =>
         {
-            using var stream = _db2StreamProvider.OpenDb2Stream(key);
+            var stream = _db2StreamProvider.OpenDb2Stream(key);
+            try
+            {
+                // This path intentionally avoids allocating full record blobs and dense string tables.
+                // It relies on the format's file implementation supporting key lookups without enumeration.
+                var file = _format.OpenFile(stream);
+                if (file is not IDb2File<RowHandle> typed)
+                    throw new NotSupportedException($"Key lookups require row type '{typeof(RowHandle).FullName}', but file reports '{file.RowType.FullName}'.");
 
-            // For now, key lookups are only supported for WDC5 (the only shipped format).
-            // This path intentionally avoids allocating full record blobs and dense string tables.
-            var metadata = Wdc5KeyLookupMetadata.Parse(stream, options: null);
-            var layout = new Db2FileLayout(metadata.Header.LayoutHash, metadata.Header.FieldsCount);
-            var schema = _schemaMapper.GetSchema(key, layout);
-            return new KeyLookupTable(metadata, schema);
+                var layout = _format.GetLayout(file);
+                var schema = _schemaMapper.GetSchema(key, layout);
+                return new KeyLookupTable(typed, schema);
+            }
+            catch
+            {
+                stream.Dispose();
+                throw;
+            }
         })).Value;
 
-        if (!table.Metadata.TryResolveRowHandle(id, out var handle, out var resolution))
+        if (!table.File.TryGetRowById(id, out var handle))
         {
             entity = null;
             return false;
@@ -120,10 +128,29 @@ internal sealed class MimironDb2Store : IMimironDb2Store
         var db2EntityType = model.GetEntityType(typeof(TEntity)).WithSchema(tableName, table.Schema);
         var materializer = new Db2EntityMaterializer<TEntity, RowHandle>(db2EntityType, entityFactory);
 
-        using var rowStream = _db2StreamProvider.OpenDb2Stream(tableName);
-        var rowFile = new Wdc5KeyLookupRowFile(table.Metadata, resolution, handle, rowStream, options: null);
-        entity = materializer.Materialize(rowFile, handle);
+        entity = materializer.Materialize(table.File, handle);
         return true;
+    }
+
+    public void Dispose()
+    {
+        foreach (var lazy in _cache.Values)
+        {
+            if (!lazy.IsValueCreated)
+                continue;
+
+            if (lazy.Value.File is IDisposable disposable)
+                disposable.Dispose();
+        }
+
+        foreach (var lazy in _keyLookupCache.Values)
+        {
+            if (!lazy.IsValueCreated)
+                continue;
+
+            if (lazy.Value.File is IDisposable disposable)
+                disposable.Dispose();
+        }
     }
 
     public (IDb2File<TRow> File, Db2TableSchema Schema) OpenTableWithSchema<TRow>(string tableName) where TRow : struct

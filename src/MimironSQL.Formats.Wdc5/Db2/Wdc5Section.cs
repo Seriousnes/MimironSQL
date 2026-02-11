@@ -18,7 +18,7 @@ public sealed class Wdc5Section
     /// <summary>
     /// Gets the raw bytes containing the section's record data.
     /// </summary>
-    public required byte[] RecordsData { get; init; }
+    public byte[]? RecordsData { get; internal set; }
 
     /// <summary>
     /// Gets the record data size in bytes.

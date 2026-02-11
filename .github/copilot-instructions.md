@@ -64,19 +64,7 @@ For the `reportcoverage.cs` helper (ranking misses and class drill-down), see [t
 The DB2 file structure is documentation is available here - https://wowdev.wiki/DB2, this project is initially targeting WDC5 and later.
 
 ### Metadata
-Since DB2 files don't contain any metadata about column names or data types, we're using the WoWDBDefs repository, including the C# implementation for validation.
-
-## Implementation Plan
-The implementation plan is described in detail in [implementation-plan.md](./instructions/implementation-plan.md)
-
-- Supporting docs:
-    - DB2/WDC5 format notes: [db2-format.md](./instructions/db2-format.md)
-    - Query engine notes: [query-engine-notes.md](./instructions/query-engine-notes.md)
-    - Architecture overview: [architecture.md](./instructions/architecture.md)
-
-- When receiving clarifications per the follow-up questions instruction, update the implementation plan and/or supporting docs as needed
-- Use a git branch per phase, e.g. `feature/phase-1-virtual-table`, `feature/phase-2-schema-mapper`, etc.
-    - Once a phase is complete, and all tests pass, merge into `main` before starting the next phase.
+Since DB2 files don't contain any metadata about column names or data types, we're using the WoWDBDefs repository for DB2 definitions. The `.dbd` files are parsed by the `MimironSQL.Dbd` project. `MimironSQL.DbContextGenerator` can use the parsed `.dbd` definitions to generate EF Core `DbContext` and entity classes with the correct properties and types.
 
 ## Testing Access
 - Prefer using `[InternalsVisibleTo]` to allow test/benchmark access; do not change internal types (e.g., `BlteDecoder`) to public for benchmarking.

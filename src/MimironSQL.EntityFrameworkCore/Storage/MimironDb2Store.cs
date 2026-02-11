@@ -17,7 +17,6 @@ internal sealed class MimironDb2Store : IMimironDb2Store, IDisposable
     private readonly SchemaMapper _schemaMapper;
     private readonly ConcurrentDictionary<string, Lazy<(IDb2File File, Db2TableSchema Schema)>> _cache = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, Lazy<Db2TableSchema>> _schemaFromMetadataCache = new(StringComparer.OrdinalIgnoreCase);
-    private readonly ConcurrentDictionary<string, Lazy<KeyLookupTable>> _keyLookupCache = new(StringComparer.OrdinalIgnoreCase);
 
     public MimironDb2Store(IDb2StreamProvider db2StreamProvider, IDbdProvider dbdProvider, IDb2Format format)
     {
@@ -30,8 +29,6 @@ internal sealed class MimironDb2Store : IMimironDb2Store, IDisposable
         _format = format;
         _schemaMapper = new SchemaMapper(dbdProvider);
     }
-
-    private sealed record KeyLookupTable(IDb2File<RowHandle> File, Db2TableSchema Schema);
 
     public IDb2File OpenTable(string tableName)
     {
@@ -59,7 +56,7 @@ internal sealed class MimironDb2Store : IMimironDb2Store, IDisposable
         {
             using var stream = _db2StreamProvider.OpenDb2Stream(key);
 
-            var layout = _format.ReadLayout(stream);
+            var layout = _format.GetLayout(stream);
             return _schemaMapper.GetSchema(key, layout);
         }));
 
@@ -97,53 +94,27 @@ internal sealed class MimironDb2Store : IMimironDb2Store, IDisposable
         ArgumentNullException.ThrowIfNull(model);
         ArgumentNullException.ThrowIfNull(entityFactory);
 
-        var table = _keyLookupCache.GetOrAdd(tableName, key => new Lazy<KeyLookupTable>(() =>
-        {
-            var stream = _db2StreamProvider.OpenDb2Stream(key);
-            try
-            {
-                // This path intentionally avoids allocating full record blobs and dense string tables.
-                // It relies on the format's file implementation supporting key lookups without enumeration.
-                var file = _format.OpenFile(stream);
-                if (file is not IDb2File<RowHandle> typed)
-                    throw new NotSupportedException($"Key lookups require row type '{typeof(RowHandle).FullName}', but file reports '{file.RowType.FullName}'.");
+        var (file, schema) = OpenTableWithSchema(tableName);
 
-                var layout = _format.GetLayout(file);
-                var schema = _schemaMapper.GetSchema(key, layout);
-                return new KeyLookupTable(typed, schema);
-            }
-            catch
-            {
-                stream.Dispose();
-                throw;
-            }
-        })).Value;
+        if (file is not IDb2File<RowHandle> typed)
+            throw new NotSupportedException($"Key lookups require row type '{typeof(RowHandle).FullName}', but file reports '{file.RowType.FullName}'.");
 
-        if (!table.File.TryGetRowById(id, out var handle))
+        if (!typed.TryGetRowById(id, out var handle))
         {
             entity = null;
             return false;
         }
 
-        var db2EntityType = model.GetEntityType(typeof(TEntity)).WithSchema(tableName, table.Schema);
+        var db2EntityType = model.GetEntityType(typeof(TEntity)).WithSchema(tableName, schema);
         var materializer = new Db2EntityMaterializer<TEntity, RowHandle>(db2EntityType, entityFactory);
 
-        entity = materializer.Materialize(table.File, handle);
+        entity = materializer.Materialize(typed, handle);
         return true;
     }
 
     public void Dispose()
     {
         foreach (var lazy in _cache.Values)
-        {
-            if (!lazy.IsValueCreated)
-                continue;
-
-            if (lazy.Value.File is IDisposable disposable)
-                disposable.Dispose();
-        }
-
-        foreach (var lazy in _keyLookupCache.Values)
         {
             if (!lazy.IsValueCreated)
                 continue;

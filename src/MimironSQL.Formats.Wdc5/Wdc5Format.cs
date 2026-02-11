@@ -22,5 +22,5 @@ public sealed class Wdc5Format : IDb2Format
     }
 
     /// <inheritdoc />
-    public Db2FileLayout ReadLayout(Stream stream) => Wdc5LayoutReader.ReadLayout(stream);
+    public Db2FileLayout GetLayout(Stream stream) => Wdc5LayoutReader.ReadLayout(stream);
 }

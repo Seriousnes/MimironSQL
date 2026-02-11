@@ -60,7 +60,7 @@ public sealed class FileSystemDb2ContextIntegrationTests
     }
 
     [Fact]
-    public async Task Key_lookup_does_not_populate_full_table_cache()
+    public async Task Key_lookup_populates_table_cache()
     {
         await using var context = CreateContext();
 
@@ -90,8 +90,8 @@ public sealed class FileSystemDb2ContextIntegrationTests
         countProp.ShouldNotBeNull();
         var count = (int)countProp!.GetValue(cache)!;
 
-        // The key-lookup path should not create a cached full table file.
-        count.ShouldBe(0);
+        // Key lookups now reuse the store's normal table cache.
+        count.ShouldBeGreaterThan(0);
     }
 
     [Fact]

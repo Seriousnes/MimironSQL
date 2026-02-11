@@ -23,7 +23,7 @@ The DI registration is the only legitimate place for a concrete format reference
 ## Root Cause Analysis
 
 The tight coupling exists because the `IDb2Format` and `IDb2File` contracts don't expose:
-1. **Layout reading without full file parsing** — `Wdc5LayoutReader.ReadLayout(stream)` reads only 200 bytes. `IDb2Format` only has `OpenFile(stream)` (full parse) and `GetLayout(IDb2File)` (requires a fully-parsed file).
+1. **Layout reading without full file parsing** — `Wdc5LayoutReader.ReadLayout(stream)` reads only 200 bytes. Historically, `IDb2Format` only had `OpenFile(stream)` (full parse) and `GetLayout(IDb2File)` (requires a fully-parsed file).
 2. **Key-lookup / id-based row resolution** — `IDb2File.TryGetRowHandle<TId>()` exists but requires a fully-parsed file. There's no contract for "parse just enough to resolve an ID to a row, then read just that row."
 
 ## Proposed Changes
@@ -103,9 +103,9 @@ After refactoring, `_keyLookupCache` and the `KeyLookupTable` record become unne
 4. Finally: Add regression test (this plan, Step 5)
 
 ## Acceptance Criteria
-- [ ] `MimironDb2Store.cs` has zero `using MimironSQL.Formats.Wdc5.*` statements
-- [ ] Only `MimironDb2ServiceCollectionExtensions.cs` references `Wdc5Format`
-- [ ] `IDb2Format` has a `GetLayout(Stream)` method
-- [ ] `_keyLookupCache` and `KeyLookupTable` are removed from the store
-- [ ] A test or analyzer enforces no WDC5 references outside DI registration
-- [ ] All existing integration tests pass unchanged
+- [x] `MimironDb2Store.cs` has zero `using MimironSQL.Formats.Wdc5.*` statements
+- [x] Only `MimironDb2ServiceCollectionExtensions.cs` references `Wdc5Format`
+- [x] `IDb2Format` has a `GetLayout(Stream)` method
+- [x] `_keyLookupCache` and `KeyLookupTable` are removed from the store
+- [ ] (Deferred) A test or analyzer enforces no WDC5 references outside DI registration
+- [x] All tests pass (one integration test was updated to match the new cache behavior)

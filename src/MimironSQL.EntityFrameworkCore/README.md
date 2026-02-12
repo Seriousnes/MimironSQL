@@ -59,16 +59,20 @@ Register the `DbContext` with one of the available providers.
 
 ```csharp
 services.AddDbContext<WoWDb2Context>(options =>
-    options.UseMimironDb2(o => o.UseFileSystem(
-        db2DirectoryPath: "path/to/db2/files",
-        dbdDefinitionsDirectory: "path/to/dbd/definitions")));
+    options.UseMimironDb2(o => o
+        .WithWowVersion(WoWDb2Context.WowVersion)
+        .UseFileSystem(
+            db2DirectoryPath: "path/to/db2/files",
+            dbdDefinitionsDirectory: "path/to/dbd/definitions")));
 ```
 
 **CASC provider:**
 
 ```csharp
 services.AddDbContext<WoWDb2Context>(options =>
-    options.UseMimironDb2(o => o.UseCasc(configuration)));
+    options.UseMimironDb2(o => o
+        .WithWowVersion(WoWDb2Context.WowVersion)
+        .UseCasc(configuration)));
 ```
 
 Only one provider may be configured per `DbContext`.
@@ -97,6 +101,7 @@ Provider configuration is done through the `UseMimironDb2` extension method, whi
 options.UseMimironDb2(o =>
 {
     // Exactly one provider method must be called here.
+    o.WithWowVersion(WoWDb2Context.WowVersion);
     o.UseFileSystem(db2Dir, dbdDir);
 });
 ```

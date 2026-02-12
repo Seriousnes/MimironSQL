@@ -92,10 +92,14 @@ internal sealed class MimironDb2QueryExecutor(
             ?? throw new NotSupportedException($"Entity type '{typeof(TEntity).FullName}' is not part of the EF model.");
 
         var tableName = efEntityType.GetTableName() ?? typeof(TEntity).Name;
-        var (file, schema) = _store.OpenTableWithSchema<TRow>(tableName);
+
+        var session = new QuerySession<TRow>(_context, _store, model);
+        session.Warm(query, typeof(TEntity));
+
+        var (file, schema) = session.Resolve(tableName);
 
         (IDb2File<TRow> File, Db2TableSchema Schema) TableResolver(string name)
-            => _store.OpenTableWithSchema<TRow>(name);
+            => session.Resolve(name);
 
         IDb2EntityFactory queryEntityFactory = new EfLazyLoadingProxyDb2EntityFactory(_context, new ReflectionDb2EntityFactory());
         var provider = new Db2QueryProvider<TEntity, TRow>(file, model, TableResolver, queryEntityFactory);

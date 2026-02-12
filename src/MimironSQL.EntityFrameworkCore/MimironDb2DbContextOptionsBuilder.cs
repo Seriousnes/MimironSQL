@@ -55,6 +55,17 @@ public class MimironDb2DbContextOptionsBuilder : IMimironDb2DbContextOptionsBuil
     }
 
     /// <inheritdoc />
+    public virtual IMimironDb2DbContextOptionsBuilder WithWowVersion(string wowVersion)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(wowVersion);
+
+        var extension = GetOrCreateExtension(OptionsBuilder);
+        extension = extension.WithWowVersion(wowVersion);
+        ((IDbContextOptionsBuilderInfrastructure)OptionsBuilder).AddOrUpdateExtension(extension);
+        return this;
+    }
+
+    /// <inheritdoc />
     public virtual IMimironDb2DbContextOptionsBuilder WithDb2ModelBuildMode(Db2ModelBuildMode buildMode)
     {
         var extension = GetOrCreateExtension(OptionsBuilder);

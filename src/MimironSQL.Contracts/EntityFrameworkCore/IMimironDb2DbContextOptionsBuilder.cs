@@ -8,6 +8,13 @@ namespace MimironSQL.EntityFrameworkCore;
 public interface IMimironDb2DbContextOptionsBuilder
 {
     /// <summary>
+    /// Sets the World of Warcraft version used for selecting compatible DBD BUILD blocks.
+    /// </summary>
+    /// <param name="wowVersion">The WoW version string (for example, <c>12.0.0.65655</c>).</param>
+    /// <returns>The same builder instance to enable chaining.</returns>
+    IMimironDb2DbContextOptionsBuilder WithWowVersion(string wowVersion);
+
+    /// <summary>
     /// Sets how the internal DB2 model is built (eager or lazy).
     /// </summary>
     /// <param name="buildMode">The DB2 model build mode.</param>

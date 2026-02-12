@@ -33,6 +33,7 @@ public class MimironDb2OptionsExtension : IDbContextOptionsExtension
         ProviderConfigHash = copyFrom.ProviderConfigHash;
         ApplyProviderServices = copyFrom.ApplyProviderServices;
         Db2ModelBuildMode = copyFrom.Db2ModelBuildMode;
+        WowVersion = copyFrom.WowVersion;
     }
 
     /// <inheritdoc />
@@ -53,6 +54,11 @@ public class MimironDb2OptionsExtension : IDbContextOptionsExtension
     /// Defaults to <see cref="EntityFrameworkCore.Db2ModelBuildMode.Eager"/>.
     /// </summary>
     public Db2ModelBuildMode Db2ModelBuildMode { get; private set; } = Db2ModelBuildMode.Eager;
+
+    /// <summary>
+    /// Gets the WoW version string used to select compatible DBD BUILD blocks.
+    /// </summary>
+    public string? WowVersion { get; private set; }
 
     /// <summary>
     /// Gets the callback that registers provider-specific services.
@@ -92,6 +98,18 @@ public class MimironDb2OptionsExtension : IDbContextOptionsExtension
     }
 
     /// <summary>
+    /// Returns a copy of this extension configured with the specified WoW version.
+    /// </summary>
+    public MimironDb2OptionsExtension WithWowVersion(string wowVersion)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(wowVersion);
+
+        var clone = Clone();
+        clone.WowVersion = wowVersion;
+        return clone;
+    }
+
+    /// <summary>
     /// Creates a copy of this extension.
     /// </summary>
     /// <returns>A copy of this extension.</returns>
@@ -123,6 +141,10 @@ public class MimironDb2OptionsExtension : IDbContextOptionsExtension
         if (ProviderKey is null || ApplyProviderServices is null)
             throw new InvalidOperationException(
                 $"MimironDb2 providers must be configured. Call {nameof(MimironDb2DbContextOptionsExtensions.UseMimironDb2)} to configure the provider.");
+
+        if (string.IsNullOrWhiteSpace(WowVersion))
+            throw new InvalidOperationException(
+                $"WoW version must be configured. Call {nameof(IMimironDb2DbContextOptionsBuilder.WithWowVersion)} inside {nameof(MimironDb2DbContextOptionsExtensions.UseMimironDb2)}(...). ");
     }
 
     private sealed class NullTactKeyProvider : ITactKeyProvider
@@ -158,6 +180,12 @@ public class MimironDb2OptionsExtension : IDbContextOptionsExtension
                         builder.Append(Extension.ProviderKey);
                     }
 
+                    if (Extension.WowVersion is not null)
+                    {
+                        builder.Append(":WoWVersion=");
+                        builder.Append(Extension.WowVersion);
+                    }
+
                     _logFragment = builder.ToString();
                 }
                 return _logFragment;
@@ -170,6 +198,7 @@ public class MimironDb2OptionsExtension : IDbContextOptionsExtension
             hashCode.Add(Extension.ProviderKey, StringComparer.Ordinal);
             hashCode.Add(Extension.ProviderConfigHash);
             hashCode.Add((int)Extension.Db2ModelBuildMode);
+            hashCode.Add(Extension.WowVersion, StringComparer.Ordinal);
             return hashCode.ToHashCode();
         }
 
@@ -177,7 +206,8 @@ public class MimironDb2OptionsExtension : IDbContextOptionsExtension
             => other is ExtensionInfo otherInfo
                 && string.Equals(Extension.ProviderKey, otherInfo.Extension.ProviderKey, StringComparison.Ordinal)
                 && Extension.ProviderConfigHash == otherInfo.Extension.ProviderConfigHash
-                && Extension.Db2ModelBuildMode == otherInfo.Extension.Db2ModelBuildMode;
+                && Extension.Db2ModelBuildMode == otherInfo.Extension.Db2ModelBuildMode
+                && string.Equals(Extension.WowVersion, otherInfo.Extension.WowVersion, StringComparison.Ordinal);
 
         public override void PopulateDebugInfo(IDictionary<string, string> debugInfo)
         {
@@ -186,6 +216,9 @@ public class MimironDb2OptionsExtension : IDbContextOptionsExtension
 
             debugInfo["MimironDb2:ProviderConfigHash"] = Extension.ProviderConfigHash.ToString();
             debugInfo["MimironDb2:Db2ModelBuildMode"] = Extension.Db2ModelBuildMode.ToString();
+
+            if (Extension.WowVersion is not null)
+                debugInfo["MimironDb2:WoWVersion"] = Extension.WowVersion;
         }
     }
 }

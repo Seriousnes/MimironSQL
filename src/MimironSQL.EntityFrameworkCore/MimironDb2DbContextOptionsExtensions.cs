@@ -1,6 +1,8 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 
+using Microsoft.Extensions.Configuration;
+
 using MimironSQL.EntityFrameworkCore.Infrastructure;
 
 namespace MimironSQL.EntityFrameworkCore;
@@ -31,6 +33,8 @@ public static class MimironDb2DbContextOptionsExtensions
 
         configureOptions(new MimironDb2DbContextOptionsBuilder(optionsBuilder));
 
+        TryApplyWowVersionFromAppSettings(optionsBuilder);
+
         extension = GetOrCreateExtension(optionsBuilder);
         if (extension.ProviderKey is null)
         {
@@ -39,6 +43,37 @@ public static class MimironDb2DbContextOptionsExtensions
         }
 
         return optionsBuilder;
+    }
+
+    private static void TryApplyWowVersionFromAppSettings(DbContextOptionsBuilder optionsBuilder)
+    {
+        var extension = GetOrCreateExtension(optionsBuilder);
+        if (!string.IsNullOrWhiteSpace(extension.WowVersion))
+            return;
+
+        foreach (var basePath in new[] { Directory.GetCurrentDirectory(), AppContext.BaseDirectory })
+        {
+            if (string.IsNullOrWhiteSpace(basePath) || !Directory.Exists(basePath))
+                continue;
+
+            var appSettingsPath = Path.Combine(basePath, "appsettings.json");
+            if (!File.Exists(appSettingsPath))
+                continue;
+
+            var configuration = new ConfigurationBuilder()
+                .SetBasePath(basePath)
+                .AddJsonFile("appsettings.json", optional: true, reloadOnChange: false)
+                .AddJsonFile("appsettings.Development.json", optional: true, reloadOnChange: false)
+                .Build();
+
+            var wowVersion = configuration["WoWDb2:WowVersion"];
+            if (string.IsNullOrWhiteSpace(wowVersion))
+                continue;
+
+            extension = extension.WithWowVersion(wowVersion);
+            ((IDbContextOptionsBuilderInfrastructure)optionsBuilder).AddOrUpdateExtension(extension);
+            return;
+        }
     }
 
     private static MimironDb2OptionsExtension GetOrCreateExtension(DbContextOptionsBuilder optionsBuilder)

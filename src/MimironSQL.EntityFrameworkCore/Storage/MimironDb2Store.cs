@@ -4,8 +4,11 @@ using MimironSQL.Db2;
 using MimironSQL.EntityFrameworkCore.Db2.Model;
 using MimironSQL.EntityFrameworkCore.Db2.Query;
 using MimironSQL.EntityFrameworkCore.Db2.Schema;
+using MimironSQL.EntityFrameworkCore.Infrastructure;
 using MimironSQL.Formats;
 using MimironSQL.Providers;
+
+using Microsoft.EntityFrameworkCore.Infrastructure;
 
 namespace MimironSQL.EntityFrameworkCore.Storage;
 
@@ -15,19 +18,27 @@ internal sealed class MimironDb2Store : IMimironDb2Store, IDisposable
     private readonly IDbdProvider _dbdProvider;
     private readonly IDb2Format _format;
     private readonly SchemaMapper _schemaMapper;
+    private readonly string _wowVersion;
     private readonly ConcurrentDictionary<string, Lazy<(IDb2File File, Db2TableSchema Schema)>> _cache = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, Lazy<Db2TableSchema>> _schemaFromMetadataCache = new(StringComparer.OrdinalIgnoreCase);
 
-    public MimironDb2Store(IDb2StreamProvider db2StreamProvider, IDbdProvider dbdProvider, IDb2Format format)
+    public MimironDb2Store(
+        IDb2StreamProvider db2StreamProvider,
+        IDbdProvider dbdProvider,
+        IDb2Format format,
+        IDbContextOptions contextOptions)
     {
         ArgumentNullException.ThrowIfNull(db2StreamProvider);
         ArgumentNullException.ThrowIfNull(dbdProvider);
         ArgumentNullException.ThrowIfNull(format);
+        ArgumentNullException.ThrowIfNull(contextOptions);
 
         _db2StreamProvider = db2StreamProvider;
         _dbdProvider = dbdProvider;
         _format = format;
-        _schemaMapper = new SchemaMapper(dbdProvider);
+
+        _wowVersion = contextOptions.Extensions.OfType<MimironDb2OptionsExtension>().First().WowVersion!;
+        _schemaMapper = new SchemaMapper(dbdProvider, _wowVersion);
     }
 
     public IDb2File OpenTable(string tableName)
@@ -44,8 +55,7 @@ internal sealed class MimironDb2Store : IMimironDb2Store, IDisposable
 
     public Db2TableSchema GetSchema(string tableName)
     {
-        var (_, schema) = OpenTableWithSchema(tableName);
-        return schema;
+        return GetSchemaFromMetadata(tableName);
     }
 
     public Db2TableSchema GetSchemaFromMetadata(string tableName)
@@ -54,10 +64,7 @@ internal sealed class MimironDb2Store : IMimironDb2Store, IDisposable
 
         var lazy = _schemaFromMetadataCache.GetOrAdd(tableName, key => new Lazy<Db2TableSchema>(() =>
         {
-            using var stream = _db2StreamProvider.OpenDb2Stream(key);
-
-            var layout = _format.GetLayout(stream);
-            return _schemaMapper.GetSchema(key, layout);
+            return _schemaMapper.GetSchema(key);
         }));
 
         return lazy.Value;
@@ -74,7 +81,9 @@ internal sealed class MimironDb2Store : IMimironDb2Store, IDisposable
             {
                 var file = _format.OpenFile(stream);
                 var layout = _format.GetLayout(file);
-                var schema = _schemaMapper.GetSchema(key, layout);
+
+                var schema = GetSchemaFromMetadata(key);
+                ValidateLayout(key, schema, layout);
                 return (file, schema);
             }
             catch
@@ -85,6 +94,28 @@ internal sealed class MimironDb2Store : IMimironDb2Store, IDisposable
         }));
 
         return lazy.Value;
+    }
+
+    private void ValidateLayout(string tableName, Db2TableSchema expectedSchema, Db2FileLayout actualLayout)
+    {
+        if (!expectedSchema.IsLayoutHashAllowed(actualLayout.LayoutHash))
+        {
+            var allowed = expectedSchema.AllowedLayoutHashes is null
+                ? "<any>"
+                : string.Join(", ", expectedSchema.AllowedLayoutHashes.Select(static h => h.ToString("X8")));
+
+            throw new InvalidDataException(
+                $"DB2 layout hash mismatch for '{tableName}'. " +
+                $"WOW_VERSION={_wowVersion}. Actual={actualLayout.LayoutHash:X8}. Allowed={allowed}.");
+        }
+
+        if (expectedSchema.PhysicalColumnCount != actualLayout.PhysicalFieldsCount)
+        {
+            throw new InvalidDataException(
+                $"DB2 physical column count mismatch for '{tableName}'. " +
+                $"WOW_VERSION={_wowVersion}. Actual={actualLayout.PhysicalFieldsCount}. Expected={expectedSchema.PhysicalColumnCount}."
+            );
+        }
     }
 
     public bool TryMaterializeById<TEntity>(string tableName, int id, Db2Model model, IDb2EntityFactory entityFactory, out TEntity? entity)

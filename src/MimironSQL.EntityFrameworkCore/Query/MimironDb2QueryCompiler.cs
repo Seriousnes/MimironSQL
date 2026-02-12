@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Collections;
 using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
@@ -74,18 +75,43 @@ internal sealed class MimironDb2QueryExecutor(
 
             var tableName2 = efEntityType2.GetTableName() ?? typeof(TEntity).Name;
 
-            var found = _store.TryMaterializeById<TEntity>(tableName2, request.Id, model, keyLookupEntityFactory, out var entity);
+            using var keyLookupSession = new QuerySession<RowHandle>(_context, _store, model);
+            keyLookupSession.Warm(query, typeof(TEntity));
+
+            var (rootFile, rootSchema) = keyLookupSession.Resolve(tableName2);
+
+            var rootEntities = MaterializeByIdsFromOpenFile<TEntity>(rootFile, rootSchema, tableName2, request.Ids, request.TakeCount, model, keyLookupEntityFactory);
+
+            IEnumerable current = rootEntities;
+            var currentElementType = typeof(TEntity);
+
+            // Apply includes before Select, matching provider semantics.
+            for (var i = 0; i < request.Includes.Count; i++)
+            {
+                current = Db2IncludeChainExecutor.Apply<TEntity, RowHandle>(
+                    (IEnumerable<TEntity>)current,
+                    model,
+                    keyLookupSession.Resolve,
+                    request.Includes[i].Members,
+                    keyLookupEntityFactory);
+            }
+
+            if (request.Select is not null)
+            {
+                current = ApplySelect(current, currentElementType, request.Select.Selector);
+                currentElementType = request.Select.Selector.ReturnType;
+            }
 
             return request.FinalOperator switch
             {
-                Db2FinalOperator.None => (object)MaterializeEnumerableResult<TEntity, TResult>(found, entity),
-                Db2FinalOperator.FirstOrDefault => entity,
-                Db2FinalOperator.SingleOrDefault => entity,
-                Db2FinalOperator.First => found ? entity : throw new InvalidOperationException("Sequence contains no elements"),
-                Db2FinalOperator.Single => found ? entity : throw new InvalidOperationException("Sequence contains no elements"),
-                Db2FinalOperator.Any => found,
-                Db2FinalOperator.Count => found ? 1 : 0,
-                Db2FinalOperator.All => throw new NotSupportedException("Key lookup fast-path does not support All."),
+                Db2FinalOperator.None => MaterializeSequenceResult<TResult>(current, currentElementType),
+                Db2FinalOperator.First => (TResult)ApplyScalarOperator(Db2FinalOperator.First, current, currentElementType, request.FinalPredicate)!,
+                Db2FinalOperator.FirstOrDefault => (TResult?)ApplyScalarOperator(Db2FinalOperator.FirstOrDefault, current, currentElementType, request.FinalPredicate),
+                Db2FinalOperator.Single => (TResult)ApplyScalarOperator(Db2FinalOperator.Single, current, currentElementType, request.FinalPredicate)!,
+                Db2FinalOperator.SingleOrDefault => (TResult?)ApplyScalarOperator(Db2FinalOperator.SingleOrDefault, current, currentElementType, request.FinalPredicate),
+                Db2FinalOperator.Any => (TResult)(object)(bool)ApplyScalarOperator(Db2FinalOperator.Any, current, currentElementType, request.FinalPredicate)!,
+                Db2FinalOperator.Count => (TResult)(object)(int)ApplyScalarOperator(Db2FinalOperator.Count, current, currentElementType, request.FinalPredicate)!,
+                Db2FinalOperator.All => (TResult)(object)(bool)ApplyScalarOperator(Db2FinalOperator.All, current, currentElementType, request.FinalPredicate)!,
                 _ => throw new NotSupportedException($"Unsupported terminal operator for key lookup: {request.FinalOperator}.")
             };
         }
@@ -209,39 +235,42 @@ internal sealed class MimironDb2QueryExecutor(
         return true;
     }
 
-    private static TResult MaterializeEnumerableResult<TEntity, TResult>(bool found, TEntity? entity)
+    private static TResult MaterializeEnumerableResult<TEntity, TResult>(IReadOnlyList<TEntity> entities)
         where TEntity : class
     {
         // This handles e.g. Where(x => x.Id == const) without a scalar terminal operator.
-        if (!found || entity is null)
+        if (entities.Count == 0)
         {
             if (typeof(TResult).IsAssignableFrom(typeof(IEnumerable<TEntity>)))
-                return (TResult)(object)Enumerable.Empty<TEntity>();
+                return (TResult)(object)Array.Empty<TEntity>();
 
             // Fallback for unexpected result shapes.
             return default!;
         }
 
-        var one = new[] { entity };
-        if (typeof(TResult).IsAssignableFrom(one.GetType()))
-            return (TResult)(object)one;
+        var array = entities as TEntity[] ?? entities.ToArray();
+        if (typeof(TResult).IsAssignableFrom(array.GetType()))
+            return (TResult)(object)array;
 
-        return (TResult)(object)one;
+        return (TResult)(object)array;
     }
 
     private static bool TryGetKeyLookupRequest<TEntity>(Expression query, string pkMemberName, out KeyLookupRequest request)
     {
         var pipeline = Db2QueryPipeline.Parse(query);
 
-        // Key lookup path only supports root-entity sequences without Include/Select.
-        if (pipeline.Operations.Any(op => op is Db2IncludeOperation or Db2SelectOperation or Db2SkipOperation))
+        // Skip remains disqualifying for the key lookup path.
+        if (pipeline.Operations.Any(op => op is Db2SkipOperation))
         {
             request = default;
             return false;
         }
 
         var take = pipeline.Operations.OfType<Db2TakeOperation>().FirstOrDefault();
-        if (take is not null && take.Count != 1)
+
+        // Key lookup can apply Take safely since it controls result ordering.
+        // Keep Skip disqualifying for now.
+        if (take is not null && take.Count < 0)
         {
             request = default;
             return false;
@@ -258,47 +287,348 @@ internal sealed class MimironDb2QueryExecutor(
             return false;
         }
 
-        if (!TryExtractIdEquality<TEntity>((Expression<Func<TEntity, bool>>)whereOps[0].Predicate, pkMemberName, out var id))
+        if (!TryExtractPkIds<TEntity>((Expression<Func<TEntity, bool>>)whereOps[0].Predicate, pkMemberName, out var ids))
         {
             request = default;
             return false;
         }
 
-        request = new KeyLookupRequest(id, pipeline.FinalOperator);
+        var finalPredicate = pipeline.FinalOperator == Db2FinalOperator.All ? pipeline.FinalPredicate : null;
+        var includes = pipeline.Operations.OfType<Db2IncludeOperation>().ToArray();
+
+        Db2SelectOperation? select = null;
+        for (var i = 0; i < pipeline.Operations.Count; i++)
+        {
+            if (pipeline.Operations[i] is Db2SelectOperation s)
+            {
+                if (select is not null)
+                {
+                    request = default;
+                    return false;
+                }
+
+                if (s.Selector is not { Parameters.Count: 1 } || s.Selector.Parameters[0].Type != typeof(TEntity))
+                {
+                    request = default;
+                    return false;
+                }
+
+                select = s;
+            }
+        }
+
+        // Include must appear before Select (same as provider behavior).
+        if (select is not null)
+        {
+            var sawSelect = false;
+            for (var i = 0; i < pipeline.Operations.Count; i++)
+            {
+                var op = pipeline.Operations[i];
+                if (op == select)
+                    sawSelect = true;
+                else if (sawSelect && op is Db2IncludeOperation)
+                {
+                    request = default;
+                    return false;
+                }
+            }
+        }
+
+        request = new KeyLookupRequest(ids, take?.Count, pipeline.FinalOperator, finalPredicate, includes, select);
         return true;
     }
 
-    private static bool TryExtractIdEquality<TEntity>(Expression<Func<TEntity, bool>> predicate, string pkMemberName, out int id)
+    private static IReadOnlyList<TEntity> MaterializeByIdsFromOpenFile<TEntity>(
+        IDb2File<RowHandle> file,
+        Db2TableSchema schema,
+        string tableName,
+        IReadOnlyList<int> ids,
+        int? takeCount,
+        Db2Model model,
+        IDb2EntityFactory entityFactory)
+        where TEntity : class
     {
-        // Support shapes like:
+        if (takeCount is 0 || ids.Count == 0)
+            return Array.Empty<TEntity>();
+
+        if (takeCount is < 0)
+            throw new ArgumentOutOfRangeException(nameof(takeCount), "Take count cannot be negative.");
+
+        var maxCount = takeCount ?? int.MaxValue;
+
+        var handles = new List<RowHandle>(capacity: Math.Min(ids.Count, maxCount));
+        for (var i = 0; i < ids.Count; i++)
+        {
+            if (handles.Count >= maxCount)
+                break;
+
+            if (!file.TryGetRowById(ids[i], out var handle))
+                continue;
+
+            handles.Add(handle);
+        }
+
+        if (handles.Count == 0)
+            return Array.Empty<TEntity>();
+
+        handles.Sort(static (a, b) =>
+        {
+            var section = a.SectionIndex.CompareTo(b.SectionIndex);
+            if (section != 0)
+                return section;
+
+            return a.RowIndexInSection.CompareTo(b.RowIndexInSection);
+        });
+
+        var db2EntityType = model.GetEntityType(typeof(TEntity)).WithSchema(tableName, schema);
+        var materializer = new Db2EntityMaterializer<TEntity, RowHandle>(db2EntityType, entityFactory);
+
+        var results = new List<TEntity>(handles.Count);
+        for (var i = 0; i < handles.Count; i++)
+            results.Add(materializer.Materialize(file, handles[i]));
+
+        return results;
+    }
+
+    private static IEnumerable ApplySelect(IEnumerable source, Type sourceElementType, LambdaExpression selector)
+    {
+        var resultType = selector.ReturnType;
+        var typedSelector = selector.Compile();
+        return EnumerableDispatch.GetSelect(sourceElementType, resultType)(source, typedSelector);
+    }
+
+    private static TResult MaterializeSequenceResult<TResult>(IEnumerable sequence, Type elementType)
+    {
+        var array = EnumerableDispatch.GetToArray(elementType)(sequence);
+        if (typeof(TResult).IsAssignableFrom(array.GetType()))
+            return (TResult)array;
+
+        var enumerableType = typeof(IEnumerable<>).MakeGenericType(elementType);
+        if (typeof(TResult).IsAssignableFrom(enumerableType))
+            return (TResult)array;
+
+        return (TResult)array;
+    }
+
+    private static object? ApplyScalarOperator(Db2FinalOperator op, IEnumerable sequence, Type elementType, LambdaExpression? finalPredicate)
+    {
+        return op switch
+        {
+            Db2FinalOperator.First => EnumerableDispatch.GetFirst(elementType)(sequence),
+            Db2FinalOperator.FirstOrDefault => EnumerableDispatch.GetFirstOrDefault(elementType)(sequence),
+            Db2FinalOperator.Single => EnumerableDispatch.GetSingle(elementType)(sequence),
+            Db2FinalOperator.SingleOrDefault => EnumerableDispatch.GetSingleOrDefault(elementType)(sequence),
+            Db2FinalOperator.Any => EnumerableDispatch.GetAny(elementType)(sequence),
+            Db2FinalOperator.Count => EnumerableDispatch.GetCount(elementType)(sequence),
+            Db2FinalOperator.All => finalPredicate is null
+                ? throw new NotSupportedException("Queryable.All requires a predicate for this provider.")
+                : EnumerableDispatch.GetAll(elementType)(sequence, finalPredicate.Compile()),
+            _ => throw new NotSupportedException($"Unsupported scalar operator: {op}.")
+        };
+    }
+
+    private static bool TryExtractPkIds<TEntity>(Expression<Func<TEntity, bool>> predicate, string pkMemberName, out int[] ids)
+    {
+        // Supports shapes like:
         //  - x => x.Id == 123
         //  - x => 123 == x.Id
         //  - x => EF.Property<int>(x, "Id") == 123
+        //  - x => new[] { 1, 2, 3 }.Contains(x.Id)
+        //  - x => x.Id == 1 || x.Id == 2
 
         static Expression StripConvert(Expression e)
             => e is UnaryExpression { NodeType: ExpressionType.Convert or ExpressionType.ConvertChecked } u ? u.Operand : e;
 
-        id = 0;
+        ids = [];
 
-        if (predicate.Body is not BinaryExpression { NodeType: ExpressionType.Equal } eq)
+        var raw = new List<int>();
+        if (!TryExtractIdsFromExpression(StripConvert(predicate.Body), predicate.Parameters[0], pkMemberName, raw))
             return false;
 
-        var left = StripConvert(eq.Left);
-        var right = StripConvert(eq.Right);
+        if (raw.Count == 0)
+            return false;
 
-        if (TryGetConstantInt(right, out var rightConst) && IsKeyAccess(left, predicate.Parameters[0], pkMemberName))
+        var seen = new HashSet<int>();
+        var orderedDistinct = new List<int>(raw.Count);
+        for (var i = 0; i < raw.Count; i++)
         {
-            id = rightConst;
+            var id = raw[i];
+            if (seen.Add(id))
+                orderedDistinct.Add(id);
+        }
+
+        ids = [.. orderedDistinct];
+        return true;
+
+        static bool TryExtractIdsFromExpression(Expression expr, ParameterExpression param, string pkMemberName, List<int> ids)
+        {
+            expr = StripConvert(expr);
+
+            switch (expr)
+            {
+                case BinaryExpression { NodeType: ExpressionType.Equal } eq:
+                    {
+                        var left = StripConvert(eq.Left);
+                        var right = StripConvert(eq.Right);
+
+                        if (IsKeyAccess(left, param, pkMemberName) && TryEvaluateInt(right, param, out var rightId))
+                        {
+                            ids.Add(rightId);
+                            return true;
+                        }
+
+                        if (IsKeyAccess(right, param, pkMemberName) && TryEvaluateInt(left, param, out var leftId))
+                        {
+                            ids.Add(leftId);
+                            return true;
+                        }
+
+                        return false;
+                    }
+
+                case BinaryExpression { NodeType: ExpressionType.OrElse } or:
+                    {
+                        // Preserve evaluation order: left ids, then right ids.
+                        return TryExtractIdsFromExpression(or.Left, param, pkMemberName, ids)
+                               && TryExtractIdsFromExpression(or.Right, param, pkMemberName, ids);
+                    }
+
+                case MethodCallExpression call:
+                    return TryExtractContains(call, param, pkMemberName, ids);
+
+                default:
+                    return false;
+            }
+        }
+
+        static bool TryExtractContains(MethodCallExpression call, ParameterExpression param, string pkMemberName, List<int> ids)
+        {
+            if (!string.Equals(call.Method.Name, nameof(Enumerable.Contains), StringComparison.Ordinal))
+                return false;
+
+            Expression? collectionExpr = null;
+            Expression? valueExpr = null;
+
+            // Enumerable.Contains(collection, value)
+            if (call.Method.DeclaringType == typeof(Enumerable) && call.Arguments.Count == 2)
+            {
+                collectionExpr = call.Arguments[0];
+                valueExpr = call.Arguments[1];
+            }
+            // instance.Contains(value)
+            else if (call.Object is not null && call.Arguments.Count == 1)
+            {
+                collectionExpr = call.Object;
+                valueExpr = call.Arguments[0];
+            }
+            // Static Contains with two args (e.g. List.Contains as static unlikely but handle).
+            else if (call.Object is null && call.Arguments.Count == 2)
+            {
+                collectionExpr = call.Arguments[0];
+                valueExpr = call.Arguments[1];
+            }
+
+            if (collectionExpr is null || valueExpr is null)
+                return false;
+
+            valueExpr = StripConvert(valueExpr);
+
+            if (!IsKeyAccess(valueExpr, param, pkMemberName))
+                return false;
+
+            if (!TryEvaluateIntSequence(collectionExpr, param, out var values))
+                return false;
+
+            for (var i = 0; i < values.Count; i++)
+                ids.Add(values[i]);
+
             return true;
         }
 
-        if (TryGetConstantInt(left, out var leftConst) && IsKeyAccess(right, predicate.Parameters[0], pkMemberName))
+        static bool TryEvaluateIntSequence(Expression expr, ParameterExpression param, out IReadOnlyList<int> values)
         {
-            id = leftConst;
-            return true;
+            expr = StripConvert(expr);
+
+            // new[] { ... }
+            if (expr is NewArrayExpression newArray)
+            {
+                var list = new List<int>(newArray.Expressions.Count);
+                for (var i = 0; i < newArray.Expressions.Count; i++)
+                {
+                    if (!TryEvaluateInt(newArray.Expressions[i], param, out var value))
+                    {
+                        values = [];
+                        return false;
+                    }
+
+                    list.Add(value);
+                }
+
+                values = list;
+                return true;
+            }
+
+            if (ReferencesParameter(expr, param))
+            {
+                values = [];
+                return false;
+            }
+
+            try
+            {
+                var converted = Expression.Convert(expr, typeof(object));
+                var fn = Expression.Lambda<Func<object>>(converted).Compile();
+                var obj = fn();
+                if (obj is IEnumerable<int> ints)
+                {
+                    values = ints as IReadOnlyList<int> ?? ints.ToArray();
+                    return true;
+                }
+            }
+            catch
+            {
+                // ignore
+            }
+
+            values = [];
+            return false;
         }
 
-        return false;
+        static bool TryEvaluateInt(Expression expr, ParameterExpression param, out int value)
+        {
+            expr = StripConvert(expr);
+
+            if (expr is ConstantExpression { Value: int i })
+            {
+                value = i;
+                return true;
+            }
+
+            if (ReferencesParameter(expr, param))
+            {
+                value = 0;
+                return false;
+            }
+
+            try
+            {
+                var fn = Expression.Lambda<Func<int>>(Expression.Convert(expr, typeof(int))).Compile();
+                value = fn();
+                return true;
+            }
+            catch
+            {
+                value = 0;
+                return false;
+            }
+        }
+
+        static bool ReferencesParameter(Expression expr, ParameterExpression param)
+        {
+            var visitor = new ParameterReferenceVisitor(param);
+            visitor.Visit(expr);
+            return visitor.Found;
+        }
     }
 
     private static bool IsKeyAccess(Expression expr, ParameterExpression param, string pkMemberName)
@@ -316,25 +646,129 @@ internal sealed class MimironDb2QueryExecutor(
         return false;
     }
 
-    private static bool TryGetConstantInt(Expression expr, out int value)
+    private readonly record struct KeyLookupRequest(
+        int[] Ids,
+        int? TakeCount,
+        Db2FinalOperator FinalOperator,
+        LambdaExpression? FinalPredicate,
+        IReadOnlyList<Db2IncludeOperation> Includes,
+        Db2SelectOperation? Select);
+
+    private static class EnumerableDispatch
     {
-        if (expr is ConstantExpression { Value: int i })
-        {
-            value = i;
-            return true;
-        }
+        private static readonly ConcurrentDictionary<(Type Source, Type Result), Func<IEnumerable, Delegate, IEnumerable>> SelectDelegates = new();
+        private static readonly ConcurrentDictionary<Type, Func<IEnumerable, object>> ToArrayDelegates = new();
+        private static readonly ConcurrentDictionary<Type, Func<IEnumerable, object?>> FirstDelegates = new();
+        private static readonly ConcurrentDictionary<Type, Func<IEnumerable, object?>> FirstOrDefaultDelegates = new();
+        private static readonly ConcurrentDictionary<Type, Func<IEnumerable, object?>> SingleDelegates = new();
+        private static readonly ConcurrentDictionary<Type, Func<IEnumerable, object?>> SingleOrDefaultDelegates = new();
+        private static readonly ConcurrentDictionary<Type, Func<IEnumerable, bool>> AnyDelegates = new();
+        private static readonly ConcurrentDictionary<Type, Func<IEnumerable, int>> CountDelegates = new();
+        private static readonly ConcurrentDictionary<Type, Func<IEnumerable, Delegate, bool>> AllDelegates = new();
 
-        if (expr is ConstantExpression { Value: null })
-        {
-            value = 0;
-            return false;
-        }
+        public static Func<IEnumerable, Delegate, IEnumerable> GetSelect(Type sourceType, Type resultType)
+            => SelectDelegates.GetOrAdd((sourceType, resultType), static key =>
+            {
+                var m = typeof(Enumerable)
+                    .GetMethods(BindingFlags.Public | BindingFlags.Static)
+                    .Single(x =>
+                        x.Name == nameof(Enumerable.Select)
+                        && x.GetParameters().Length == 2
+                        && x.GetParameters()[1].ParameterType.IsGenericType
+                        && x.GetParameters()[1].ParameterType.GetGenericTypeDefinition() == typeof(Func<,>))
+                    .MakeGenericMethod(key.Source, key.Result);
 
-        value = 0;
-        return false;
+                return (source, selector) => (IEnumerable)m.Invoke(null, [source, selector])!;
+            });
+
+        public static Func<IEnumerable, object> GetToArray(Type elementType)
+            => ToArrayDelegates.GetOrAdd(elementType, static elementType =>
+            {
+                var m = typeof(Enumerable)
+                    .GetMethods(BindingFlags.Public | BindingFlags.Static)
+                    .Single(x => x.Name == nameof(Enumerable.ToArray) && x.GetParameters().Length == 1)
+                    .MakeGenericMethod(elementType);
+
+                return source => m.Invoke(null, [source])!;
+            });
+
+        public static Func<IEnumerable, object?> GetFirst(Type elementType)
+            => FirstDelegates.GetOrAdd(elementType, static elementType =>
+            {
+                var m = typeof(Enumerable)
+                    .GetMethods(BindingFlags.Public | BindingFlags.Static)
+                    .Single(x => x.Name == nameof(Enumerable.First) && x.GetParameters().Length == 1)
+                    .MakeGenericMethod(elementType);
+
+                return source => m.Invoke(null, [source]);
+            });
+
+        public static Func<IEnumerable, object?> GetFirstOrDefault(Type elementType)
+            => FirstOrDefaultDelegates.GetOrAdd(elementType, static elementType =>
+            {
+                var m = typeof(Enumerable)
+                    .GetMethods(BindingFlags.Public | BindingFlags.Static)
+                    .Single(x => x.Name == nameof(Enumerable.FirstOrDefault) && x.GetParameters().Length == 1)
+                    .MakeGenericMethod(elementType);
+
+                return source => m.Invoke(null, [source]);
+            });
+
+        public static Func<IEnumerable, object?> GetSingle(Type elementType)
+            => SingleDelegates.GetOrAdd(elementType, static elementType =>
+            {
+                var m = typeof(Enumerable)
+                    .GetMethods(BindingFlags.Public | BindingFlags.Static)
+                    .Single(x => x.Name == nameof(Enumerable.Single) && x.GetParameters().Length == 1)
+                    .MakeGenericMethod(elementType);
+
+                return source => m.Invoke(null, [source]);
+            });
+
+        public static Func<IEnumerable, object?> GetSingleOrDefault(Type elementType)
+            => SingleOrDefaultDelegates.GetOrAdd(elementType, static elementType =>
+            {
+                var m = typeof(Enumerable)
+                    .GetMethods(BindingFlags.Public | BindingFlags.Static)
+                    .Single(x => x.Name == nameof(Enumerable.SingleOrDefault) && x.GetParameters().Length == 1)
+                    .MakeGenericMethod(elementType);
+
+                return source => m.Invoke(null, [source]);
+            });
+
+        public static Func<IEnumerable, bool> GetAny(Type elementType)
+            => AnyDelegates.GetOrAdd(elementType, static elementType =>
+            {
+                var m = typeof(Enumerable)
+                    .GetMethods(BindingFlags.Public | BindingFlags.Static)
+                    .Single(x => x.Name == nameof(Enumerable.Any) && x.GetParameters().Length == 1)
+                    .MakeGenericMethod(elementType);
+
+                return source => (bool)m.Invoke(null, [source])!;
+            });
+
+        public static Func<IEnumerable, int> GetCount(Type elementType)
+            => CountDelegates.GetOrAdd(elementType, static elementType =>
+            {
+                var m = typeof(Enumerable)
+                    .GetMethods(BindingFlags.Public | BindingFlags.Static)
+                    .Single(x => x.Name == nameof(Enumerable.Count) && x.GetParameters().Length == 1)
+                    .MakeGenericMethod(elementType);
+
+                return source => (int)m.Invoke(null, [source])!;
+            });
+
+        public static Func<IEnumerable, Delegate, bool> GetAll(Type elementType)
+            => AllDelegates.GetOrAdd(elementType, static elementType =>
+            {
+                var m = typeof(Enumerable)
+                    .GetMethods(BindingFlags.Public | BindingFlags.Static)
+                    .Single(x => x.Name == nameof(Enumerable.All) && x.GetParameters().Length == 2)
+                    .MakeGenericMethod(elementType);
+
+                return (source, predicate) => (bool)m.Invoke(null, [source, predicate])!;
+            });
     }
-
-    private readonly record struct KeyLookupRequest(int Id, Db2FinalOperator FinalOperator);
 
     private static Type GetRootEntityClrType(Expression expression)
     {
@@ -375,6 +809,28 @@ internal sealed class MimironDb2QueryExecutor(
             }
 
             return base.VisitConstant(node);
+        }
+    }
+
+    private sealed class ParameterReferenceVisitor(ParameterExpression parameter) : ExpressionVisitor
+    {
+        private readonly ParameterExpression _parameter = parameter;
+        public bool Found { get; private set; }
+
+        public override Expression? Visit(Expression? node)
+        {
+            if (Found || node is null)
+                return node;
+
+            return base.Visit(node);
+        }
+
+        protected override Expression VisitParameter(ParameterExpression node)
+        {
+            if (node == _parameter)
+                Found = true;
+
+            return node;
         }
     }
 }

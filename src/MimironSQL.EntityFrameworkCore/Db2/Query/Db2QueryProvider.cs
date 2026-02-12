@@ -560,6 +560,57 @@ internal sealed class Db2QueryProvider<TEntity, TRow>(
 
     private IEnumerable<TEntity> EnumerateEntities(IList<Expression<Func<TEntity, bool>>> predicates, int? skip, int? take)
     {
+        if (take is 0)
+            yield break;
+
+        // Fast-path: if the root filter is strictly primary-key based (equality, Contains, OR),
+        // resolve rows via the file's ID index instead of enumerating the whole table.
+        if (predicates.Count == 1
+            && TryExtractPkIds(predicates[0], _rootEntityType.PrimaryKeyMember.Name, out var ids))
+        {
+            var handles = new List<RowHandle>(capacity: ids.Length);
+
+            for (var i = 0; i < ids.Length; i++)
+            {
+                if (!file.TryGetRowById(ids[i], out var row))
+                    continue;
+
+                handles.Add(Db2RowHandleAccess.AsHandle(row));
+            }
+
+            if (handles.Count == 0)
+                yield break;
+
+            handles.Sort(static (a, b) =>
+            {
+                var section = a.SectionIndex.CompareTo(b.SectionIndex);
+                if (section != 0)
+                    return section;
+
+                return a.RowIndexInSection.CompareTo(b.RowIndexInSection);
+            });
+
+            var fastSkipped = 0;
+            var fastYielded = 0;
+
+            for (var i = 0; i < handles.Count; i++)
+            {
+                if (skip.HasValue && fastSkipped < skip.Value)
+                {
+                    fastSkipped++;
+                    continue;
+                }
+
+                if (take.HasValue && fastYielded >= take.Value)
+                    yield break;
+
+                yield return _materializer.Materialize(file, handles[i]);
+                fastYielded++;
+            }
+
+            yield break;
+        }
+
         var rowPredicates = new List<Func<TRow, bool>>();
         var entityPredicates = new List<Func<TEntity, bool>>();
 
@@ -681,6 +732,231 @@ internal sealed class Db2QueryProvider<TEntity, TRow>(
 
                     break;
                 }
+        }
+    }
+
+    private static bool TryExtractPkIds(Expression<Func<TEntity, bool>> predicate, string pkMemberName, out int[] ids)
+    {
+        static Expression StripConvert(Expression e)
+            => e is UnaryExpression { NodeType: ExpressionType.Convert or ExpressionType.ConvertChecked } u ? u.Operand : e;
+
+        ids = [];
+
+        var raw = new List<int>();
+        if (!TryExtractIdsFromExpression(StripConvert(predicate.Body), predicate.Parameters[0], pkMemberName, raw))
+            return false;
+
+        if (raw.Count == 0)
+            return false;
+
+        var seen = new HashSet<int>();
+        var orderedDistinct = new List<int>(raw.Count);
+        for (var i = 0; i < raw.Count; i++)
+        {
+            var id = raw[i];
+            if (seen.Add(id))
+                orderedDistinct.Add(id);
+        }
+
+        ids = [.. orderedDistinct];
+        return true;
+
+        static bool TryExtractIdsFromExpression(Expression expr, ParameterExpression param, string pkMemberName, List<int> ids)
+        {
+            expr = StripConvert(expr);
+
+            switch (expr)
+            {
+                case BinaryExpression { NodeType: ExpressionType.Equal } eq:
+                    {
+                        var left = StripConvert(eq.Left);
+                        var right = StripConvert(eq.Right);
+
+                        if (IsKeyAccess(left, param, pkMemberName) && TryEvaluateInt(right, param, out var rightId))
+                        {
+                            ids.Add(rightId);
+                            return true;
+                        }
+
+                        if (IsKeyAccess(right, param, pkMemberName) && TryEvaluateInt(left, param, out var leftId))
+                        {
+                            ids.Add(leftId);
+                            return true;
+                        }
+
+                        return false;
+                    }
+
+                case BinaryExpression { NodeType: ExpressionType.OrElse } or:
+                    return TryExtractIdsFromExpression(or.Left, param, pkMemberName, ids)
+                           && TryExtractIdsFromExpression(or.Right, param, pkMemberName, ids);
+
+                case MethodCallExpression call:
+                    return TryExtractContains(call, param, pkMemberName, ids);
+
+                default:
+                    return false;
+            }
+        }
+
+        static bool TryExtractContains(MethodCallExpression call, ParameterExpression param, string pkMemberName, List<int> ids)
+        {
+            if (!string.Equals(call.Method.Name, nameof(Enumerable.Contains), StringComparison.Ordinal))
+                return false;
+
+            Expression? collectionExpr = null;
+            Expression? valueExpr = null;
+
+            if (call.Method.DeclaringType == typeof(Enumerable) && call.Arguments.Count == 2)
+            {
+                collectionExpr = call.Arguments[0];
+                valueExpr = call.Arguments[1];
+            }
+            else if (call.Object is not null && call.Arguments.Count == 1)
+            {
+                collectionExpr = call.Object;
+                valueExpr = call.Arguments[0];
+            }
+            else if (call.Object is null && call.Arguments.Count == 2)
+            {
+                collectionExpr = call.Arguments[0];
+                valueExpr = call.Arguments[1];
+            }
+
+            if (collectionExpr is null || valueExpr is null)
+                return false;
+
+            valueExpr = StripConvert(valueExpr);
+            if (!IsKeyAccess(valueExpr, param, pkMemberName))
+                return false;
+
+            if (!TryEvaluateIntSequence(collectionExpr, param, out var values))
+                return false;
+
+            for (var i = 0; i < values.Count; i++)
+                ids.Add(values[i]);
+
+            return true;
+        }
+
+        static bool IsKeyAccess(Expression expr, ParameterExpression param, string pkMemberName)
+        {
+            if (expr is MemberExpression { Member: { Name: var name }, Expression: var instance } && instance == param && name == pkMemberName)
+                return true;
+
+            if (expr is MethodCallExpression { Method: { Name: "Property", DeclaringType: { Name: "EF", Namespace: "Microsoft.EntityFrameworkCore" } }, Arguments: [var entityExpr, var nameExpr] })
+            {
+                if (entityExpr == param && nameExpr is ConstantExpression { Value: string s } && s == pkMemberName)
+                    return true;
+            }
+
+            return false;
+        }
+
+        static bool TryEvaluateIntSequence(Expression expr, ParameterExpression param, out IReadOnlyList<int> values)
+        {
+            expr = StripConvert(expr);
+
+            if (expr is NewArrayExpression newArray)
+            {
+                var list = new List<int>(newArray.Expressions.Count);
+                for (var i = 0; i < newArray.Expressions.Count; i++)
+                {
+                    if (!TryEvaluateInt(newArray.Expressions[i], param, out var value))
+                    {
+                        values = [];
+                        return false;
+                    }
+
+                    list.Add(value);
+                }
+
+                values = list;
+                return true;
+            }
+
+            if (ReferencesParameter(expr, param))
+            {
+                values = [];
+                return false;
+            }
+
+            try
+            {
+                var converted = Expression.Convert(expr, typeof(object));
+                var fn = Expression.Lambda<Func<object>>(converted).Compile();
+                var obj = fn();
+                if (obj is IEnumerable<int> ints)
+                {
+                    values = ints as IReadOnlyList<int> ?? ints.ToArray();
+                    return true;
+                }
+            }
+            catch
+            {
+                // ignore
+            }
+
+            values = [];
+            return false;
+        }
+
+        static bool TryEvaluateInt(Expression expr, ParameterExpression param, out int value)
+        {
+            expr = StripConvert(expr);
+
+            if (expr is ConstantExpression { Value: int i })
+            {
+                value = i;
+                return true;
+            }
+
+            if (ReferencesParameter(expr, param))
+            {
+                value = 0;
+                return false;
+            }
+
+            try
+            {
+                var fn = Expression.Lambda<Func<int>>(Expression.Convert(expr, typeof(int))).Compile();
+                value = fn();
+                return true;
+            }
+            catch
+            {
+                value = 0;
+                return false;
+            }
+        }
+
+        static bool ReferencesParameter(Expression expr, ParameterExpression param)
+        {
+            var visitor = new ParameterReferenceVisitor(param);
+            visitor.Visit(expr);
+            return visitor.Found;
+        }
+    }
+
+    private sealed class ParameterReferenceVisitor(ParameterExpression parameter) : ExpressionVisitor
+    {
+        private readonly ParameterExpression _parameter = parameter;
+        public bool Found { get; private set; }
+
+        public override Expression? Visit(Expression? node)
+        {
+            if (Found || node is null)
+                return node;
+
+            return base.Visit(node);
+        }
+
+        protected override Expression VisitParameter(ParameterExpression node)
+        {
+            if (node == _parameter)
+                Found = true;
+
+            return node;
         }
     }
 

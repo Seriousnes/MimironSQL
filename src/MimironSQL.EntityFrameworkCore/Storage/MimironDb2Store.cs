@@ -139,6 +139,71 @@ internal sealed class MimironDb2Store : IMimironDb2Store, IDisposable
         }
     }
 
+    public IReadOnlyList<TEntity> MaterializeByIds<TEntity>(string tableName, IReadOnlyList<int> ids, int? takeCount, Db2Model model, IDb2EntityFactory entityFactory)
+        where TEntity : class
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(tableName);
+        ArgumentNullException.ThrowIfNull(ids);
+        ArgumentNullException.ThrowIfNull(model);
+        ArgumentNullException.ThrowIfNull(entityFactory);
+
+        if (takeCount is 0 || ids.Count == 0)
+            return Array.Empty<TEntity>();
+
+        if (takeCount is < 0)
+            throw new ArgumentOutOfRangeException(nameof(takeCount), "Take count cannot be negative.");
+
+        var maxCount = takeCount ?? int.MaxValue;
+        var results = new List<TEntity>(capacity: Math.Min(ids.Count, maxCount));
+
+        var (file, schema) = OpenTableWithSchema(tableName);
+        try
+        {
+            if (file is not IDb2File<RowHandle> typed)
+                throw new NotSupportedException($"Key lookups require row type '{typeof(RowHandle).FullName}', but file reports '{file.RowType.FullName}'.");
+
+            var db2EntityType = model.GetEntityType(typeof(TEntity)).WithSchema(tableName, schema);
+            var materializer = new Db2EntityMaterializer<TEntity, RowHandle>(db2EntityType, entityFactory);
+
+            var handles = new List<RowHandle>(capacity: Math.Min(ids.Count, maxCount));
+
+            for (var i = 0; i < ids.Count; i++)
+            {
+                var id = ids[i];
+                if (!typed.TryGetRowById(id, out var handle))
+                    continue;
+
+                handles.Add(handle);
+                if (handles.Count >= maxCount)
+                    break;
+            }
+
+            if (handles.Count == 0)
+                return Array.Empty<TEntity>();
+
+            handles.Sort(static (a, b) =>
+            {
+                var section = a.SectionIndex.CompareTo(b.SectionIndex);
+                if (section != 0)
+                    return section;
+
+                return a.RowIndexInSection.CompareTo(b.RowIndexInSection);
+            });
+
+            for (var i = 0; i < handles.Count; i++)
+            {
+                var entity = materializer.Materialize(typed, handles[i]);
+                results.Add(entity);
+            }
+
+            return results;
+        }
+        finally
+        {
+            (file as IDisposable)?.Dispose();
+        }
+    }
+
     public void Dispose()
     {
         // This store does not own DB2 file lifetimes. Callers are responsible for disposal.

@@ -19,4 +19,7 @@ internal interface IMimironDb2Store
 
     bool TryMaterializeById<TEntity>(string tableName, int id, Db2Model model, IDb2EntityFactory entityFactory, out TEntity? entity)
         where TEntity : class;
+
+    IReadOnlyList<TEntity> MaterializeByIds<TEntity>(string tableName, IReadOnlyList<int> ids, int? takeCount, Db2Model model, IDb2EntityFactory entityFactory)
+        where TEntity : class;
 }

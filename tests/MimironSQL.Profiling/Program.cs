@@ -30,7 +30,8 @@ static async Task RunCascSpellQueryAsync(int iterations, int warmup)
         throw new DirectoryNotFoundException(testDataDir);
 
     var optionsBuilder = new DbContextOptionsBuilder<WoWDb2Context>();
-    optionsBuilder.UseMimironDb2(o => o
+    optionsBuilder.UseMimironDb2(o => o    
+            .WithWowVersion("12.0.0.65655")
             .UseCasc()
             .WithWowInstallRoot(wowInstallRoot)
             .WithDbdDefinitions(Path.Combine(testDataDir, "definitions"))
@@ -55,7 +56,8 @@ static async Task RunCascSpellQueryAsync(int iterations, int warmup)
     await Task.CompletedTask;
 }
 
-static string GetTestDataDirectory() => Path.Combine("..", "MimironSQL.IntegrationTests", "TestData");
+static string GetTestDataDirectory()
+    => Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "TestData"));
 
 static bool TryGetWowInstallRoot(out string wowInstallRoot)
 {

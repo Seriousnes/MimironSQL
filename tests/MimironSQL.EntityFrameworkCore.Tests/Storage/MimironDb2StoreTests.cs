@@ -17,7 +17,7 @@ namespace MimironSQL.EntityFrameworkCore.Tests.Storage;
 
 public class MimironDb2StoreTests
 {
-    private const string WowVersion = "1.0.0.1";
+    private const string WowVersion = TestHelpers.WowVersion;
 
     [Fact]
     public void Constructor_WithNullDb2StreamProvider_ShouldThrow()
@@ -230,50 +230,46 @@ public class MimironDb2StoreTests
     public void OpenTableWithSchema_CalledMultipleTimes_ShouldCacheResults()
     {
         var tableName = "TestTable";
-        var stream = new MemoryStream();
-        var file = Substitute.For<IDb2File>();
         var layout = new Db2FileLayout(0x12345678, 5);
 
         var db2StreamProvider = Substitute.For<IDb2StreamProvider>();
-        db2StreamProvider.OpenDb2Stream(tableName).Returns(stream);
+        db2StreamProvider.OpenDb2Stream(tableName).Returns(_ => new MemoryStream());
 
         var dbdProvider = Substitute.For<IDbdProvider>();
         dbdProvider.Open(tableName).Returns(ParseDbd(TestDbd));
 
         var format = Substitute.For<IDb2Format>();
-        format.OpenFile(stream).Returns(file);
-        format.GetLayout(file).Returns(layout);
+        format.OpenFile(Arg.Any<Stream>()).Returns(_ => Substitute.For<IDb2File>());
+        format.GetLayout(Arg.Any<IDb2File>()).Returns(layout);
 
         var store = new MimironDb2Store(db2StreamProvider, dbdProvider, format, CreateOptions());
 
         var (file1, schema1) = store.OpenTableWithSchema(tableName);
         var (file2, schema2) = store.OpenTableWithSchema(tableName);
 
-        file1.ShouldBe(file2);
+        file1.ShouldNotBe(file2);
         schema1.ShouldBe(schema2);
 
-        db2StreamProvider.Received(1).OpenDb2Stream(tableName);
+        db2StreamProvider.Received(2).OpenDb2Stream(tableName);
         dbdProvider.Received(1).Open(tableName);
-        format.Received(1).OpenFile(stream);
+        format.Received(2).OpenFile(Arg.Any<Stream>());
     }
 
     [Fact]
     public void OpenTableWithSchema_CaseInsensitive_ShouldUseSameCache()
     {
         var tableName = "TestTable";
-        var stream = new MemoryStream();
-        var file = Substitute.For<IDb2File>();
         var layout = new Db2FileLayout(0x12345678, 5);
 
         var db2StreamProvider = Substitute.For<IDb2StreamProvider>();
-        db2StreamProvider.OpenDb2Stream(Arg.Any<string>()).Returns(stream);
+        db2StreamProvider.OpenDb2Stream(Arg.Any<string>()).Returns(_ => new MemoryStream());
 
         var dbdProvider = Substitute.For<IDbdProvider>();
         dbdProvider.Open(Arg.Any<string>()).Returns(_ => ParseDbd(TestDbd));
 
         var format = Substitute.For<IDb2Format>();
-        format.OpenFile(stream).Returns(file);
-        format.GetLayout(file).Returns(layout);
+        format.OpenFile(Arg.Any<Stream>()).Returns(_ => Substitute.For<IDb2File>());
+        format.GetLayout(Arg.Any<IDb2File>()).Returns(layout);
 
         var store = new MimironDb2Store(db2StreamProvider, dbdProvider, format, CreateOptions());
 
@@ -281,12 +277,12 @@ public class MimironDb2StoreTests
         var (file2, schema2) = store.OpenTableWithSchema("TESTTABLE");
         var (file3, schema3) = store.OpenTableWithSchema("testtable");
 
-        file1.ShouldBe(file2);
-        file1.ShouldBe(file3);
+        file1.ShouldNotBe(file2);
+        file1.ShouldNotBe(file3);
         schema1.ShouldBe(schema2);
         schema1.ShouldBe(schema3);
 
-        db2StreamProvider.Received(1).OpenDb2Stream(Arg.Any<string>());
+        db2StreamProvider.Received(3).OpenDb2Stream(Arg.Any<string>());
     }
 
     [Fact]
@@ -356,7 +352,7 @@ public class MimironDb2StoreTests
     int Field4
     int Field5
 
-    BUILD 1.0.0.1
+    BUILD 12.0.1.65867
     $noninline,id$ ID
     Field1
     Field2

@@ -17,7 +17,7 @@
 
 	<ItemGroup>
 		<AdditionalFiles Include=".env.local" />
-		<AdditionalFiles Include="..\MimironSQL.IntegrationTests\TestData\**\*.dbd" />
+		<AdditionalFiles Include="..\TestData\**\*.dbd" />
 	</ItemGroup>
 	
 </Project>

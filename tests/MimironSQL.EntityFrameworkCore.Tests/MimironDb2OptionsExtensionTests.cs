@@ -17,7 +17,7 @@ public class MimironDb2OptionsExtensionTests
     {
         var optionsBuilder = new DbContextOptionsBuilder();
 
-        optionsBuilder.UseMimironDb2(builder => builder.ConfigureProvider(
+        optionsBuilder.UseMimironDb2ForTests(builder => builder.ConfigureProvider(
             providerKey: "Test",
             providerConfigHash: 123,
             applyProviderServices: _ => { }));
@@ -32,7 +32,7 @@ public class MimironDb2OptionsExtensionTests
     {
         var optionsBuilder = new DbContextOptionsBuilder();
 
-        optionsBuilder.UseMimironDb2(builder => builder.ConfigureProvider(
+        optionsBuilder.UseMimironDb2ForTests(builder => builder.ConfigureProvider(
             providerKey: "Test",
             providerConfigHash: 123,
             applyProviderServices: _ => { }));
@@ -49,7 +49,7 @@ public class MimironDb2OptionsExtensionTests
         var optionsBuilder = new DbContextOptionsBuilder();
         var callbackInvoked = false;
 
-        optionsBuilder.UseMimironDb2(builder =>
+        optionsBuilder.UseMimironDb2ForTests(builder =>
         {
             builder.ShouldNotBeNull();
             callbackInvoked = true;
@@ -105,7 +105,8 @@ public class MimironDb2OptionsExtensionTests
         var extension = new MimironDb2OptionsExtension().WithProvider(
             providerKey: "Test",
             providerConfigHash: 1,
-            applyProviderServices: _ => { });
+            applyProviderServices: _ => { })
+            .WithWowVersion(TestHelpers.WowVersion);
         var options = new DbContextOptions<DbContext>();
 
         Should.NotThrow(() => extension.Validate(options));
@@ -117,7 +118,8 @@ public class MimironDb2OptionsExtensionTests
         var extension = new MimironDb2OptionsExtension().WithProvider(
             providerKey: "Test",
             providerConfigHash: 1,
-            applyProviderServices: _ => { });
+            applyProviderServices: _ => { })
+            .WithWowVersion(TestHelpers.WowVersion);
 
         var info = extension.Info;
 
@@ -131,7 +133,8 @@ public class MimironDb2OptionsExtensionTests
         var extension = new MimironDb2OptionsExtension().WithProvider(
             providerKey: "Test",
             providerConfigHash: 1,
-            applyProviderServices: _ => { });
+            applyProviderServices: _ => { })
+            .WithWowVersion(TestHelpers.WowVersion);
 
         var logFragment = extension.Info.LogFragment;
 
@@ -153,8 +156,8 @@ public class MimironDb2OptionsExtensionTests
     [Fact]
     public void Info_GetServiceProviderHashCode_ShouldBeConsistent()
     {
-        var extension1 = new MimironDb2OptionsExtension().WithProvider("Test", 1, _ => { });
-        var extension2 = new MimironDb2OptionsExtension().WithProvider("Test", 1, _ => { });
+        var extension1 = new MimironDb2OptionsExtension().WithProvider("Test", 1, _ => { }).WithWowVersion(TestHelpers.WowVersion);
+        var extension2 = new MimironDb2OptionsExtension().WithProvider("Test", 1, _ => { }).WithWowVersion(TestHelpers.WowVersion);
 
         var hash1 = extension1.Info.GetServiceProviderHashCode();
         var hash2 = extension2.Info.GetServiceProviderHashCode();
@@ -165,8 +168,8 @@ public class MimironDb2OptionsExtensionTests
     [Fact]
     public void Info_ShouldUseSameServiceProvider_WithSameConfig_ShouldReturnTrue()
     {
-        var extension1 = new MimironDb2OptionsExtension().WithProvider("Test", 1, _ => { });
-        var extension2 = new MimironDb2OptionsExtension().WithProvider("Test", 1, _ => { });
+        var extension1 = new MimironDb2OptionsExtension().WithProvider("Test", 1, _ => { }).WithWowVersion(TestHelpers.WowVersion);
+        var extension2 = new MimironDb2OptionsExtension().WithProvider("Test", 1, _ => { }).WithWowVersion(TestHelpers.WowVersion);
 
         var result = extension1.Info.ShouldUseSameServiceProvider(extension2.Info);
 
@@ -176,8 +179,8 @@ public class MimironDb2OptionsExtensionTests
     [Fact]
     public void Info_ShouldUseSameServiceProvider_WithDifferentProviderInstances_ShouldReturnFalse()
     {
-        var extension1 = new MimironDb2OptionsExtension().WithProvider("Test", 1, _ => { });
-        var extension2 = new MimironDb2OptionsExtension().WithProvider("Test", 2, _ => { });
+        var extension1 = new MimironDb2OptionsExtension().WithProvider("Test", 1, _ => { }).WithWowVersion(TestHelpers.WowVersion);
+        var extension2 = new MimironDb2OptionsExtension().WithProvider("Test", 2, _ => { }).WithWowVersion(TestHelpers.WowVersion);
 
         var result = extension1.Info.ShouldUseSameServiceProvider(extension2.Info);
 
@@ -187,7 +190,7 @@ public class MimironDb2OptionsExtensionTests
     [Fact]
     public void Info_PopulateDebugInfo_ShouldAddProviderTypes()
     {
-        var extension = new MimironDb2OptionsExtension().WithProvider("Test", 1, _ => { });
+        var extension = new MimironDb2OptionsExtension().WithProvider("Test", 1, _ => { }).WithWowVersion(TestHelpers.WowVersion);
         var debugInfo = new Dictionary<string, string>();
 
         extension.Info.PopulateDebugInfo(debugInfo);
@@ -228,9 +231,9 @@ public class MimironDb2OptionsExtensionTests
     {
         var optionsBuilder = new DbContextOptionsBuilder();
 
-        optionsBuilder.UseMimironDb2(b => b.ConfigureProvider("First", 1, _ => { }));
+        optionsBuilder.UseMimironDb2ForTests(b => b.ConfigureProvider("First", 1, _ => { }));
         Should.Throw<InvalidOperationException>(() =>
-            optionsBuilder.UseMimironDb2(b => b.ConfigureProvider("Second", 2, _ => { })));
+            optionsBuilder.UseMimironDb2ForTests(b => b.ConfigureProvider("Second", 2, _ => { })));
     }
 
     [Fact]
@@ -238,7 +241,7 @@ public class MimironDb2OptionsExtensionTests
     {
         var optionsBuilder = new DbContextOptionsBuilder();
 
-        var result = optionsBuilder.UseMimironDb2(b => b.ConfigureProvider("Test", 1, _ => { }));
+        var result = optionsBuilder.UseMimironDb2ForTests(b => b.ConfigureProvider("Test", 1, _ => { }));
 
         result.ShouldBeSameAs(optionsBuilder);
     }

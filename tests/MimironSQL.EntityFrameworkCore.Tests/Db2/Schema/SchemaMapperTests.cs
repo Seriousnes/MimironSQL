@@ -22,15 +22,15 @@ public sealed class SchemaMapperTests
         int ID
 
         LAYOUT 11111111
-        BUILD 1.0.0.10
+        BUILD 12.0.1.65868
         ID
         """));
 
-        var mapper = new SchemaMapper(provider, wowVersionRaw: "1.0.0.1");
+        var mapper = new SchemaMapper(provider, wowVersionRaw: TestHelpers.WowVersion);
 
         var ex = Should.Throw<InvalidDataException>(() => mapper.GetSchema("Foo"));
         ex.Message.ShouldContain("No compatible BUILD blocks");
-        ex.Message.ShouldContain("WOW_VERSION=1.0.0.1");
+        ex.Message.ShouldContain($"WOW_VERSION={TestHelpers.WowVersion}");
         ex.Message.ShouldContain("Foo.dbd");
     }
 
@@ -43,7 +43,7 @@ public sealed class SchemaMapperTests
         int Foo
 
         LAYOUT CAFEBABE, DEADBEEF
-        BUILD 1.0.0.1
+        BUILD 12.0.1.65867
         ID
         Foo
         """;
@@ -51,7 +51,7 @@ public sealed class SchemaMapperTests
         var provider = Substitute.For<IDbdProvider>();
         provider.Open("Foo").Returns(ParseDbd(dbd));
 
-        var mapper = new SchemaMapper(provider, wowVersionRaw: "1.0.0.1");
+        var mapper = new SchemaMapper(provider, wowVersionRaw: TestHelpers.WowVersion);
 
         var schema = mapper.GetSchema("Foo");
 
@@ -71,12 +71,12 @@ public sealed class SchemaMapperTests
         int ID
         int Foo
 
-        BUILD 1.0.0.1
+        BUILD 12.0.1.65867
         ID
         Foo
 
         LAYOUT CAFEBABE
-        BUILD 1.0.0.2
+        BUILD 12.0.1.65868
         ID
         Foo
         """;
@@ -84,7 +84,7 @@ public sealed class SchemaMapperTests
         var provider = Substitute.For<IDbdProvider>();
         provider.Open("Foo").Returns(ParseDbd(dbd));
 
-        var mapper = new SchemaMapper(provider, wowVersionRaw: "1.0.0.1");
+        var mapper = new SchemaMapper(provider, wowVersionRaw: TestHelpers.WowVersion);
 
         var schema = mapper.GetSchema("Foo");
 
@@ -104,7 +104,7 @@ public sealed class SchemaMapperTests
         int Foo
 
         LAYOUT CAFEBABE
-        BUILD 1.0.0.1
+        BUILD 12.0.1.65867
         $noninline,id$ ID
         $noninline,relation$ ParentID
         Foo
@@ -113,7 +113,7 @@ public sealed class SchemaMapperTests
         var provider = Substitute.For<IDbdProvider>();
         provider.Open("Foo").Returns(ParseDbd(dbd));
 
-        var mapper = new SchemaMapper(provider, wowVersionRaw: "1.0.0.1");
+        var mapper = new SchemaMapper(provider, wowVersionRaw: TestHelpers.WowVersion);
 
         var schema = mapper.GetSchema("Foo");
         schema.TableName.ShouldBe("Foo");

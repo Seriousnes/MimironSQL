@@ -17,7 +17,7 @@ public sealed class MimironDb2LazyLoaderTests
     public async Task LoadAsync_WhenEntityNotInModel_CompletesWithoutThrowing()
     {
         var optionsBuilder = new DbContextOptionsBuilder<TestContext>();
-        optionsBuilder.UseMimironDb2(o => o.ConfigureProvider(
+        optionsBuilder.UseMimironDb2ForTests(o => o.ConfigureProvider(
             providerKey: "Test",
             providerConfigHash: 1,
             applyProviderServices: services =>

@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 
+using MimironSQL.EntityFrameworkCore.Tests;
 using MimironSQL.Formats;
 using MimironSQL.Formats.Wdc5;
 using MimironSQL.Providers;
@@ -22,7 +23,7 @@ public sealed class MimironDb2QueryExecutionTests
         var expectedId = ReadFirstRowId(db2Provider, tableName: "GarrType");
 
         var optionsBuilder = new DbContextOptionsBuilder<GarrTypeContext>();
-        optionsBuilder.UseMimironDb2(o => o.UseFileSystem(
+        optionsBuilder.UseMimironDb2ForTests(o => o.UseFileSystem(
             db2DirectoryPath: testDataDir,
             dbdDefinitionsDirectory: Path.Combine(testDataDir, "definitions")));
         var options = optionsBuilder.Options;
@@ -43,7 +44,7 @@ public sealed class MimironDb2QueryExecutionTests
         var testDataDir = TestDataPaths.GetIntegrationTestDataDirectory();
 
         var optionsBuilder = new DbContextOptionsBuilder<GarrTypeContext>();
-        optionsBuilder.UseMimironDb2(o => o.UseFileSystem(
+        optionsBuilder.UseMimironDb2ForTests(o => o.UseFileSystem(
             db2DirectoryPath: testDataDir,
             dbdDefinitionsDirectory: Path.Combine(testDataDir, "definitions")));
         var options = optionsBuilder.Options;
@@ -89,7 +90,6 @@ public sealed class MimironDb2QueryExecutionTests
             return Path.GetFullPath(Path.Combine(
                 baseDir,
                 "..", "..", "..", "..",
-                "MimironSQL.IntegrationTests",
                 "TestData"));
         }
     }

@@ -61,6 +61,8 @@ internal sealed class MimironDb2QueryExecutor(
 
         var model = _db2ModelProvider.GetDb2Model();
 
+        var pipeline = Db2QueryPipeline.Parse(query);
+
         if (typeof(TRow) == typeof(RowHandle)
             && TryGetPrimaryKeyMemberName(model, typeof(TEntity), out var pkMemberName)
             && TryGetKeyLookupRequest<TEntity>(query, pkMemberName, out var request))
@@ -93,7 +95,18 @@ internal sealed class MimironDb2QueryExecutor(
 
         var tableName = efEntityType.GetTableName() ?? typeof(TEntity).Name;
 
-        var session = new QuerySession<TRow>(_context, _store, model);
+        // For sequence results, defer opening DB2 files until enumeration and ensure they are disposed
+        // when enumeration completes or is aborted.
+        if (pipeline.FinalOperator == Db2FinalOperator.None && TryGetEnumerableElementType(typeof(TResult), out var elementType))
+        {
+            var sequenceInterface = typeof(IEnumerable<>).MakeGenericType(elementType);
+            if (typeof(TResult).IsAssignableFrom(sequenceInterface))
+            {
+                return ExecuteDeferredEnumerable<TEntity, TRow>(query, model, tableName, elementType);
+            }
+        }
+
+        using var session = new QuerySession<TRow>(_context, _store, model);
         session.Warm(query, typeof(TEntity));
 
         var (file, schema) = session.Resolve(tableName);
@@ -110,6 +123,83 @@ internal sealed class MimironDb2QueryExecutor(
 
         var rewritten = new RootQueryRewriter<TEntity>(rootQueryable).Visit(query);
         return provider.Execute<TResult>(rewritten!);
+    }
+
+    private object ExecuteDeferredEnumerable<TEntity, TRow>(Expression query, Db2Model model, string tableName, Type elementType)
+        where TEntity : class
+        where TRow : struct, IRowHandle
+    {
+        var method = typeof(MimironDb2QueryExecutor)
+            .GetMethod(nameof(ExecuteDeferredEnumerableTyped), BindingFlags.NonPublic | BindingFlags.Instance)!
+            .MakeGenericMethod(typeof(TEntity), typeof(TRow), elementType);
+
+        return method.Invoke(this, [query, model, tableName])!;
+    }
+
+    private object ExecuteDeferredEnumerableTyped<TEntity, TRow, TElement>(Expression query, Db2Model model, string tableName)
+        where TEntity : class
+        where TRow : struct, IRowHandle
+    {
+        var enumerable = new DeferredScopeEnumerable<TElement>(() =>
+        {
+            var session = new QuerySession<TRow>(_context, _store, model);
+
+            // Ensure all required tables are opened once before enumeration begins.
+            session.Warm(query, typeof(TEntity));
+
+            var (file, schema) = session.Resolve(tableName);
+
+            (IDb2File<TRow> File, Db2TableSchema Schema) TableResolver(string name)
+                => session.Resolve(name);
+
+            IDb2EntityFactory queryEntityFactory = new EfLazyLoadingProxyDb2EntityFactory(_context, new ReflectionDb2EntityFactory());
+            var provider = new Db2QueryProvider<TEntity, TRow>(file, model, TableResolver, queryEntityFactory);
+
+            var db2EntityType = model.GetEntityType(typeof(TEntity)).WithSchema(tableName, schema);
+            _ = db2EntityType;
+            var rootQueryable = new Db2Queryable<TEntity>(provider);
+
+            var rewritten = new RootQueryRewriter<TEntity>(rootQueryable).Visit(query);
+            var result = provider.Execute<IEnumerable<TElement>>(rewritten!);
+
+            return (result, session);
+        });
+
+        return enumerable;
+    }
+
+    private static bool TryGetEnumerableElementType(Type resultType, out Type elementType)
+    {
+        if (resultType == typeof(string))
+        {
+            elementType = null!;
+            return false;
+        }
+
+        if (resultType.IsGenericType)
+        {
+            var args = resultType.GetGenericArguments();
+            if (args.Length == 1 && typeof(IEnumerable<>).MakeGenericType(args[0]).IsAssignableFrom(resultType))
+            {
+                elementType = args[0];
+                return true;
+            }
+        }
+
+        foreach (var i in resultType.GetInterfaces())
+        {
+            if (!i.IsGenericType)
+                continue;
+
+            if (i.GetGenericTypeDefinition() != typeof(IEnumerable<>))
+                continue;
+
+            elementType = i.GetGenericArguments()[0];
+            return true;
+        }
+
+        elementType = null!;
+        return false;
     }
 
     private static bool TryGetPrimaryKeyMemberName(Db2Model model, Type entityClrType, out string memberName)

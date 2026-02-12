@@ -12,6 +12,7 @@ using MimironSQL.Formats;
 namespace MimironSQL.EntityFrameworkCore.Query;
 
 internal sealed class QuerySession<TRow>
+    : IDisposable
     where TRow : struct, IRowHandle
 {
     private readonly DbContext _context;
@@ -82,6 +83,14 @@ internal sealed class QuerySession<TRow>
         var opened = _store.OpenTableWithSchema<TRow>(tableName);
         _tables[tableName] = opened;
         return opened;
+    }
+
+    public void Dispose()
+    {
+        foreach (var (_, (file, _)) in _tables)
+            (file as IDisposable)?.Dispose();
+
+        _tables.Clear();
     }
 
     private string ResolveEfTableName(Type entityClrType)

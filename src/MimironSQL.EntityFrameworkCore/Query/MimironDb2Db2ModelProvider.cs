@@ -60,9 +60,7 @@ internal sealed class MimironDb2Db2ModelProvider(
             ConfigureNavigations(builder, entityType);
         }
 
-        var schemaResolver = (string tableName) => useLazyBuild
-            ? _store.GetSchemaFromMetadata(tableName)
-            : _store.GetSchema(tableName);
+        var schemaResolver = (string tableName) => _store.GetSchema(tableName);
         return useLazyBuild
             ? builder.BuildLazy(schemaResolver)
             : builder.Build(schemaResolver);

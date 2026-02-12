@@ -84,10 +84,9 @@ internal sealed class MimironDb2LazyLoader(
 
         SetLoaded(entity, navigationName, loaded: true);
 
-        var tableName = efEntityType.GetTableName() ?? efEntityType.ClrType.Name;
-        var (file, _) = _store.OpenTableWithSchema(tableName);
-
-        var rowType = file.RowType ?? throw new InvalidOperationException($"DB2 file for table '{tableName}' did not specify a row type.");
+        // This provider currently uses RowHandle for all shipped formats.
+        // Avoid opening DB2 files here (and holding streams) just to discover row type.
+        var rowType = typeof(RowHandle);
         var loader = LoadDelegates.GetOrAdd((efEntityType.ClrType, rowType), static key =>
         {
             var method = typeof(MimironDb2LazyLoader)
@@ -132,8 +131,10 @@ internal sealed class MimironDb2LazyLoader(
     {
         var model = _db2ModelProvider.GetDb2Model();
 
+        using var session = new QuerySession<TRow>(_context, _store, model);
+
         (IDb2File<TRow> File, Db2TableSchema Schema) TableResolver(string name)
-            => _store.OpenTableWithSchema<TRow>(name);
+            => session.Resolve(name);
 
         var typedEntity = (TEntity)entity;
 

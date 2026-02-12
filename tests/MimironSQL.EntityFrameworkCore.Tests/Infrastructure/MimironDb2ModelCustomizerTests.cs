@@ -19,7 +19,7 @@ public sealed class MimironDb2ModelCustomizerTests
         var dbdProvider = Substitute.For<IDbdProvider>();
 
         var options = new DbContextOptionsBuilder<TestContext>()
-            .UseMimironDb2(o => o.ConfigureProvider(
+            .UseMimironDb2ForTests(o => o.ConfigureProvider(
                 providerKey: "Test",
                 providerConfigHash: 1,
                 applyProviderServices: services =>

@@ -25,7 +25,7 @@ public sealed class CascDb2ContextIntegrationLocalTests
         File.Exists(manifestPath).ShouldBeTrue();
     
         var optionsBuilder = new DbContextOptionsBuilder<WoWDb2Context>();
-        optionsBuilder.UseMimironDb2(o => o
+        optionsBuilder.UseMimironDb2ForTests(o => o
             .UseCasc()
             .WithWowInstallRoot(wowInstallRoot)
             .WithDbdDefinitions(Path.Combine(testDataDir, "definitions"))
@@ -33,6 +33,7 @@ public sealed class CascDb2ContextIntegrationLocalTests
             .Apply());
     
         context = new WoWDb2Context(optionsBuilder.Options);
+        _ = context.Model; // Force model creation
     }
 
     [LocalCascFact]

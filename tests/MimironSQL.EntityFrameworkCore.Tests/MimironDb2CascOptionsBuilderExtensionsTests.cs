@@ -20,7 +20,7 @@ public sealed class MimironDb2CascOptionsBuilderExtensionsTests
         var expectedManifestProvider = Substitute.For<IManifestProvider>();
 
         var optionsBuilder = new DbContextOptionsBuilder();
-        optionsBuilder.UseMimironDb2(o => o.UseCasc(casc =>
+        optionsBuilder.UseMimironDb2ForTests(o => o.UseCasc(casc =>
         {
             casc.WowInstallRoot = "X:\\World of Warcraft";
             casc.DbdProviderFactory = _ => expectedDbdProvider;
@@ -46,7 +46,7 @@ public sealed class MimironDb2CascOptionsBuilderExtensionsTests
         var expectedManifestProvider = Substitute.For<IManifestProvider>();
 
         var optionsBuilder = new DbContextOptionsBuilder();
-        optionsBuilder.UseMimironDb2(o => o.UseCasc(casc =>
+        optionsBuilder.UseMimironDb2ForTests(o => o.UseCasc(casc =>
         {
             casc.WowInstallRoot = "X:\\World of Warcraft";
             casc.DbdProvider = expectedDbdProvider;
@@ -71,7 +71,7 @@ public sealed class MimironDb2CascOptionsBuilderExtensionsTests
         var optionsBuilder = new DbContextOptionsBuilder();
 
         Should.Throw<InvalidOperationException>(() =>
-            optionsBuilder.UseMimironDb2(o => o
+            optionsBuilder.UseMimironDb2ForTests(o => o
                 .UseCasc()
                 .WithWowInstallRoot("X:\\World of Warcraft")
                 .Apply()));
@@ -82,7 +82,7 @@ public sealed class MimironDb2CascOptionsBuilderExtensionsTests
     {
         var optionsBuilder = new DbContextOptionsBuilder();
 
-        optionsBuilder.UseMimironDb2(o => o.UseCasc(casc =>
+        optionsBuilder.UseMimironDb2ForTests(o => o.UseCasc(casc =>
         {
             casc.WowInstallRoot = "X:\\World of Warcraft";
             casc.DbdProviderFactory = _ => Substitute.For<IDbdProvider>();

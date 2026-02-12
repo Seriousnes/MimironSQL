@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 
+using MimironSQL.EntityFrameworkCore.Tests;
 using MimironSQL.Providers;
 
 using NSubstitute;
@@ -17,7 +18,7 @@ public sealed class MimironDb2ThenIncludeTests
 
 
         var optionsBuilder = new DbContextOptionsBuilder<ThenIncludeContext>();
-        optionsBuilder.UseMimironDb2(o => o.UseFileSystem(
+        optionsBuilder.UseMimironDb2ForTests(o => o.UseFileSystem(
             db2DirectoryPath: testDataDir,
             dbdDefinitionsDirectory: Path.Combine(testDataDir, "definitions")));
 
@@ -49,7 +50,7 @@ public sealed class MimironDb2ThenIncludeTests
 
 
         var optionsBuilder = new DbContextOptionsBuilder<ThenIncludeContext>();
-        optionsBuilder.UseMimironDb2(o => o.UseFileSystem(
+        optionsBuilder.UseMimironDb2ForTests(o => o.UseFileSystem(
             db2DirectoryPath: testDataDir,
             dbdDefinitionsDirectory: Path.Combine(testDataDir, "definitions")));
 
@@ -121,7 +122,6 @@ public sealed class MimironDb2ThenIncludeTests
             return Path.GetFullPath(Path.Combine(
                 baseDir,
                 "..", "..", "..", "..",
-                "MimironSQL.IntegrationTests",
                 "TestData"));
         }
     }

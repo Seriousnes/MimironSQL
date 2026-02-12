@@ -22,7 +22,7 @@ public sealed class FileSystemDb2ContextIntegrationTests
         Directory.Exists(testDataDir).ShouldBeTrue();
 
         var optionsBuilder = new DbContextOptionsBuilder<WoWDb2Context>();
-        optionsBuilder.UseMimironDb2(o => o.UseFileSystem(
+        optionsBuilder.UseMimironDb2ForTests(o => o.UseFileSystem(
             db2DirectoryPath: testDataDir,
             dbdDefinitionsDirectory: Path.Combine(testDataDir, "definitions")));
 
@@ -60,7 +60,7 @@ public sealed class FileSystemDb2ContextIntegrationTests
     }
 
     [Fact]
-    public async Task Key_lookup_populates_table_cache()
+    public async Task Key_lookup_does_not_cache_db2_tables_across_queries()
     {
         await using var context = CreateContext();
 
@@ -71,27 +71,15 @@ public sealed class FileSystemDb2ContextIntegrationTests
 
         var storeType = store.GetType();
 
+        // DB2 files/streams must not be cached long-term; they are scoped to query execution.
         var cacheField = storeType.GetField("_cache", BindingFlags.Instance | BindingFlags.NonPublic);
-        cacheField.ShouldNotBeNull();
-
-        var cache = cacheField!.GetValue(store);
-        cache.ShouldNotBeNull();
-
-        // Clear any prior state (service provider caching can reuse singletons across tests).
-        var clearMethod = cache!.GetType().GetMethod("Clear", BindingFlags.Instance | BindingFlags.Public);
-        clearMethod.ShouldNotBeNull();
-        clearMethod!.Invoke(cache, parameters: null);
+        cacheField.ShouldBeNull();
 
         var result = context.Set<SpellEntity>().SingleOrDefault(x => x.Id == 454009);
         result.ShouldNotBeNull();
         result.Id.ShouldBe(454009);
 
-        var countProp = cache.GetType().GetProperty("Count", BindingFlags.Instance | BindingFlags.Public);
-        countProp.ShouldNotBeNull();
-        var count = (int)countProp!.GetValue(cache)!;
-
-        // Key lookups now reuse the store's normal table cache.
-        count.ShouldBeGreaterThan(0);
+        _ = result;
     }
 
     [Fact]

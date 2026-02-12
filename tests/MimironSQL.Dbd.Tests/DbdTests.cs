@@ -90,15 +90,13 @@ public sealed class DbdTests
 
         var layout = file.Layouts[0];
         layout.Hashes.Length.ShouldBe(2);
-        layout.Builds.Count.ShouldBe(3);
+        layout.Builds.Count.ShouldBe(2);
 
         layout.Builds[0].Entries.Count.ShouldBe(2);
-        layout.Builds[1].Entries.Count.ShouldBe(2);
-        layout.Builds[2].Entries.Count.ShouldBe(1);
+        layout.Builds[1].Entries.Count.ShouldBe(1);
 
         layout.Builds[0].GetPhysicalColumnCount().ShouldBe(1);
         layout.Builds[1].GetPhysicalColumnCount().ShouldBe(1);
-        layout.Builds[2].GetPhysicalColumnCount().ShouldBe(1);
     }
 
     [Fact]
@@ -239,15 +237,14 @@ public sealed class DbdTests
         var file = DbdFile.Parse(stream);
 
         file.Layouts.Count.ShouldBe(0);
-        file.GlobalBuilds.Count.ShouldBe(3);
+        file.GlobalBuilds.Count.ShouldBe(2);
 
         file.GlobalBuilds[0].Entries.Count.ShouldBe(2);
-        file.GlobalBuilds[1].Entries.Count.ShouldBe(2);
-        file.GlobalBuilds[2].Entries.Count.ShouldBe(1);
+        file.GlobalBuilds[1].Entries.Count.ShouldBe(1);
 
         file.GlobalBuilds[0].Entries[0].Name.ShouldBe("A");
         file.GlobalBuilds[0].Entries[1].Name.ShouldBe("B");
-        file.GlobalBuilds[2].Entries[0].Name.ShouldBe("C");
+        file.GlobalBuilds[1].Entries[0].Name.ShouldBe("C");
     }
 
     [Fact]

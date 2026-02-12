@@ -8,7 +8,8 @@ internal static class BenchmarkTestDataPaths
 
         for (var current = baseDir; current is not null; current = current.Parent)
         {
-            var candidate = Path.Combine(current.FullName, "MimironSQL.IntegrationTests", "TestData");
+            // Test data lives in: tests/TestData
+            var candidate = Path.Combine(current.FullName, "tests", "TestData");
             if (Directory.Exists(candidate))
             {
                 path = candidate;
@@ -26,6 +27,6 @@ internal static class BenchmarkTestDataPaths
             return path;
 
         var baseDir = new DirectoryInfo(AppContext.BaseDirectory);
-        throw new DirectoryNotFoundException($"Could not locate MimironSQL.IntegrationTests/TestData starting from '{baseDir.FullName}'.");
+        throw new DirectoryNotFoundException($"Could not locate tests/TestData starting from '{baseDir.FullName}'.");
     }
 }

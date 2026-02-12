@@ -86,6 +86,22 @@ public sealed class DbdFile : IDbdFile
             if (line.StartsWith("BUILD ".AsSpan(), StringComparison.Ordinal))
             {
                 inColumns = false;
+                // DBDs often list multiple BUILD lines, then a single set of entries that applies to all of them.
+                // Treat those consecutive BUILD lines as one logical build block by merging the selectors.
+
+                // Once we start reading entries, a new BUILD indicates a new entry block.
+                if (entriesStartedForActiveBuilds)
+                {
+                    activeBuilds.Clear();
+                    entriesStartedForActiveBuilds = false;
+                }
+
+                if (activeBuilds is { Count: > 0 })
+                {
+                    activeBuilds[0].AppendBuildLine(line.ToString());
+                    continue;
+                }
+
                 var newBuild = new DbdBuildBlock(line.ToString());
                 switch (currentLayout)
                 {
@@ -95,14 +111,6 @@ public sealed class DbdFile : IDbdFile
                     default:
                         currentLayout.Builds.Add(newBuild);
                         break;
-                }
-
-                // DBDs often list multiple BUILD lines, then a single set of entries that applies to all of them.
-                // Once we start reading entries, a new BUILD indicates a new entry block.
-                if (entriesStartedForActiveBuilds)
-                {
-                    activeBuilds.Clear();
-                    entriesStartedForActiveBuilds = false;
                 }
 
                 activeBuilds.Add(newBuild);

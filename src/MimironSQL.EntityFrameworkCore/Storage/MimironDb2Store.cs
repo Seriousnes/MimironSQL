@@ -19,8 +19,7 @@ internal sealed class MimironDb2Store : IMimironDb2Store, IDisposable
     private readonly IDb2Format _format;
     private readonly SchemaMapper _schemaMapper;
     private readonly string _wowVersion;
-    private readonly ConcurrentDictionary<string, Lazy<(IDb2File File, Db2TableSchema Schema)>> _cache = new(StringComparer.OrdinalIgnoreCase);
-    private readonly ConcurrentDictionary<string, Lazy<Db2TableSchema>> _schemaFromMetadataCache = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, Lazy<Db2TableSchema>> _schemaCache = new(StringComparer.OrdinalIgnoreCase);
 
     public MimironDb2Store(
         IDb2StreamProvider db2StreamProvider,
@@ -55,14 +54,9 @@ internal sealed class MimironDb2Store : IMimironDb2Store, IDisposable
 
     public Db2TableSchema GetSchema(string tableName)
     {
-        return GetSchemaFromMetadata(tableName);
-    }
-
-    public Db2TableSchema GetSchemaFromMetadata(string tableName)
-    {
         ArgumentException.ThrowIfNullOrWhiteSpace(tableName);
 
-        var lazy = _schemaFromMetadataCache.GetOrAdd(tableName, key => new Lazy<Db2TableSchema>(() =>
+        var lazy = _schemaCache.GetOrAdd(tableName, key => new Lazy<Db2TableSchema>(() =>
         {
             return _schemaMapper.GetSchema(key);
         }));
@@ -74,26 +68,22 @@ internal sealed class MimironDb2Store : IMimironDb2Store, IDisposable
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(tableName);
 
-        var lazy = _cache.GetOrAdd(tableName, key => new Lazy<(IDb2File File, Db2TableSchema Schema)>(() =>
+        // Open a fresh stream/file per call. Callers are responsible for disposing the returned file.
+        var stream = _db2StreamProvider.OpenDb2Stream(tableName);
+        try
         {
-            var stream = _db2StreamProvider.OpenDb2Stream(key);
-            try
-            {
-                var file = _format.OpenFile(stream);
-                var layout = _format.GetLayout(file);
+            var file = _format.OpenFile(stream);
+            var layout = _format.GetLayout(file);
 
-                var schema = GetSchemaFromMetadata(key);
-                ValidateLayout(key, schema, layout);
-                return (file, schema);
-            }
-            catch
-            {
-                stream.Dispose();
-                throw;
-            }
-        }));
-
-        return lazy.Value;
+            var schema = GetSchema(tableName);
+            ValidateLayout(tableName, schema, layout);
+            return (file, schema);
+        }
+        catch
+        {
+            stream.Dispose();
+            throw;
+        }
     }
 
     private void ValidateLayout(string tableName, Db2TableSchema expectedSchema, Db2FileLayout actualLayout)
@@ -126,33 +116,32 @@ internal sealed class MimironDb2Store : IMimironDb2Store, IDisposable
         ArgumentNullException.ThrowIfNull(entityFactory);
 
         var (file, schema) = OpenTableWithSchema(tableName);
-
-        if (file is not IDb2File<RowHandle> typed)
-            throw new NotSupportedException($"Key lookups require row type '{typeof(RowHandle).FullName}', but file reports '{file.RowType.FullName}'.");
-
-        if (!typed.TryGetRowById(id, out var handle))
+        try
         {
-            entity = null;
-            return false;
+            if (file is not IDb2File<RowHandle> typed)
+                throw new NotSupportedException($"Key lookups require row type '{typeof(RowHandle).FullName}', but file reports '{file.RowType.FullName}'.");
+
+            if (!typed.TryGetRowById(id, out var handle))
+            {
+                entity = null;
+                return false;
+            }
+
+            var db2EntityType = model.GetEntityType(typeof(TEntity)).WithSchema(tableName, schema);
+            var materializer = new Db2EntityMaterializer<TEntity, RowHandle>(db2EntityType, entityFactory);
+
+            entity = materializer.Materialize(typed, handle);
+            return true;
         }
-
-        var db2EntityType = model.GetEntityType(typeof(TEntity)).WithSchema(tableName, schema);
-        var materializer = new Db2EntityMaterializer<TEntity, RowHandle>(db2EntityType, entityFactory);
-
-        entity = materializer.Materialize(typed, handle);
-        return true;
+        finally
+        {
+            (file as IDisposable)?.Dispose();
+        }
     }
 
     public void Dispose()
     {
-        foreach (var lazy in _cache.Values)
-        {
-            if (!lazy.IsValueCreated)
-                continue;
-
-            if (lazy.Value.File is IDisposable disposable)
-                disposable.Dispose();
-        }
+        // This store does not own DB2 file lifetimes. Callers are responsible for disposal.
     }
 
     public (IDb2File<TRow> File, Db2TableSchema Schema) OpenTableWithSchema<TRow>(string tableName) where TRow : struct

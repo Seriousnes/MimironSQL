@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 
+using MimironSQL.EntityFrameworkCore.Tests;
 using MimironSQL.Providers;
 
 using NSubstitute;
@@ -16,7 +17,7 @@ public sealed class MimironDb2AutoIncludeAndLazyLoadingTests
         var testDataDir = TestDataPaths.GetIntegrationTestDataDirectory();
 
         var optionsBuilder = new DbContextOptionsBuilder<AutoIncludeContext>();
-        optionsBuilder.UseMimironDb2(o => o.UseFileSystem(
+        optionsBuilder.UseMimironDb2ForTests(o => o.UseFileSystem(
             db2DirectoryPath: testDataDir,
             dbdDefinitionsDirectory: Path.Combine(testDataDir, "definitions")));
 
@@ -36,7 +37,7 @@ public sealed class MimironDb2AutoIncludeAndLazyLoadingTests
         var testDataDir = TestDataPaths.GetIntegrationTestDataDirectory();
 
         var optionsBuilder = new DbContextOptionsBuilder<AutoIncludeContext>();
-        optionsBuilder.UseMimironDb2(o => o.UseFileSystem(
+        optionsBuilder.UseMimironDb2ForTests(o => o.UseFileSystem(
             db2DirectoryPath: testDataDir,
             dbdDefinitionsDirectory: Path.Combine(testDataDir, "definitions")));
 
@@ -57,7 +58,7 @@ public sealed class MimironDb2AutoIncludeAndLazyLoadingTests
 
         var optionsBuilder = new DbContextOptionsBuilder<LazyLoadingContext>();
         optionsBuilder.UseLazyLoadingProxies();
-        optionsBuilder.UseMimironDb2(o => o.UseFileSystem(
+        optionsBuilder.UseMimironDb2ForTests(o => o.UseFileSystem(
             db2DirectoryPath: testDataDir,
             dbdDefinitionsDirectory: Path.Combine(testDataDir, "definitions")));
 
@@ -160,7 +161,6 @@ public sealed class MimironDb2AutoIncludeAndLazyLoadingTests
             return Path.GetFullPath(Path.Combine(
                 baseDir,
                 "..", "..", "..", "..",
-                "MimironSQL.IntegrationTests",
                 "TestData"));
         }
     }

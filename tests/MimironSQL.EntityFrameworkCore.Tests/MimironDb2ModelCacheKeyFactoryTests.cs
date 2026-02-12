@@ -105,7 +105,7 @@ public class MimironDb2ModelCacheKeyFactoryTests
         where TContext : DbContext
     {
         var options = new DbContextOptionsBuilder<TContext>()
-            .UseMimironDb2(o => o.ConfigureProvider(
+            .UseMimironDb2ForTests(o => o.ConfigureProvider(
                 providerKey: providerKey,
                 providerConfigHash: providerConfigHash,
                 applyProviderServices: services =>

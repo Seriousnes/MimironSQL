@@ -30,7 +30,7 @@ public sealed class CascDb2ContextIntegrationLocalUseCascConfigurationTests
         File.Exists(manifestPath).ShouldBeTrue();
 
         var optionsBuilder = new DbContextOptionsBuilder<WoWDb2Context>();
-        optionsBuilder.UseMimironDb2(o => o.UseCasc(casc =>
+        optionsBuilder.UseMimironDb2ForTests(o => o.UseCasc(casc =>
         {
             casc.WowInstallRoot = wowInstallRoot;
 
@@ -77,7 +77,7 @@ public sealed class CascDb2ContextIntegrationLocalUseCascConfigurationTests
         configuration.GetSection("Casc").Returns(cascSection);
 
         var optionsBuilder = new DbContextOptionsBuilder<WoWDb2Context>();
-        optionsBuilder.UseMimironDb2(o => o.UseCasc(configuration));
+        optionsBuilder.UseMimironDb2ForTests(o => o.UseCasc(configuration));
 
         using var context = new WoWDb2Context(optionsBuilder.Options);
 

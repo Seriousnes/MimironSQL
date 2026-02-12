@@ -13,8 +13,6 @@ internal interface IMimironDb2Store
 
     Db2TableSchema GetSchema(string tableName);
 
-    Db2TableSchema GetSchemaFromMetadata(string tableName);
-
     (IDb2File File, Db2TableSchema Schema) OpenTableWithSchema(string tableName);
 
     (IDb2File<TRow> File, Db2TableSchema Schema) OpenTableWithSchema<TRow>(string tableName) where TRow : struct;

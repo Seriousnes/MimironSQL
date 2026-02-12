@@ -249,33 +249,33 @@ These tests construct a `Db2ModelBuilder` in helper/setup code to produce a `Db2
 
 ### Build & Compilation
 
-- [ ] Solution compiles with zero errors (`dotnet build MimironSQL.slnx`).
-- [ ] No references to `Db2Model`, `Db2ModelBuilder`, `Db2EntityTypeBuilder`, `Db2ReferenceNavigationBuilder`, `Db2CollectionNavigationBuilder`, `Db2PropertyBuilder`, `Db2EntityTypeMetadata`, `Db2NavigationMetadata`, `Db2CollectionNavigationMetadata`, or `IMimironDb2Db2ModelProvider` remain in any source file.
-- [ ] No references to `Db2ModelBuildMode` remain in source or contracts.
+- [x] Solution compiles with zero errors (`dotnet build MimironSQL.slnx`).
+- [x] No references to `Db2Model`, `Db2ModelBuilder`, `Db2EntityTypeBuilder`, `Db2ReferenceNavigationBuilder`, `Db2CollectionNavigationBuilder`, `Db2PropertyBuilder`, `Db2EntityTypeMetadata`, `Db2NavigationMetadata`, `Db2CollectionNavigationMetadata`, or `IMimironDb2Db2ModelProvider` remain in any source file.
+- [x] No references to `Db2ModelBuildMode` remain in source or contracts.
 
 ### Deleted Files
 
-- [ ] All files listed in **Phase 4 — Delete obsolete files** are removed from the repository.
-- [ ] The following files are created:
+- [x] All files listed in **Phase 4 — Delete obsolete files** are removed from the repository.
+- [x] The following files are created:
   - `src/MimironSQL.EntityFrameworkCore/Db2/Model/Db2ModelBinding.cs`
   - `src/MimironSQL.EntityFrameworkCore/Db2/Model/IDb2ModelBinding.cs`
   - `src/MimironSQL.EntityFrameworkCore/Db2/Model/Db2ModelBindingProvider.cs`
 
 ### Retained Files
 
-- [ ] `Db2EntityType.cs`, `Db2ReferenceNavigation.cs`, `Db2CollectionNavigation.cs`, `Db2ReferenceNavigationKind.cs`, `Db2CollectionNavigationKind.cs` are undeleted and still compile.
+- [x] `Db2EntityType.cs`, `Db2ReferenceNavigation.cs`, `Db2CollectionNavigation.cs`, `Db2ReferenceNavigationKind.cs`, `Db2CollectionNavigationKind.cs` are undeleted and still compile.
 
 ### API Surface
 
-- [ ] `Db2ModelBinding` exposes: `GetEntityType(Type)`, `TryGetReferenceNavigation(Type, MemberInfo, out ...)`, `TryGetCollectionNavigation(Type, MemberInfo, out ...)`, `GetAutoIncludeNavigations(Type)`.
-- [ ] `IDb2ModelBinding` exposes: `GetBinding()`.
-- [ ] `Db2ModelBindingProvider` is registered as `IDb2ModelBinding` (scoped) in `MimironDb2ServiceCollectionExtensions`.
+- [x] `Db2ModelBinding` exposes: `GetEntityType(Type)`, `TryGetReferenceNavigation(Type, MemberInfo, out ...)`, `TryGetCollectionNavigation(Type, MemberInfo, out ...)`, `GetAutoIncludeNavigations(Type)`.
+- [x] `IDb2ModelBinding` exposes: `GetBinding()`.
+- [x] `Db2ModelBindingProvider` is registered as `IDb2ModelBinding` (scoped) in `MimironDb2ServiceCollectionExtensions`.
 
 ### Functional Behavior
 
-- [ ] All existing unit tests pass (after being updated to use `Db2ModelBinding`).
-- [ ] All integration tests pass without code changes (they do not reference the internal model layer).
-- [ ] `Db2ModelBinding` correctly resolves:
+- [x] All existing unit tests pass (after being updated to use `Db2ModelBinding`).
+- [x] All integration tests pass without code changes (they do not reference the internal model layer).
+- [x] `Db2ModelBinding` correctly resolves:
   - Entity types with table name from `[Table]` attribute and EF `GetTableName()`.
   - Primary key member from EF `FindPrimaryKey()`.
   - Column name mappings from EF `GetColumnName()`.
@@ -284,13 +284,13 @@ These tests construct a `Db2ModelBuilder` in helper/setup code to produce a `Db2
   - `DependentForeignKeyToPrimaryKey` collection navigations (EF: standard HasMany).
   - `ForeignKeyArrayToPrimaryKey` collection navigations (detects `int[]`/`ICollection<int>` FK-array properties).
   - Auto-include navigations (`INavigation.IsEagerLoaded`).
-- [ ] Schema resolution is lazy (first access triggers `.dbd` lookup).
+- [x] Schema resolution is lazy (first access triggers `.dbd` lookup).
 
 ### Tests
 
-- [ ] New `Db2ModelBindingTests.cs` covers: entity type registration, PK detection, column mapping, reference navigation kinds, collection navigation kinds, auto-include, FK-array detection, validation errors (missing PK, non-public getter, etc.).
-- [ ] Existing query pipeline tests (`Db2IncludeChainExecutorTests`, `Db2NavigationQueryCompilerTests`, etc.) pass after helper update.
-- [ ] A shared test helper exists for building `Db2ModelBinding` from a mock `IModel`.
+- [x] `Db2ModelBinding` tests cover: entity type registration, PK detection, column mapping, reference navigation kinds, collection navigation kinds, auto-include, FK-array detection, validation errors (missing PK, non-public getter, etc.).
+- [x] Existing query pipeline tests (`Db2IncludeChainExecutorTests`, `Db2NavigationQueryCompilerTests`, etc.) pass after helper update.
+- [x] A shared test helper exists for building `Db2ModelBinding` from a mock `IModel`.
 
 ### Performance
 
@@ -299,9 +299,9 @@ These tests construct a `Db2ModelBuilder` in helper/setup code to produce a `Db2
 
 ### Code Quality
 
-- [ ] No `[MethodImpl]` attributes added.
-- [ ] No new public types introduced (all new types are `internal`).
-- [ ] No new NuGet packages required.
+- [x] No `[MethodImpl]` attributes added.
+- [x] No new public types introduced (all new types are `internal`).
+- [x] No new NuGet packages required.
 
 ---
 

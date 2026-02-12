@@ -4,6 +4,8 @@ using MimironSQL.EntityFrameworkCore.Db2.Query;
 using MimironSQL.EntityFrameworkCore.Db2.Schema;
 using MimironSQL.Formats;
 
+using Microsoft.EntityFrameworkCore;
+
 using Shouldly;
 
 namespace MimironSQL.EntityFrameworkCore.Tests;
@@ -13,16 +15,16 @@ public sealed class Db2IncludeChainExecutorForeignKeyArrayTests
     [Fact]
     public void Apply_supports_foreign_key_array_include_with_enum_array_keys()
     {
-        var builder = new Db2ModelBuilder();
+        var model = TestModelBindingFactory.CreateBinding(modelBuilder =>
+        {
+            modelBuilder.Entity<Parent>().HasKey(x => x.Id);
+            modelBuilder.Entity<Child>().HasKey(x => x.Id);
 
-        builder.Entity<Parent>()
-            .HasMany(x => x.Children)
-            .WithForeignKeyArray<Key>(x => x.ChildIds);
-
-        builder.Entity<Parent>().HasKey(x => x.Id);
-        builder.Entity<Child>().HasKey(x => x.Id);
-
-        var model = builder.Build(SchemaResolver);
+            modelBuilder.Entity<Parent>()
+                .HasMany(x => x.Children)
+                .WithOne()
+                .HasForeignKeyArray(x => x.ChildIds);
+        }, SchemaResolver);
 
         var parent = new Parent
         {

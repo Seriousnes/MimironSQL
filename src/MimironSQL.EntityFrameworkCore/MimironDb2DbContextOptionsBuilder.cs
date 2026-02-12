@@ -65,15 +65,6 @@ public class MimironDb2DbContextOptionsBuilder : IMimironDb2DbContextOptionsBuil
         return this;
     }
 
-    /// <inheritdoc />
-    public virtual IMimironDb2DbContextOptionsBuilder WithDb2ModelBuildMode(Db2ModelBuildMode buildMode)
-    {
-        var extension = GetOrCreateExtension(OptionsBuilder);
-        extension = extension.WithDb2ModelBuildMode(buildMode);
-        ((IDbContextOptionsBuilderInfrastructure)OptionsBuilder).AddOrUpdateExtension(extension);
-        return this;
-    }
-
     private static MimironDb2OptionsExtension GetOrCreateExtension(DbContextOptionsBuilder optionsBuilder)
         => optionsBuilder.Options.FindExtension<MimironDb2OptionsExtension>()
            ?? new MimironDb2OptionsExtension();

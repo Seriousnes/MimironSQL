@@ -255,12 +255,11 @@ public sealed class Db2RowProjectorCompilerTests
         return (entityType, file);
     }
 
-    private static Db2Model BuildModel()
-    {
-        var builder = new Db2ModelBuilder();
-        builder.Entity<Entity>().HasKey(x => x.Id);
-        return builder.Build(SchemaResolver);
-    }
+    private static Db2ModelBinding BuildModel()
+        => TestModelBindingFactory.CreateBinding(modelBuilder =>
+        {
+            modelBuilder.Entity<Entity>().HasKey(x => x.Id);
+        }, SchemaResolver);
 
     private static Db2TableSchema SchemaResolver(string tableName)
     {

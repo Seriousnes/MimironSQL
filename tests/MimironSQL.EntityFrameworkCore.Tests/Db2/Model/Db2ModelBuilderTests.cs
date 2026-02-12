@@ -1,94 +1,160 @@
 using System.ComponentModel.DataAnnotations.Schema;
 using System.Reflection;
 
-using MimironSQL.Db2.Model;
 using MimironSQL.Db2;
+using MimironSQL.EntityFrameworkCore;
+using MimironSQL.Providers;
+
+using Microsoft.Extensions.DependencyInjection;
+
+using NSubstitute;
 
 using Shouldly;
 using MimironSQL.EntityFrameworkCore.Db2.Model;
 using MimironSQL.EntityFrameworkCore.Db2.Schema;
 
+using Microsoft.EntityFrameworkCore;
+
 namespace MimironSQL.EntityFrameworkCore.Tests;
 
-public sealed class Db2ModelBuilderTests
+public sealed class Db2ModelBindingTests
 {
     [Fact]
-    public void Db2ModelBuilder_Entity_FieldWithColumnAttribute_Throws()
+    public void GetEntityType_uses_EF_table_name_from_Table_attribute()
     {
-        var builder = new Db2ModelBuilder();
+        var db2Provider = Substitute.For<IDb2StreamProvider>();
+        var dbdProvider = Substitute.For<IDbdProvider>();
 
-        var ex = Should.Throw<NotSupportedException>(() => builder.Entity<EntityWithFieldColumnAttribute>());
+        var options = new DbContextOptionsBuilder<TableAttributeContext>()
+            .UseMimironDb2ForTests(o => o.ConfigureProvider(
+                providerKey: "Test",
+                providerConfigHash: 1,
+                applyProviderServices: services =>
+                {
+                    services.AddSingleton(db2Provider);
+                    services.AddSingleton(dbdProvider);
+                }))
+            .Options;
+
+        using var context = new TableAttributeContext(options);
+
+        var binding = new Db2ModelBinding(
+            efModel: context.Model,
+            schemaResolver: static tableName =>
+            {
+                tableName.ShouldBe("MyTable");
+                return new Db2TableSchema(
+                    tableName: tableName,
+                    layoutHash: 0,
+                    physicalColumnCount: 1,
+                    fields:
+                    [
+                        new Db2FieldSchema("ID", Db2ValueType.Int64, ColumnStartIndex: 0, ElementCount: 1, IsVerified: true, IsVirtual: false, IsId: true, IsRelation: false, ReferencedTableName: null),
+                    ]);
+            });
+
+        binding.GetEntityType(typeof(EntityWithTableAttribute)).TableName.ShouldBe("MyTable");
+    }
+
+    [Fact]
+    public void GetAutoIncludeNavigations_returns_eager_loaded_navigations_sorted_by_name()
+    {
+        var model = TestModelBindingFactory.CreateBinding(
+            static modelBuilder =>
+            {
+                modelBuilder.Entity<AutoIncludeParent>().HasKey(x => x.Id);
+                modelBuilder.Entity<AutoIncludeChild>().HasKey(x => x.Id);
+
+                modelBuilder.Entity<AutoIncludeParent>()
+                    .HasOne(x => x.AChild)
+                    .WithMany()
+                    .HasForeignKey(x => x.AChildId);
+
+                modelBuilder.Entity<AutoIncludeParent>()
+                    .HasMany(x => x.ZChildren)
+                    .WithOne();
+
+                modelBuilder.Entity<AutoIncludeParent>().Navigation(x => x.AChild).AutoInclude();
+                modelBuilder.Entity<AutoIncludeParent>().Navigation(x => x.ZChildren).AutoInclude();
+            },
+            static _ => throw new InvalidOperationException("Schema resolver should not be invoked for this test."));
+
+        var navs = model.GetAutoIncludeNavigations(typeof(AutoIncludeParent));
+
+        navs.Select(static m => m.Name).ShouldBe([nameof(AutoIncludeParent.AChild), nameof(AutoIncludeParent.ZChildren)]);
+    }
+
+    [Fact]
+    public void GetEntityType_FieldWithColumnAttribute_Throws()
+    {
+        var model = TestModelBindingFactory.CreateBinding(static _ => { }, static _ => throw new InvalidOperationException("Schema resolver should not be invoked for this test."));
+
+        var ex = Should.Throw<NotSupportedException>(() => model.GetEntityType(typeof(EntityWithFieldColumnAttribute)));
         ex.Message.ShouldContain("Column mapping attributes are only supported on public properties");
         ex.Message.ShouldContain(nameof(EntityWithFieldColumnAttribute.Field));
     }
 
     [Fact]
-    public void Db2ModelBuilder_Entity_NonPublicPropertyWithColumnAttribute_Throws()
+    public void GetEntityType_NonPublicPropertyWithColumnAttribute_Throws()
     {
-        var builder = new Db2ModelBuilder();
+        var model = TestModelBindingFactory.CreateBinding(static _ => { }, static _ => throw new InvalidOperationException("Schema resolver should not be invoked for this test."));
 
-        var ex = Should.Throw<NotSupportedException>(() => builder.Entity<EntityWithPrivateColumnProperty>());
+        var ex = Should.Throw<NotSupportedException>(() => model.GetEntityType(typeof(EntityWithPrivateColumnProperty)));
         ex.Message.ShouldContain("Column mapping attributes are only supported on public properties");
         ex.Message.ShouldContain("Value");
     }
 
     [Fact]
-    public void Db2ModelBuilder_Entity_NonPublicPropertyWithForeignKeyAttribute_Throws()
+    public void GetEntityType_NonPublicPropertyWithForeignKeyAttribute_Throws()
     {
-        var builder = new Db2ModelBuilder();
+        var model = TestModelBindingFactory.CreateBinding(static _ => { }, static _ => throw new InvalidOperationException("Schema resolver should not be invoked for this test."));
 
-        var ex = Should.Throw<NotSupportedException>(() => builder.Entity<EntityWithPrivateForeignKeyProperty>());
+        var ex = Should.Throw<NotSupportedException>(() => model.GetEntityType(typeof(EntityWithPrivateForeignKeyProperty)));
         ex.Message.ShouldContain("Foreign key mapping attributes are only supported on public properties");
         ex.Message.ShouldContain("FooId");
     }
 
     [Fact]
-    public void Db2EntityTypeBuilder_ToTable_EntityHasTableAttribute_Throws()
+    public void GetEntityType_when_entity_has_no_primary_key_throws()
     {
-        var builder = new Db2ModelBuilder();
-        var entity = builder.Entity<EntityWithTableAttribute>();
+        var model = TestModelBindingFactory.CreateBinding(
+            static modelBuilder =>
+            {
+                modelBuilder.Entity<NoKeyEntity>();
+            },
+            NoKeyEntitySchemaResolver);
 
-        var ex = Should.Throw<NotSupportedException>(() => entity.ToTable("Other"));
-        ex.Message.ShouldContain("has a [Table] attribute");
-    }
-
-    [Fact]
-    public void Db2ModelBuilder_Entity_TableAttribute_SetsTableNameAsConfigured()
-    {
-        var builder = new Db2ModelBuilder();
-        var entity = builder.Entity<EntityWithTableAttribute>();
-
-        entity.Metadata.TableName.ShouldBe("MyTable");
-        entity.Metadata.TableNameWasConfigured.ShouldBeTrue();
-    }
-
-    [Fact]
-    public void Db2ModelBuilder_Build_when_entity_has_no_primary_key_throws()
-    {
-        var builder = new Db2ModelBuilder();
-        builder.Entity<NoKeyEntity>();
-        var ex = Should.Throw<NotSupportedException>(() => builder.Build(NoKeyEntitySchemaResolver));
+        var ex = Should.Throw<NotSupportedException>(() => model.GetEntityType(typeof(NoKeyEntity)));
         ex.Message.ShouldContain("has no key member");
     }
 
     [Fact]
-    public void Db2ModelBuilder_Build_when_primary_key_member_is_not_public_property_throws()
+    public void GetEntityType_when_primary_key_member_is_not_public_property_throws()
     {
-        var builder = new Db2ModelBuilder();
-        var entity = builder.Entity<FieldKeyEntity>();
-        entity.Metadata.PrimaryKeyMember = typeof(FieldKeyEntity).GetField(nameof(FieldKeyEntity.Id), BindingFlags.Instance | BindingFlags.Public)!;
+        var model = TestModelBindingFactory.CreateBinding(
+            static modelBuilder =>
+            {
+                var entity = modelBuilder.Entity<FieldKeyEntity>();
+                entity.Property<int>("Id");
+                entity.HasKey("Id");
+            },
+            FieldKeyEntitySchemaResolver);
 
-        var ex = Should.Throw<NotSupportedException>(() => builder.Build(FieldKeyEntitySchemaResolver));
-        ex.Message.ShouldContain("must be a public property");
+        var ex = Should.Throw<NotSupportedException>(() => model.GetEntityType(typeof(FieldKeyEntity)));
+        ex.Message.ShouldContain("primary key must be a public property");
     }
 
     [Fact]
-    public void Db2ModelBuilder_Build_when_primary_key_has_column_attribute_throws()
+    public void GetEntityType_when_primary_key_has_column_attribute_throws()
     {
-        var builder = new Db2ModelBuilder();
-        builder.Entity<ColumnMappedPrimaryKey>().HasKey(x => x.Id);
+        var model = TestModelBindingFactory.CreateBinding(
+            static modelBuilder =>
+            {
+                modelBuilder.Entity<ColumnMappedPrimaryKey>().HasKey(x => x.Id);
+            },
+            ColumnMappedPrimaryKeySchemaResolver);
 
-        var ex = Should.Throw<NotSupportedException>(() => builder.Build(ColumnMappedPrimaryKeySchemaResolver));
+        var ex = Should.Throw<NotSupportedException>(() => model.GetEntityType(typeof(ColumnMappedPrimaryKey)));
         ex.Message.ShouldContain("Primary key member");
         ex.Message.ShouldContain("cannot configure column mapping");
     }
@@ -161,12 +227,6 @@ public sealed class Db2ModelBuilderTests
         public object Foo { get; set; } = new();
     }
 
-    [Table("MyTable")]
-    private sealed class EntityWithTableAttribute
-    {
-        public int Id { get; set; }
-    }
-
     private sealed class NoKeyEntity
     {
         public int Key { get; set; }
@@ -180,6 +240,39 @@ public sealed class Db2ModelBuilderTests
     private sealed class ColumnMappedPrimaryKey
     {
         [Column("Other")]
+        public int Id { get; set; }
+    }
+
+    [Table("MyTable")]
+    private sealed class EntityWithTableAttribute
+    {
+        public int Id { get; set; }
+    }
+
+    private sealed class TableAttributeContext(DbContextOptions options) : DbContext(options)
+    {
+        public DbSet<EntityWithTableAttribute> Entities
+        {
+            get
+            {
+                return field ??= Set<EntityWithTableAttribute>();
+            }
+        }
+    }
+
+    private sealed class AutoIncludeParent
+    {
+        public int Id { get; set; }
+
+        public int AChildId { get; set; }
+
+        public AutoIncludeChild? AChild { get; set; }
+
+        public ICollection<AutoIncludeChild> ZChildren { get; set; } = [];
+    }
+
+    private sealed class AutoIncludeChild
+    {
         public int Id { get; set; }
     }
 }

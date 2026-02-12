@@ -3,7 +3,7 @@ using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.DependencyInjection;
 
 using MimironSQL.EntityFrameworkCore.ChangeTracking;
-using MimironSQL.EntityFrameworkCore.Query;
+using MimironSQL.EntityFrameworkCore.Db2.Model;
 using MimironSQL.EntityFrameworkCore.Storage;
 using MimironSQL.Providers;
 
@@ -33,9 +33,9 @@ public sealed class MimironDb2LazyLoaderTests
         current.Context.Returns(ctx);
 
         var store = Substitute.For<IMimironDb2Store>();
-        var db2ModelProvider = Substitute.For<IMimironDb2Db2ModelProvider>();
+        var modelBinding = Substitute.For<IDb2ModelBinding>();
 
-        var loader = new MimironDb2LazyLoader(current, store, db2ModelProvider);
+        var loader = new MimironDb2LazyLoader(current, store, modelBinding);
 
         await loader.LoadAsync(entity: new object(), cancellationToken: default, navigationName: "Nav");
     }

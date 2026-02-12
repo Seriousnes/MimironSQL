@@ -7,10 +7,10 @@ namespace MimironSQL.EntityFrameworkCore.Db2.Query;
 
 internal static class Db2IncludePolicy
 {
-    public static bool UsesRootNavigation(Db2Model model, LambdaExpression lambda)
+    public static bool UsesRootNavigation(Db2ModelBinding model, LambdaExpression lambda)
         => GetRootNavigationMembers(model, lambda).Count != 0;
 
-    public static void ThrowIfNavigationRequiresInclude(Db2Model model, HashSet<MemberInfo> includedRootMembers, Db2QueryOperation op)
+    public static void ThrowIfNavigationRequiresInclude(Db2ModelBinding model, HashSet<MemberInfo> includedRootMembers, Db2QueryOperation op)
     {
         ArgumentNullException.ThrowIfNull(model);
         ArgumentNullException.ThrowIfNull(includedRootMembers);
@@ -29,7 +29,7 @@ internal static class Db2IncludePolicy
         ThrowIfNavigationRequiresInclude(model, includedRootMembers, lambda);
     }
 
-    public static void ThrowIfNavigationRequiresInclude(Db2Model model, HashSet<MemberInfo> includedRootMembers, LambdaExpression lambda)
+    public static void ThrowIfNavigationRequiresInclude(Db2ModelBinding model, HashSet<MemberInfo> includedRootMembers, LambdaExpression lambda)
     {
         ArgumentNullException.ThrowIfNull(model);
         ArgumentNullException.ThrowIfNull(includedRootMembers);
@@ -51,7 +51,7 @@ internal static class Db2IncludePolicy
         }
     }
 
-    private static List<MemberInfo> GetRootNavigationMembers(Db2Model model, LambdaExpression lambda)
+    private static List<MemberInfo> GetRootNavigationMembers(Db2ModelBinding model, LambdaExpression lambda)
     {
         ArgumentNullException.ThrowIfNull(model);
         ArgumentNullException.ThrowIfNull(lambda);

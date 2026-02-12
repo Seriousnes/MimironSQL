@@ -32,7 +32,6 @@ public class MimironDb2OptionsExtension : IDbContextOptionsExtension
         ProviderKey = copyFrom.ProviderKey;
         ProviderConfigHash = copyFrom.ProviderConfigHash;
         ApplyProviderServices = copyFrom.ApplyProviderServices;
-        Db2ModelBuildMode = copyFrom.Db2ModelBuildMode;
         WowVersion = copyFrom.WowVersion;
     }
 
@@ -48,12 +47,6 @@ public class MimironDb2OptionsExtension : IDbContextOptionsExtension
     /// Gets a hash of the provider configuration used for EF Core service provider caching.
     /// </summary>
     public int ProviderConfigHash { get; private set; }
-
-    /// <summary>
-    /// Gets how the internal DB2 model is built (eager or lazy).
-    /// Defaults to <see cref="EntityFrameworkCore.Db2ModelBuildMode.Eager"/>.
-    /// </summary>
-    public Db2ModelBuildMode Db2ModelBuildMode { get; private set; } = Db2ModelBuildMode.Eager;
 
     /// <summary>
     /// Gets the WoW version string used to select compatible DBD BUILD blocks.
@@ -84,16 +77,6 @@ public class MimironDb2OptionsExtension : IDbContextOptionsExtension
         clone.ProviderKey = providerKey;
         clone.ProviderConfigHash = providerConfigHash;
         clone.ApplyProviderServices = applyProviderServices;
-        return clone;
-    }
-
-    /// <summary>
-    /// Returns a copy of this extension configured with the specified DB2 model build mode.
-    /// </summary>
-    public MimironDb2OptionsExtension WithDb2ModelBuildMode(Db2ModelBuildMode buildMode)
-    {
-        var clone = Clone();
-        clone.Db2ModelBuildMode = buildMode;
         return clone;
     }
 
@@ -197,7 +180,6 @@ public class MimironDb2OptionsExtension : IDbContextOptionsExtension
             var hashCode = new HashCode();
             hashCode.Add(Extension.ProviderKey, StringComparer.Ordinal);
             hashCode.Add(Extension.ProviderConfigHash);
-            hashCode.Add((int)Extension.Db2ModelBuildMode);
             hashCode.Add(Extension.WowVersion, StringComparer.Ordinal);
             return hashCode.ToHashCode();
         }
@@ -206,7 +188,6 @@ public class MimironDb2OptionsExtension : IDbContextOptionsExtension
             => other is ExtensionInfo otherInfo
                 && string.Equals(Extension.ProviderKey, otherInfo.Extension.ProviderKey, StringComparison.Ordinal)
                 && Extension.ProviderConfigHash == otherInfo.Extension.ProviderConfigHash
-                && Extension.Db2ModelBuildMode == otherInfo.Extension.Db2ModelBuildMode
                 && string.Equals(Extension.WowVersion, otherInfo.Extension.WowVersion, StringComparison.Ordinal);
 
         public override void PopulateDebugInfo(IDictionary<string, string> debugInfo)
@@ -215,7 +196,6 @@ public class MimironDb2OptionsExtension : IDbContextOptionsExtension
                 debugInfo["MimironDb2:Provider"] = Extension.ProviderKey;
 
             debugInfo["MimironDb2:ProviderConfigHash"] = Extension.ProviderConfigHash.ToString();
-            debugInfo["MimironDb2:Db2ModelBuildMode"] = Extension.Db2ModelBuildMode.ToString();
 
             if (Extension.WowVersion is not null)
                 debugInfo["MimironDb2:WoWVersion"] = Extension.WowVersion;

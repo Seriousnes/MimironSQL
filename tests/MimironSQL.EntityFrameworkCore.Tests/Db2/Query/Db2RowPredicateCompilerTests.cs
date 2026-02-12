@@ -291,12 +291,11 @@ public sealed class Db2RowPredicateCompilerTests
         return (entityType, file);
     }
 
-    private static Db2Model BuildModel(Func<string, Db2TableSchema> resolver)
-    {
-        var builder = new Db2ModelBuilder();
-        builder.Entity<Entity>().HasKey(x => x.Id);
-        return builder.Build(resolver);
-    }
+    private static Db2ModelBinding BuildModel(Func<string, Db2TableSchema> resolver)
+        => TestModelBindingFactory.CreateBinding(modelBuilder =>
+        {
+            modelBuilder.Entity<Entity>().HasKey(x => x.Id);
+        }, resolver);
 
     private static Db2TableSchema SchemaResolver(string tableName)
     {

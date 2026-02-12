@@ -26,25 +26,135 @@ internal sealed class MimironDb2TypeMappingSource(TypeMappingSourceDependencies 
         if (mapping is not null)
             return mapping;
 
-        return mappingInfo.ClrType switch
+        var clrType = mappingInfo.ClrType;
+        if (clrType is null)
+            return null;
+
+        if (TryGetScalarMapping(clrType, out var scalar))
+            return scalar;
+
+        // Support array-like DB2 schema fields (ElementCount > 1).
+        if (clrType.IsArray)
         {
-            null => null,
-            var t when t == typeof(int) => Int32,
-            var t when t == typeof(long) => Int64,
-            var t when t == typeof(short) => Int16,
-            var t when t == typeof(byte) => Byte,
-            var t when t == typeof(sbyte) => SByte,
-            var t when t == typeof(uint) => UInt32,
-            var t when t == typeof(ulong) => UInt64,
-            var t when t == typeof(ushort) => UInt16,
-            var t when t == typeof(bool) => Boolean,
-            var t when t == typeof(string) => String,
-            var t when t == typeof(float) => Single,
-            var t when t == typeof(double) => Double,
-            var t when t == typeof(decimal) => Decimal,
-            var t when t == typeof(DateTime) => DateTime,
-            var t when t == typeof(Guid) => Guid,
-            _ => null,
-        };
+            var elementType = clrType.GetElementType();
+            if (elementType is not null && TryGetPrimitiveElementMapping(elementType, out _))
+                return new MimironDb2TypeMapping(clrType);
+        }
+
+        if (clrType.IsGenericType && clrType.GetGenericTypeDefinition() == typeof(ICollection<>))
+        {
+            var elementType = clrType.GetGenericArguments()[0];
+            if (TryGetPrimitiveElementMapping(elementType, out _))
+                return new MimironDb2TypeMapping(clrType);
+        }
+
+        return null;
+    }
+
+    private static bool TryGetScalarMapping(Type clrType, out CoreTypeMapping mapping)
+    {
+        if (clrType == typeof(int))
+        {
+            mapping = Int32;
+            return true;
+        }
+
+        if (clrType == typeof(long))
+        {
+            mapping = Int64;
+            return true;
+        }
+
+        if (clrType == typeof(short))
+        {
+            mapping = Int16;
+            return true;
+        }
+
+        if (clrType == typeof(byte))
+        {
+            mapping = Byte;
+            return true;
+        }
+
+        if (clrType == typeof(sbyte))
+        {
+            mapping = SByte;
+            return true;
+        }
+
+        if (clrType == typeof(uint))
+        {
+            mapping = UInt32;
+            return true;
+        }
+
+        if (clrType == typeof(ulong))
+        {
+            mapping = UInt64;
+            return true;
+        }
+
+        if (clrType == typeof(ushort))
+        {
+            mapping = UInt16;
+            return true;
+        }
+
+        if (clrType == typeof(bool))
+        {
+            mapping = Boolean;
+            return true;
+        }
+
+        if (clrType == typeof(string))
+        {
+            mapping = String;
+            return true;
+        }
+
+        if (clrType == typeof(float))
+        {
+            mapping = Single;
+            return true;
+        }
+
+        if (clrType == typeof(double))
+        {
+            mapping = Double;
+            return true;
+        }
+
+        if (clrType == typeof(decimal))
+        {
+            mapping = Decimal;
+            return true;
+        }
+
+        if (clrType == typeof(DateTime))
+        {
+            mapping = DateTime;
+            return true;
+        }
+
+        if (clrType == typeof(Guid))
+        {
+            mapping = Guid;
+            return true;
+        }
+
+        mapping = null!;
+        return false;
+    }
+
+    private static bool TryGetPrimitiveElementMapping(Type elementType, out CoreTypeMapping mapping)
+    {
+        if (elementType == typeof(string))
+        {
+            mapping = null!;
+            return false;
+        }
+
+        return TryGetScalarMapping(elementType, out mapping);
     }
 }

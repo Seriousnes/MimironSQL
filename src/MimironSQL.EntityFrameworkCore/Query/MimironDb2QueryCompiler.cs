@@ -19,13 +19,13 @@ namespace MimironSQL.EntityFrameworkCore.Query;
 internal sealed class MimironDb2QueryExecutor(
     ICurrentDbContext currentDbContext,
     IMimironDb2Store store,
-    IMimironDb2Db2ModelProvider db2ModelProvider) : IMimironDb2QueryExecutor
+    IDb2ModelBinding db2ModelBinding) : IMimironDb2QueryExecutor
 {
     private static readonly ConcurrentDictionary<(Type EntityType, Type RowType, Type ResultType), Func<MimironDb2QueryExecutor, Expression, object?>> ExecuteDelegates = new();
 
     private readonly DbContext _context = currentDbContext?.Context ?? throw new ArgumentNullException(nameof(currentDbContext));
     private readonly IMimironDb2Store _store = store ?? throw new ArgumentNullException(nameof(store));
-    private readonly IMimironDb2Db2ModelProvider _db2ModelProvider = db2ModelProvider ?? throw new ArgumentNullException(nameof(db2ModelProvider));
+    private readonly IDb2ModelBinding _db2ModelBinding = db2ModelBinding ?? throw new ArgumentNullException(nameof(db2ModelBinding));
 
     public TResult Execute<TResult>(Expression query)
     {
@@ -60,7 +60,7 @@ internal sealed class MimironDb2QueryExecutor(
     {
         query = MimironDb2EfExpressionNormalizer.Normalize(query);
 
-        var model = _db2ModelProvider.GetDb2Model();
+        var model = _db2ModelBinding.GetBinding();
 
         var pipeline = Db2QueryPipeline.Parse(query);
 
@@ -151,7 +151,7 @@ internal sealed class MimironDb2QueryExecutor(
         return provider.Execute<TResult>(rewritten!);
     }
 
-    private object ExecuteDeferredEnumerable<TEntity, TRow>(Expression query, Db2Model model, string tableName, Type elementType)
+    private object ExecuteDeferredEnumerable<TEntity, TRow>(Expression query, Db2ModelBinding model, string tableName, Type elementType)
         where TEntity : class
         where TRow : struct, IRowHandle
     {
@@ -162,7 +162,7 @@ internal sealed class MimironDb2QueryExecutor(
         return method.Invoke(this, [query, model, tableName])!;
     }
 
-    private object ExecuteDeferredEnumerableTyped<TEntity, TRow, TElement>(Expression query, Db2Model model, string tableName)
+    private object ExecuteDeferredEnumerableTyped<TEntity, TRow, TElement>(Expression query, Db2ModelBinding model, string tableName)
         where TEntity : class
         where TRow : struct, IRowHandle
     {
@@ -228,7 +228,7 @@ internal sealed class MimironDb2QueryExecutor(
         return false;
     }
 
-    private static bool TryGetPrimaryKeyMemberName(Db2Model model, Type entityClrType, out string memberName)
+    private static bool TryGetPrimaryKeyMemberName(Db2ModelBinding model, Type entityClrType, out string memberName)
     {
         var entityType = model.GetEntityType(entityClrType);
         memberName = entityType.PrimaryKeyMember.Name;
@@ -344,7 +344,7 @@ internal sealed class MimironDb2QueryExecutor(
         string tableName,
         IReadOnlyList<int> ids,
         int? takeCount,
-        Db2Model model,
+        Db2ModelBinding model,
         IDb2EntityFactory entityFactory)
         where TEntity : class
     {

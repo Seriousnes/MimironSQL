@@ -6,6 +6,8 @@ using MimironSQL.EntityFrameworkCore.Db2.Query;
 using MimironSQL.EntityFrameworkCore.Db2.Schema;
 using MimironSQL.Formats;
 
+using Microsoft.EntityFrameworkCore;
+
 using Shouldly;
 
 namespace MimironSQL.EntityFrameworkCore.Tests;
@@ -1553,75 +1555,65 @@ public sealed class Db2NavigationQueryCompilerTests
             .ShouldBe([1]);
     }
 
-    private static Db2Model BuildParentChildModel()
-    {
-        var builder = new Db2ModelBuilder();
+    private static Db2ModelBinding BuildParentChildModel()
+        => TestModelBindingFactory.CreateBinding(modelBuilder =>
+        {
+            modelBuilder.Entity<Parent>().HasKey(x => x.Id);
+            modelBuilder.Entity<Child>().HasKey(x => x.Id);
 
-        builder.Entity<Child>()
-            .HasOne(x => x.Parent)
-            .WithForeignKey(x => x.ParentId);
+            modelBuilder.Entity<Child>()
+                .HasOne(x => x.Parent)
+                .WithMany(x => x.Children)
+                .HasForeignKey(x => x.ParentId);
+        }, SchemaResolver);
 
-        builder.Entity<Parent>().HasKey(x => x.Id);
-        builder.Entity<Child>().HasKey(x => x.Id);
+    private static Db2ModelBinding BuildParentChildModelVirtualForeignKey()
+        => TestModelBindingFactory.CreateBinding(modelBuilder =>
+        {
+            modelBuilder.Entity<Parent>().HasKey(x => x.Id);
+            modelBuilder.Entity<Child>().HasKey(x => x.Id);
 
-        return builder.Build(SchemaResolver);
-    }
+            modelBuilder.Entity<Child>()
+                .HasOne(x => x.Parent)
+                .WithMany(x => x.Children)
+                .HasForeignKey(x => x.ParentId);
+        }, SchemaResolverVirtualForeignKey);
 
-    private static Db2Model BuildParentChildModelVirtualForeignKey()
-    {
-        var builder = new Db2ModelBuilder();
+    private static Db2ModelBinding BuildSharedPrimaryKeyModel()
+        => TestModelBindingFactory.CreateBinding(modelBuilder =>
+        {
+            modelBuilder.Entity<SpkParent>().HasKey(x => x.Id);
+            modelBuilder.Entity<SpkChild>().HasKey(x => x.Id);
 
-        builder.Entity<Child>()
-            .HasOne(x => x.Parent)
-            .WithForeignKey(x => x.ParentId);
+            modelBuilder.Entity<SpkChild>()
+                .HasOne(x => x.Parent)
+                .WithOne()
+                .HasForeignKey<SpkChild>(x => x.Id);
+        }, SchemaResolverSpk);
 
-        builder.Entity<Parent>().HasKey(x => x.Id);
-        builder.Entity<Child>().HasKey(x => x.Id);
+    private static Db2ModelBinding BuildParentChildCollectionModel()
+        => TestModelBindingFactory.CreateBinding(modelBuilder =>
+        {
+            modelBuilder.Entity<Parent>().HasKey(x => x.Id);
+            modelBuilder.Entity<Child>().HasKey(x => x.Id);
 
-        return builder.Build(SchemaResolverVirtualForeignKey);
-    }
+            modelBuilder.Entity<Parent>()
+                .HasMany(x => x.Children)
+                .WithOne(x => x.Parent)
+                .HasForeignKey(x => x.ParentId);
+        }, SchemaResolver);
 
-    private static Db2Model BuildSharedPrimaryKeyModel()
-    {
-        var builder = new Db2ModelBuilder();
+    private static Db2ModelBinding BuildScalarTypesModel()
+        => TestModelBindingFactory.CreateBinding(modelBuilder =>
+        {
+            modelBuilder.Entity<ScalarParent>().HasKey(x => x.Id);
+            modelBuilder.Entity<ScalarChild>().HasKey(x => x.Id);
 
-        builder.Entity<SpkChild>()
-            .HasOne(x => x.Parent)
-            .WithSharedPrimaryKey(x => x.Id, x => x.Id);
-
-        builder.Entity<SpkParent>().HasKey(x => x.Id);
-        builder.Entity<SpkChild>().HasKey(x => x.Id);
-
-        return builder.Build(SchemaResolverSpk);
-    }
-
-    private static Db2Model BuildParentChildCollectionModel()
-    {
-        var builder = new Db2ModelBuilder();
-
-        builder.Entity<Parent>()
-            .HasMany(x => x.Children)
-            .WithForeignKey(x => x.ParentId);
-
-        builder.Entity<Parent>().HasKey(x => x.Id);
-        builder.Entity<Child>().HasKey(x => x.Id);
-
-        return builder.Build(SchemaResolver);
-    }
-
-    private static Db2Model BuildScalarTypesModel()
-    {
-        var builder = new Db2ModelBuilder();
-
-        builder.Entity<ScalarChild>()
-            .HasOne(x => x.Parent)
-            .WithForeignKey(x => x.ParentId);
-
-        builder.Entity<ScalarParent>().HasKey(x => x.Id);
-        builder.Entity<ScalarChild>().HasKey(x => x.Id);
-
-        return builder.Build(SchemaResolverScalarTypes);
-    }
+            modelBuilder.Entity<ScalarChild>()
+                .HasOne(x => x.Parent)
+                .WithMany()
+                .HasForeignKey(x => x.ParentId);
+        }, SchemaResolverScalarTypes);
 
     private static Db2TableSchema SchemaResolver(string tableName)
     {
@@ -2012,24 +2004,23 @@ public sealed class Db2NavigationQueryCompilerTests
         public readonly record struct Row(int Id, object[] Values);
     }
 
-    private static Db2Model BuildChildWithTwoReferencesModel()
-    {
-        var builder = new Db2ModelBuilder();
+    private static Db2ModelBinding BuildChildWithTwoReferencesModel()
+        => TestModelBindingFactory.CreateBinding(modelBuilder =>
+        {
+            modelBuilder.Entity<Parent>().HasKey(x => x.Id);
+            modelBuilder.Entity<Category>().HasKey(x => x.Id);
+            modelBuilder.Entity<ChildWithTwoRefs>().HasKey(x => x.Id);
 
-        builder.Entity<ChildWithTwoRefs>()
-            .HasOne(x => x.Parent)
-            .WithForeignKey(x => x.ParentId);
+            modelBuilder.Entity<ChildWithTwoRefs>()
+                .HasOne(x => x.Parent)
+                .WithMany()
+                .HasForeignKey(x => x.ParentId);
 
-        builder.Entity<ChildWithTwoRefs>()
-            .HasOne(x => x.Category)
-            .WithForeignKey(x => x.CategoryId);
-
-        builder.Entity<Parent>().HasKey(x => x.Id);
-        builder.Entity<Category>().HasKey(x => x.Id);
-        builder.Entity<ChildWithTwoRefs>().HasKey(x => x.Id);
-
-        return builder.Build(SchemaResolver2);
-    }
+            modelBuilder.Entity<ChildWithTwoRefs>()
+                .HasOne(x => x.Category)
+                .WithMany()
+                .HasForeignKey(x => x.CategoryId);
+        }, SchemaResolver2);
 
     private static Db2TableSchema SchemaResolver2(string tableName)
     {
@@ -2072,24 +2063,23 @@ public sealed class Db2NavigationQueryCompilerTests
         };
     }
 
-    private static Db2Model BuildParentWithTwoCollectionsModel()
-    {
-        var builder = new Db2ModelBuilder();
+    private static Db2ModelBinding BuildParentWithTwoCollectionsModel()
+        => TestModelBindingFactory.CreateBinding(modelBuilder =>
+        {
+            modelBuilder.Entity<ParentWithTwoCollections>().HasKey(x => x.Id);
+            modelBuilder.Entity<ChildA>().HasKey(x => x.Id);
+            modelBuilder.Entity<ChildB>().HasKey(x => x.Id);
 
-        builder.Entity<ParentWithTwoCollections>()
-            .HasMany(x => x.ChildrenA)
-            .WithForeignKey(x => x.ParentId);
+            modelBuilder.Entity<ParentWithTwoCollections>()
+                .HasMany(x => x.ChildrenA)
+                .WithOne()
+                .HasForeignKey(x => x.ParentId);
 
-        builder.Entity<ParentWithTwoCollections>()
-            .HasMany(x => x.ChildrenB)
-            .WithForeignKey(x => x.ParentId);
-
-        builder.Entity<ParentWithTwoCollections>().HasKey(x => x.Id);
-        builder.Entity<ChildA>().HasKey(x => x.Id);
-        builder.Entity<ChildB>().HasKey(x => x.Id);
-
-        return builder.Build(SchemaResolver3);
-    }
+            modelBuilder.Entity<ParentWithTwoCollections>()
+                .HasMany(x => x.ChildrenB)
+                .WithOne()
+                .HasForeignKey(x => x.ParentId);
+        }, SchemaResolver3);
 
     private static Db2TableSchema SchemaResolver3(string tableName)
     {

@@ -1,6 +1,8 @@
 using System.Linq.Expressions;
 using System.Reflection;
 
+using Microsoft.EntityFrameworkCore;
+
 using MimironSQL.Db2;
 using MimironSQL.EntityFrameworkCore.Db2.Model;
 using MimironSQL.EntityFrameworkCore.Db2.Query;
@@ -76,19 +78,17 @@ public sealed class Db2IncludePolicyTests
         Db2IncludePolicy.ThrowIfNavigationRequiresInclude(model, includedRootMembers, lambda);
     }
 
-    private static Db2Model CreateModel()
-    {
-        var builder = new Db2ModelBuilder();
+    private static Db2ModelBinding CreateModel()
+        => TestModelBindingFactory.CreateBinding(modelBuilder =>
+        {
+            modelBuilder.Entity<Parent>().HasKey(x => x.Id);
+            modelBuilder.Entity<Child>().HasKey(x => x.Id);
 
-        builder.Entity<Child>()
-            .HasOne(x => x.Parent)
-            .WithForeignKey(x => x.ParentId);
-
-        builder.Entity<Parent>().HasKey(x => x.Id);
-        builder.Entity<Child>().HasKey(x => x.Id);
-
-        return builder.Build(SchemaResolver);
-    }
+            modelBuilder.Entity<Child>()
+                .HasOne(x => x.Parent)
+                .WithMany()
+                .HasForeignKey(x => x.ParentId);
+        }, SchemaResolver);
 
     private static Db2TableSchema SchemaResolver(string tableName)
         => tableName switch

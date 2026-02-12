@@ -342,16 +342,16 @@ public sealed class Db2QueryProviderTests
     [Fact]
     public void Include_supports_nullable_enum_foreign_key_arrays_and_ignores_null_keys()
     {
-        var builder = new Db2ModelBuilder();
+        var model = TestModelBindingFactory.CreateBinding(modelBuilder =>
+        {
+            modelBuilder.Entity<ParentWithNullableEnumChildIds>().HasKey(x => x.Id);
+            modelBuilder.Entity<Child>().HasKey(x => x.Id);
 
-        builder.Entity<ParentWithNullableEnumChildIds>()
-            .HasMany(x => x.Children)
-            .WithForeignKeyArray<TestKey?>(x => x.ChildIds);
-
-        builder.Entity<ParentWithNullableEnumChildIds>().HasKey(x => x.Id);
-        builder.Entity<Child>().HasKey(x => x.Id);
-
-        var model = builder.Build(SchemaResolver);
+            modelBuilder.Entity<ParentWithNullableEnumChildIds>()
+                .HasMany(x => x.Children)
+                .WithOne()
+                .HasForeignKeyArray(x => x.ChildIds);
+        }, SchemaResolver);
 
         var parent = new ParentWithNullableEnumChildIds
         {
@@ -413,16 +413,19 @@ public sealed class Db2QueryProviderTests
     [Fact]
     public void Build_throws_for_string_foreign_key_collections_even_though_string_is_IEnumerable()
     {
-        var builder = new Db2ModelBuilder();
+        var model = TestModelBindingFactory.CreateBinding(modelBuilder =>
+        {
+            modelBuilder.Entity<EntityWithStringKeys>().HasKey(x => x.Id);
+            modelBuilder.Entity<Child>().HasKey(x => x.Id);
 
-        builder.Entity<EntityWithStringKeys>()
-            .HasMany(x => x.Children)
-            .WithForeignKeyArray<char>(x => x.Keys);
+            modelBuilder.Entity<EntityWithStringKeys>()
+                .HasMany(x => x.Children)
+                .WithOne()
+                .HasForeignKeyArray(x => (IEnumerable<char>)x.Keys);
+        }, SchemaResolver);
 
-        builder.Entity<EntityWithStringKeys>().HasKey(x => x.Id);
-        builder.Entity<Child>().HasKey(x => x.Id);
-
-        var ex = Should.Throw<NotSupportedException>(() => builder.Build(SchemaResolver));
+        var childrenMember = GetMember<EntityWithStringKeys, ICollection<Child>>(x => x.Children);
+        var ex = Should.Throw<NotSupportedException>(() => model.TryGetCollectionNavigation(typeof(EntityWithStringKeys), childrenMember, out _));
         ex.Message.ShouldContain("expects an integer key collection");
 
         static Db2TableSchema SchemaResolver(string tableName)
@@ -611,9 +614,9 @@ public sealed class Db2QueryProviderTests
 
     private static (IQueryable<Parent> Table, Db2QueryProvider<Parent, RowHandle> Provider) CreateParentTable()
     {
-        var builder = new Db2ModelBuilder();
-        builder.Entity<Parent>().HasKey(x => x.Id);
-        var model = builder.Build(SchemaResolver);
+        var model = TestModelBindingFactory.CreateBinding(
+            modelBuilder => modelBuilder.Entity<Parent>().HasKey(x => x.Id),
+            SchemaResolver);
 
         var parentsFile = InMemoryDb2File.Create(
             tableName: nameof(Parent),
@@ -640,10 +643,9 @@ public sealed class Db2QueryProviderTests
 
     private static (IQueryable<ChildWithReadOnlyParent> Table, Db2QueryProvider<ChildWithReadOnlyParent, RowHandle> Provider) CreateChildWithReadOnlyParentTable()
     {
-        var builder = new Db2ModelBuilder();
-        builder.Entity<ChildWithReadOnlyParent>().HasKey(x => x.Id);
-
-        var model = builder.Build(SchemaResolver);
+        var model = TestModelBindingFactory.CreateBinding(
+            modelBuilder => modelBuilder.Entity<ChildWithReadOnlyParent>().HasKey(x => x.Id),
+            SchemaResolver);
 
         var file = InMemoryDb2File.Create(
             tableName: nameof(ChildWithReadOnlyParent),
@@ -668,10 +670,9 @@ public sealed class Db2QueryProviderTests
 
     private static (IQueryable<ChildWithUnconfiguredParent> Table, Db2QueryProvider<ChildWithUnconfiguredParent, RowHandle> Provider) CreateChildWithUnconfiguredParentTable()
     {
-        var builder = new Db2ModelBuilder();
-        builder.Entity<ChildWithUnconfiguredParent>().HasKey(x => x.Id);
-
-        var model = builder.Build(SchemaResolver);
+        var model = TestModelBindingFactory.CreateBinding(
+            modelBuilder => modelBuilder.Entity<ChildWithUnconfiguredParent>().HasKey(x => x.Id),
+            SchemaResolver);
 
         var file = InMemoryDb2File.Create(
             tableName: nameof(ChildWithUnconfiguredParent),
@@ -694,22 +695,18 @@ public sealed class Db2QueryProviderTests
         return (new Db2Queryable<ChildWithUnconfiguredParent>(provider), provider);
     }
 
-    private static (IQueryable<Child> Children, IQueryable<Parent> Parents, Db2Model Model) CreateParentChildTables()
+    private static (IQueryable<Child> Children, IQueryable<Parent> Parents, Db2ModelBinding Model) CreateParentChildTables()
     {
-        var builder = new Db2ModelBuilder();
+        var model = TestModelBindingFactory.CreateBinding(modelBuilder =>
+        {
+            modelBuilder.Entity<Parent>().HasKey(x => x.Id);
+            modelBuilder.Entity<Child>().HasKey(x => x.Id);
 
-        builder.Entity<Child>()
-            .HasOne(x => x.Parent)
-            .WithForeignKey(x => x.ParentId);
-
-        builder.Entity<Parent>()
-            .HasMany(x => x.Children)
-            .WithForeignKey(x => x.ParentId);
-
-        builder.Entity<Parent>().HasKey(x => x.Id);
-        builder.Entity<Child>().HasKey(x => x.Id);
-
-        var model = builder.Build(SchemaResolver);
+            modelBuilder.Entity<Child>()
+                .HasOne(x => x.Parent)
+                .WithMany(x => x.Children)
+                .HasForeignKey(x => x.ParentId);
+        }, SchemaResolver);
 
         var parentsFile = InMemoryDb2File.Create(
             tableName: nameof(Parent),
@@ -746,26 +743,22 @@ public sealed class Db2QueryProviderTests
         return (new Db2Queryable<Child>(childrenProvider), new Db2Queryable<Parent>(parentsProvider), model);
     }
 
-    private static (IQueryable<Child> Children, Db2Model Model) CreateParentChildTablesWithAutoIncludes()
+    private static (IQueryable<Child> Children, Db2ModelBinding Model) CreateParentChildTablesWithAutoIncludes()
     {
-        var builder = new Db2ModelBuilder();
+        var model = TestModelBindingFactory.CreateBinding(modelBuilder =>
+        {
+            modelBuilder.Entity<Parent>().HasKey(x => x.Id);
+            modelBuilder.Entity<Child>().HasKey(x => x.Id);
 
-        builder.Entity<Child>()
-            .HasOne(x => x.Parent)
-            .WithForeignKey(x => x.ParentId);
+            modelBuilder.Entity<Child>()
+                .HasOne(x => x.Parent)
+                .WithMany(x => x.Children)
+                .HasForeignKey(x => x.ParentId);
 
-        builder.Entity<Parent>()
-            .HasMany(x => x.Children)
-            .WithForeignKey(x => x.ParentId);
-
-        // Auto-includes apply transitively on included entities.
-        builder.SetAutoInclude(typeof(Child), GetMember<Child, Parent?>(static x => x.Parent));
-        builder.SetAutoInclude(typeof(Parent), GetMember<Parent, ICollection<Child>>(static x => x.Children));
-
-        builder.Entity<Parent>().HasKey(x => x.Id);
-        builder.Entity<Child>().HasKey(x => x.Id);
-
-        var model = builder.Build(SchemaResolver);
+            // Auto-includes apply transitively on included entities.
+            modelBuilder.Entity<Child>().Navigation(static x => x.Parent).AutoInclude();
+            modelBuilder.Entity<Parent>().Navigation(static x => x.Children).AutoInclude();
+        }, SchemaResolver);
 
         var parentsFile = InMemoryDb2File.Create(
             tableName: nameof(Parent),
@@ -801,18 +794,18 @@ public sealed class Db2QueryProviderTests
         return (new Db2Queryable<Child>(childrenProvider), model);
     }
 
-    private static (IQueryable<ParentWithChildIds> Parent, IQueryable<Child> Children, Db2Model Model) CreateParentWithChildIdsTables()
+    private static (IQueryable<ParentWithChildIds> Parent, IQueryable<Child> Children, Db2ModelBinding Model) CreateParentWithChildIdsTables()
     {
-        var builder = new Db2ModelBuilder();
+        var model = TestModelBindingFactory.CreateBinding(modelBuilder =>
+        {
+            modelBuilder.Entity<ParentWithChildIds>().HasKey(x => x.Id);
+            modelBuilder.Entity<Child>().HasKey(x => x.Id);
 
-        builder.Entity<ParentWithChildIds>()
-            .HasMany(x => x.Children)
-            .WithForeignKeyArray(x => x.ChildIds);
-
-        builder.Entity<ParentWithChildIds>().HasKey(x => x.Id);
-        builder.Entity<Child>().HasKey(x => x.Id);
-
-        var model = builder.Build(SchemaResolver);
+            modelBuilder.Entity<ParentWithChildIds>()
+                .HasMany(x => x.Children)
+                .WithOne()
+                .HasForeignKeyArray(x => x.ChildIds);
+        }, SchemaResolver);
 
         var parentFile = InMemoryDb2File.Create(
             tableName: nameof(ParentWithChildIds),

@@ -21,7 +21,7 @@ public sealed class DbContextGeneratorSmokeTests
     }
 
     [Fact]
-    public void Generator_emits_reference_navigations_and_skips_fk_arrays()
+    public void Generator_emits_reference_navigations_and_fk_arrays()
     {
         var env = "WOW_VERSION=1.0.0.1\n";
 
@@ -69,7 +69,8 @@ FirstRewardQuestID<32>[6]
         mapChallengeMode.SourceText.ShouldNotContain("MapIDKey");
 
         mapChallengeMode.SourceText.ShouldNotContain("[ForeignKey(");
-        mapChallengeMode.SourceText.ShouldNotContain("FirstRewardQuest");
+        mapChallengeMode.SourceText.ShouldContain("public ICollection<int> FirstRewardQuestID { get; set; } = [];");
+        mapChallengeMode.SourceText.ShouldContain("public virtual ICollection<QuestV2Entity> FirstRewardQuest { get; set; } = [];");
 
         var dbContext = results.Single(s => s.HintName.EndsWith("WoWDb2Context.g.cs", StringComparison.Ordinal));
         dbContext.SourceText.ShouldContain("modelBuilder.ApplyConfigurationsFromAssembly(typeof(WoWDb2Context).Assembly);");
@@ -77,6 +78,7 @@ FirstRewardQuestID<32>[6]
 
         var mapChallengeModeConfig = results.Single(s => s.HintName.EndsWith("MapChallengeModeEntityConfiguration.g.cs", StringComparison.Ordinal));
         mapChallengeModeConfig.SourceText.ShouldContain("builder.HasOne(x => x.Map).WithMany().HasForeignKey(x => x.MapID);");
+        mapChallengeModeConfig.SourceText.ShouldContain("builder.HasMany(x => x.FirstRewardQuest).WithOne().HasForeignKeyArray(x => x.FirstRewardQuestID);");
     }
 
     [Fact]

@@ -25,8 +25,8 @@ public sealed class QuerySessionTests
     {
         using var context = CreateContext();
 
-        var model = CreateDb2ModelWithAutoIncludes();
         var (store, db2StreamProvider) = CreateStore();
+        var model = new Db2ModelBinding(context.Model, store.GetSchema);
 
         var session = new QuerySession<RowHandle>(context, store, model);
 
@@ -46,8 +46,8 @@ public sealed class QuerySessionTests
     {
         using var context = CreateContext();
 
-        var model = CreateDb2ModelWithAutoIncludes();
         var (store, db2StreamProvider) = CreateStore();
+        var model = new Db2ModelBinding(context.Model, store.GetSchema);
 
         var session = new QuerySession<RowHandle>(context, store, model);
 
@@ -69,20 +69,6 @@ public sealed class QuerySessionTests
             .Options;
 
         return new TestDbContext(options);
-    }
-
-    private static Db2Model CreateDb2ModelWithAutoIncludes()
-    {
-        var auto = new Dictionary<Type, IReadOnlyList<System.Reflection.MemberInfo>>
-        {
-            [typeof(Parent)] = new[] { typeof(Parent).GetProperty(nameof(Parent.Auto))! }
-        };
-
-        return new Db2Model(
-            entityTypes: new Dictionary<Type, Db2EntityType>(),
-            referenceNavigations: new Dictionary<(Type SourceClrType, System.Reflection.MemberInfo NavigationMember), Db2ReferenceNavigation>(),
-            collectionNavigations: new Dictionary<(Type SourceClrType, System.Reflection.MemberInfo NavigationMember), Db2CollectionNavigation>(),
-            autoIncludeNavigations: auto);
     }
 
     private static (IMimironDb2Store Store, IDb2StreamProvider Db2StreamProvider) CreateStore()

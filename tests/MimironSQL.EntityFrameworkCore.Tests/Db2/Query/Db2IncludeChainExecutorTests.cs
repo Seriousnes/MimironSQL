@@ -4,6 +4,8 @@ using MimironSQL.EntityFrameworkCore.Db2.Query;
 using MimironSQL.EntityFrameworkCore.Db2.Schema;
 using MimironSQL.Formats;
 
+using Microsoft.EntityFrameworkCore;
+
 using Shouldly;
 
 namespace MimironSQL.EntityFrameworkCore.Tests;
@@ -13,16 +15,16 @@ public sealed class Db2IncludeChainExecutorTests
     [Fact]
     public void Apply_populates_foreign_key_array_collection_include_when_targets_exist()
     {
-        var builder = new Db2ModelBuilder();
+        var model = TestModelBindingFactory.CreateBinding(modelBuilder =>
+        {
+            modelBuilder.Entity<ParentFkArray>().HasKey(x => x.Id);
+            modelBuilder.Entity<ChildFkArray>().HasKey(x => x.Id);
 
-        builder.Entity<ParentFkArray>()
-            .HasMany(x => x.Children)
-            .WithForeignKeyArray<Key>(x => x.ChildIds);
-
-        builder.Entity<ParentFkArray>().HasKey(x => x.Id);
-        builder.Entity<ChildFkArray>().HasKey(x => x.Id);
-
-        var model = builder.Build(SchemaResolverFkArray);
+            modelBuilder.Entity<ParentFkArray>()
+                .HasMany(x => x.Children)
+                .WithOne()
+                .HasForeignKeyArray(x => x.ChildIds);
+        }, SchemaResolverFkArray);
 
         var parent = new ParentFkArray
         {
@@ -59,33 +61,35 @@ public sealed class Db2IncludeChainExecutorTests
     [Fact]
     public void Apply_foreign_key_array_throws_for_string_enumerable_key_member()
     {
-        var builder = new Db2ModelBuilder();
+        var model = TestModelBindingFactory.CreateBinding(modelBuilder =>
+        {
+            modelBuilder.Entity<ParentStringKeys>().HasKey(x => x.Id);
+            modelBuilder.Entity<ChildStringKeys>().HasKey(x => x.Id);
 
-        builder.Entity<ParentStringKeys>()
-            .HasMany(x => x.Children)
-            .WithForeignKeyArray<char>(x => x.ChildIds);
+            modelBuilder.Entity<ParentStringKeys>()
+                .HasMany(x => x.Children)
+                .WithOne()
+                .HasForeignKeyArray(x => x.ChildIds);
+        }, SchemaResolverStringKeys);
 
-        builder.Entity<ParentStringKeys>().HasKey(x => x.Id);
-        builder.Entity<ChildStringKeys>().HasKey(x => x.Id);
-
-        var ex = Should.Throw<NotSupportedException>(() => builder.Build(SchemaResolverStringKeys));
+        var childrenMember = typeof(ParentStringKeys).GetProperty(nameof(ParentStringKeys.Children))!;
+        var ex = Should.Throw<NotSupportedException>(() => model.TryGetCollectionNavigation(typeof(ParentStringKeys), childrenMember, out _));
         ex.Message.ShouldContain("expects an integer key collection");
     }
 
     [Fact]
     public void Apply_populates_dependent_foreign_key_collection_include()
     {
-        var builder = new Db2ModelBuilder();
+        var model = TestModelBindingFactory.CreateBinding(modelBuilder =>
+        {
+            modelBuilder.Entity<ParentDependent>().HasKey(x => x.Id);
+            modelBuilder.Entity<ChildDependent>().HasKey(x => x.Id);
 
-        builder.Entity<ParentDependent>()
-            .HasMany(x => x.Children)
-            .WithForeignKey(x => x.ParentId)
-            .HasPrincipalKey(x => x.Id);
-
-        builder.Entity<ParentDependent>().HasKey(x => x.Id);
-        builder.Entity<ChildDependent>().HasKey(x => x.Id);
-
-        var model = builder.Build(SchemaResolverDependent);
+            modelBuilder.Entity<ParentDependent>()
+                .HasMany(x => x.Children)
+                .WithOne()
+                .HasForeignKey(x => x.ParentId);
+        }, SchemaResolverDependent);
 
         var parents = new List<ParentDependent>
         {
@@ -224,7 +228,7 @@ public sealed class Db2IncludeChainExecutorTests
     {
         public int Id { get; set; }
 
-        public string ChildIds { get; set; } = string.Empty;
+        public string[] ChildIds { get; set; } = [];
 
         public ICollection<ChildStringKeys> Children { get; set; } = [];
     }

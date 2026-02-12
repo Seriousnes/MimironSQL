@@ -25,8 +25,6 @@ public static class MimironDb2FileSystemOptionsBuilderExtensions
         ArgumentException.ThrowIfNullOrWhiteSpace(db2DirectoryPath);
         ArgumentException.ThrowIfNullOrWhiteSpace(dbdDefinitionsDirectory);
 
-        builder.WithDb2ModelBuildMode(Db2ModelBuildMode.Lazy);
-
         return builder.UseFileSystem(
             new FileSystemDb2StreamProviderOptions(db2DirectoryPath),
             new FileSystemDbdProviderOptions(dbdDefinitionsDirectory));
@@ -47,8 +45,6 @@ public static class MimironDb2FileSystemOptionsBuilderExtensions
         ArgumentNullException.ThrowIfNull(builder);
         ArgumentNullException.ThrowIfNull(db2Options);
         ArgumentNullException.ThrowIfNull(dbdOptions);
-
-        builder.WithDb2ModelBuildMode(Db2ModelBuildMode.Lazy);
 
         var configHash = HashCode.Combine(db2Options.Db2DirectoryPath, dbdOptions.DefinitionsDirectory);
 

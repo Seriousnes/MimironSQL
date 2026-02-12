@@ -10,7 +10,7 @@ namespace MimironSQL.EntityFrameworkCore.Db2.Query;
 internal static class Db2NavigationQueryTranslator
 {
     public static bool TryTranslateCollectionAnyPredicate<TEntity>(
-        Db2Model model,
+        Db2ModelBinding model,
         Expression<Func<TEntity, bool>> predicate,
         out (Db2CollectionNavigation Navigation, LambdaExpression? DependentPredicate) plan)
     {
@@ -66,7 +66,7 @@ internal static class Db2NavigationQueryTranslator
     }
 
     public static bool TryTranslateStringPredicate<TEntity>(
-        Db2Model model,
+        Db2ModelBinding model,
         Expression<Func<TEntity, bool>> predicate,
         out Db2NavigationStringPredicatePlan plan)
     {
@@ -117,7 +117,7 @@ internal static class Db2NavigationQueryTranslator
     }
 
     public static bool TryTranslateScalarPredicate<TEntity>(
-        Db2Model model,
+        Db2ModelBinding model,
         Expression<Func<TEntity, bool>> predicate,
         out Db2NavigationScalarPredicatePlan plan)
     {
@@ -300,7 +300,7 @@ internal static class Db2NavigationQueryTranslator
     }
 
     public static bool TryTranslateNullCheck<TEntity>(
-        Db2Model model,
+        Db2ModelBinding model,
         Expression<Func<TEntity, bool>> predicate,
         out Db2NavigationNullCheckPlan plan)
     {

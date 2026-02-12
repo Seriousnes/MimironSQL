@@ -4,6 +4,8 @@ using MimironSQL.Db2;
 using MimironSQL.EntityFrameworkCore.Db2.Model;
 using MimironSQL.EntityFrameworkCore.Db2.Schema;
 
+using Microsoft.EntityFrameworkCore;
+
 using Shouldly;
 
 namespace MimironSQL.EntityFrameworkCore.Tests;
@@ -13,16 +15,16 @@ public sealed class Db2FluentBuilderTests
     [Fact]
     public void Fluent_reference_navigation_WithForeignKey_resolves_target_primary_key_by_default()
     {
-        var builder = new Db2ModelBuilder();
+        var model = TestModelBindingFactory.CreateBinding(modelBuilder =>
+        {
+            modelBuilder.Entity<Parent>().HasKey(x => x.Id);
+            modelBuilder.Entity<Child>().HasKey(x => x.Id);
 
-        builder.Entity<Child>()
-            .HasOne(x => x.Parent)
-            .WithForeignKey(x => x.ParentId);
-
-        builder.Entity<Parent>().HasKey(x => x.Id);
-        builder.Entity<Child>().HasKey(x => x.Id);
-
-        var model = builder.Build(SchemaResolver);
+            modelBuilder.Entity<Child>()
+                .HasOne(x => x.Parent)
+                .WithMany(x => x.Children)
+                .HasForeignKey(x => x.ParentId);
+        }, SchemaResolver);
 
         var navMember = typeof(Child).GetProperty(nameof(Child.Parent))!;
         model.TryGetReferenceNavigation(typeof(Child), navMember, out var nav).ShouldBeTrue();
@@ -35,38 +37,38 @@ public sealed class Db2FluentBuilderTests
     [Fact]
     public void Fluent_reference_navigation_WithSharedPrimaryKey_sets_kind_and_keys()
     {
-        var builder = new Db2ModelBuilder();
+        var model = TestModelBindingFactory.CreateBinding(modelBuilder =>
+        {
+            modelBuilder.Entity<Parent>().HasKey(x => x.Id);
+            modelBuilder.Entity<Child>().HasKey(x => x.Id);
 
-        builder.Entity<Child>()
-            .HasOne(x => x.Parent)
-            .WithSharedPrimaryKey(sourceKey: x => x.Id, targetKey: x => x.Id);
+            modelBuilder.Entity<Parent>()
+                .HasOne(x => x.Child)
+                .WithOne(x => x.Parent)
+                .HasForeignKey<Child>(x => x.Id);
+        }, SchemaResolver);
 
-        builder.Entity<Parent>().HasKey(x => x.Id);
-        builder.Entity<Child>().HasKey(x => x.Id);
-
-        var model = builder.Build(SchemaResolver);
-
-        var navMember = typeof(Child).GetProperty(nameof(Child.Parent))!;
-        model.TryGetReferenceNavigation(typeof(Child), navMember, out var nav).ShouldBeTrue();
+        var navMember = typeof(Parent).GetProperty(nameof(Parent.Child))!;
+        model.TryGetReferenceNavigation(typeof(Parent), navMember, out var nav).ShouldBeTrue();
 
         nav.Kind.ShouldBe(Db2ReferenceNavigationKind.SharedPrimaryKeyOneToOne);
-        nav.SourceKeyMember.Name.ShouldBe(nameof(Child.Id));
-        nav.TargetKeyMember.Name.ShouldBe(nameof(Parent.Id));
+        nav.SourceKeyMember.Name.ShouldBe(nameof(Parent.Id));
+        nav.TargetKeyMember.Name.ShouldBe(nameof(Child.Id));
     }
 
     [Fact]
     public void Fluent_collection_navigation_WithForeignKey_sets_dependent_fk_kind()
     {
-        var builder = new Db2ModelBuilder();
+        var model = TestModelBindingFactory.CreateBinding(modelBuilder =>
+        {
+            modelBuilder.Entity<Parent>().HasKey(x => x.Id);
+            modelBuilder.Entity<Child>().HasKey(x => x.Id);
 
-        builder.Entity<Parent>()
-            .HasMany(x => x.Children)
-            .WithForeignKey(x => x.ParentId);
-
-        builder.Entity<Parent>().HasKey(x => x.Id);
-        builder.Entity<Child>().HasKey(x => x.Id);
-
-        var model = builder.Build(SchemaResolver);
+            modelBuilder.Entity<Parent>()
+                .HasMany(x => x.Children)
+                .WithOne(x => x.Parent)
+                .HasForeignKey(x => x.ParentId);
+        }, SchemaResolver);
 
         var navMember = typeof(Parent).GetProperty(nameof(Parent.Children))!;
         model.TryGetCollectionNavigation(typeof(Parent), navMember, out var nav).ShouldBeTrue();
@@ -81,16 +83,16 @@ public sealed class Db2FluentBuilderTests
     [Fact]
     public void Fluent_collection_navigation_WithForeignKeyArray_sets_source_key_collection_kind()
     {
-        var builder = new Db2ModelBuilder();
+        var model = TestModelBindingFactory.CreateBinding(modelBuilder =>
+        {
+            modelBuilder.Entity<ParentWithChildIds>().HasKey(x => x.Id);
+            modelBuilder.Entity<Child>().HasKey(x => x.Id);
 
-        builder.Entity<ParentWithChildIds>()
-            .HasMany(x => x.Children)
-            .WithForeignKeyArray(x => x.ChildIds);
-
-        builder.Entity<ParentWithChildIds>().HasKey(x => x.Id);
-        builder.Entity<Child>().HasKey(x => x.Id);
-
-        var model = builder.Build(SchemaResolver);
+            modelBuilder.Entity<ParentWithChildIds>()
+                .HasMany(x => x.Children)
+                .WithOne()
+                .HasForeignKeyArray(x => x.ChildIds);
+        }, SchemaResolver);
 
         var navMember = typeof(ParentWithChildIds).GetProperty(nameof(ParentWithChildIds.Children))!;
         model.TryGetCollectionNavigation(typeof(ParentWithChildIds), navMember, out var nav).ShouldBeTrue();
@@ -104,15 +106,13 @@ public sealed class Db2FluentBuilderTests
     [Fact]
     public void Property_HasColumnName_writes_mapping_into_entity_type()
     {
-        var builder = new Db2ModelBuilder();
-
-        builder.Entity<ColumnMapped>()
-            .Property(x => x.DisplayName)
-            .HasColumnName("Display_Name");
-
-        builder.Entity<ColumnMapped>().HasKey(x => x.Id);
-
-        var model = builder.Build(SchemaResolver);
+        var model = TestModelBindingFactory.CreateBinding(modelBuilder =>
+        {
+            modelBuilder.Entity<ColumnMapped>().HasKey(x => x.Id);
+            modelBuilder.Entity<ColumnMapped>()
+                .Property(x => x.DisplayName)
+                .HasColumnName("Display_Name");
+        }, SchemaResolver);
         var entity = model.GetEntityType(typeof(ColumnMapped));
 
         var member = typeof(ColumnMapped).GetProperty(nameof(ColumnMapped.DisplayName))!;
@@ -122,27 +122,17 @@ public sealed class Db2FluentBuilderTests
     [Fact]
     public void Property_HasColumnName_on_primary_key_throws()
     {
-        var builder = new Db2ModelBuilder();
-
-        var ex = Should.Throw<NotSupportedException>(() =>
-            builder.Entity<ColumnMapped>()
+        var model = TestModelBindingFactory.CreateBinding(modelBuilder =>
+        {
+            modelBuilder.Entity<ColumnMapped>().HasKey(x => x.Id);
+            modelBuilder.Entity<ColumnMapped>()
                 .Property(x => x.Id)
-                .HasColumnName("Nope"));
+                .HasColumnName("Nope");
+        }, SchemaResolver);
 
-        ex.Message.ShouldContain("Primary key property");
-    }
+        var ex = Should.Throw<NotSupportedException>(() => model.GetEntityType(typeof(ColumnMapped)));
 
-    [Fact]
-    public void Property_HasColumnName_when_ColumnAttribute_present_throws()
-    {
-        var builder = new Db2ModelBuilder();
-
-        var ex = Should.Throw<NotSupportedException>(() =>
-            builder.Entity<HasColumnAttribute>()
-                .Property(x => x.Name)
-                .HasColumnName("Other"));
-
-        ex.Message.ShouldContain("[Column]");
+        ex.Message.ShouldContain("Primary key member");
     }
 
     private static Db2TableSchema SchemaResolver(string tableName)
@@ -213,6 +203,8 @@ public sealed class Db2FluentBuilderTests
         public string Name { get; set; } = string.Empty;
 
         public ICollection<Child> Children { get; set; } = [];
+
+        public Child? Child { get; set; }
     }
 
     private sealed class Child

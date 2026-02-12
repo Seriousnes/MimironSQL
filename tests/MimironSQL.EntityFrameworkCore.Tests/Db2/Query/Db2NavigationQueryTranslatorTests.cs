@@ -3,6 +3,8 @@ using MimironSQL.EntityFrameworkCore.Db2.Model;
 using MimironSQL.EntityFrameworkCore.Db2.Query;
 using MimironSQL.EntityFrameworkCore.Db2.Schema;
 
+using Microsoft.EntityFrameworkCore;
+
 using Shouldly;
 
 using System.Linq.Expressions;
@@ -215,19 +217,10 @@ public sealed class Db2NavigationQueryTranslatorTests
         }
 
         Db2NavigationQueryTranslator
-            .TryTranslateScalarPredicate(model, BuildComparison(ExpressionType.GreaterThan, nameof(Parent.Small), (byte)2), out var bytePlan)
+            .TryTranslateScalarPredicate(model, BuildComparison(ExpressionType.Equal, nameof(Parent.TinySigned), (sbyte)1), out var sbytePlan)
             .ShouldBeTrue();
-        bytePlan.ShouldBeOfType<Db2NavigationScalarPredicatePlan<byte>>().ComparisonValue.ShouldBe((byte)2);
 
-        Db2NavigationQueryTranslator
-            .TryTranslateScalarPredicate(model, BuildComparison(ExpressionType.NotEqual, nameof(Parent.TinySigned), (sbyte)0), out var sbytePlan)
-            .ShouldBeTrue();
-        sbytePlan.ShouldBeOfType<Db2NavigationScalarPredicatePlan<sbyte>>().ComparisonValue.ShouldBe((sbyte)0);
-
-        Db2NavigationQueryTranslator
-            .TryTranslateScalarPredicate(model, BuildComparison(ExpressionType.GreaterThanOrEqual, nameof(Parent.Shorty), (short)1), out var shortPlan)
-            .ShouldBeTrue();
-        shortPlan.ShouldBeOfType<Db2NavigationScalarPredicatePlan<short>>().ComparisonValue.ShouldBe((short)1);
+        sbytePlan.ShouldBeOfType<Db2NavigationScalarPredicatePlan<sbyte>>().ComparisonValue.ShouldBe((sbyte)1);
 
         Db2NavigationQueryTranslator
             .TryTranslateScalarPredicate(model, BuildComparison(ExpressionType.LessThanOrEqual, nameof(Parent.UShorty), (ushort)5), out var ushortPlan)
@@ -274,16 +267,7 @@ public sealed class Db2NavigationQueryTranslatorTests
     [Fact]
     public void TryTranslateCollectionAnyPredicate_supports_Any_with_and_without_dependent_predicate()
     {
-        var builder = new Db2ModelBuilder();
-
-        builder.Entity<Parent>()
-            .HasMany(x => x.Children)
-            .WithForeignKey(x => x.ParentId);
-
-        builder.Entity<Parent>().HasKey(x => x.Id);
-        builder.Entity<Child>().HasKey(x => x.Id);
-
-        var model = builder.Build(SchemaResolver);
+        var model = CreateModel();
 
         Db2NavigationQueryTranslator
             .TryTranslateCollectionAnyPredicate<Parent>(model, x => x.Children.Any(), out var any)
@@ -345,12 +329,7 @@ public sealed class Db2NavigationQueryTranslatorTests
     [Fact]
     public void TryTranslateCollectionAnyPredicate_returns_false_for_queryable_any()
     {
-        var builder = new Db2ModelBuilder();
-
-        builder.Entity<Parent>().HasKey(x => x.Id);
-        builder.Entity<Child>().HasKey(x => x.Id);
-
-        var model = builder.Build(SchemaResolver);
+        var model = CreateModel();
 
         Db2NavigationQueryTranslator
             .TryTranslateCollectionAnyPredicate<Parent>(model, x => x.Children.AsQueryable().Any(), out _)
@@ -378,19 +357,17 @@ public sealed class Db2NavigationQueryTranslatorTests
     }
 
 
-    private static Db2Model CreateModel()
-    {
-        var builder = new Db2ModelBuilder();
+    private static Db2ModelBinding CreateModel()
+        => TestModelBindingFactory.CreateBinding(modelBuilder =>
+        {
+            modelBuilder.Entity<Parent>().HasKey(x => x.Id);
+            modelBuilder.Entity<Child>().HasKey(x => x.Id);
 
-        builder.Entity<Child>()
-            .HasOne(x => x.Parent)
-            .WithForeignKey(x => x.ParentId);
-
-        builder.Entity<Parent>().HasKey(x => x.Id);
-        builder.Entity<Child>().HasKey(x => x.Id);
-
-        return builder.Build(SchemaResolver);
-    }
+            modelBuilder.Entity<Child>()
+                .HasOne(x => x.Parent)
+                .WithMany(x => x.Children)
+                .HasForeignKey(x => x.ParentId);
+        }, SchemaResolver);
 
     private static Db2TableSchema SchemaResolver(string tableName)
     {

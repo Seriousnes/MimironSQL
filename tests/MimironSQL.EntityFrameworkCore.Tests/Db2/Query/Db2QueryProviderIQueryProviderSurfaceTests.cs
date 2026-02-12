@@ -54,9 +54,9 @@ public sealed class Db2QueryProviderIQueryProviderSurfaceTests
 
     private static Db2QueryProvider<Entity, RowHandle> CreateProvider()
     {
-        var builder = new Db2ModelBuilder();
-        builder.Entity<Entity>().HasKey(x => x.Id);
-        var model = builder.Build(SchemaResolver);
+        var model = TestModelBindingFactory.CreateBinding(
+            modelBuilder => modelBuilder.Entity<Entity>().HasKey(x => x.Id),
+            SchemaResolver);
 
         var file = Substitute.For<IDb2File<RowHandle>>();
 

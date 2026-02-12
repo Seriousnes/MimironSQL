@@ -380,14 +380,16 @@ public sealed class DbContextGenerator : IIncrementalGenerator
         {
             var fkPropertyName = kvp.Key;
             var navs = kvp.Value;
-            var nav = navs.FirstOrDefault(static n => !n.IsCollection);
+            var nav = navs[0];
             if (nav is null)
                 continue;
 
             if (!byTableName.TryGetValue(nav.TargetTableName, out var target))
                 continue;
 
-            fkPropertyTypeByName[fkPropertyName] = target.IdTypeName;
+            fkPropertyTypeByName[fkPropertyName] = nav.IsForeignKeyArray
+                ? $"ICollection<{target.IdTypeName}>"
+                : target.IdTypeName;
         }
 
         foreach (var p in entity.ScalarProperties)
@@ -412,10 +414,13 @@ public sealed class DbContextGenerator : IIncrementalGenerator
                 var target = byTableName[nav.TargetTableName];
 
                 if (nav.IsCollection)
+                {
+                    sb.AppendLine($"    public virtual ICollection<{target.ClassName}> {nav.PropertyName} {{ get; set; }} = [];");
+                    sb.AppendLine();
                     continue;
+                }
 
                 sb.AppendLine($"    public virtual {target.ClassName}? {nav.PropertyName} {{ get; set; }}");
-
                 sb.AppendLine();
             }
         }
@@ -431,6 +436,8 @@ public sealed class DbContextGenerator : IIncrementalGenerator
         sb.AppendLine();
         sb.AppendLine("using Microsoft.EntityFrameworkCore;");
         sb.AppendLine("using Microsoft.EntityFrameworkCore.Metadata.Builders;");
+        if (entity.Navigations.Any(static n => n.IsForeignKeyArray))
+            sb.AppendLine("using MimironSQL.EntityFrameworkCore.Db2.Model;");
         sb.AppendLine();
         sb.AppendLine("namespace MimironSQL;");
         sb.AppendLine();
@@ -453,14 +460,19 @@ public sealed class DbContextGenerator : IIncrementalGenerator
 
         foreach (var nav in entity.Navigations)
         {
-            if (nav.IsCollection)
-                continue;
-
             if (!byTableName.TryGetValue(nav.TargetTableName, out var target))
                 continue;
 
             _ = target;
-            sb.AppendLine($"        builder.HasOne(x => x.{nav.PropertyName}).WithMany().HasForeignKey(x => x.{nav.ForeignKeyPropertyName});");
+
+            if (nav.IsForeignKeyArray)
+            {
+                sb.AppendLine($"        builder.HasMany(x => x.{nav.PropertyName}).WithOne().HasForeignKeyArray(x => x.{nav.ForeignKeyPropertyName});");
+                continue;
+            }
+
+            if (!nav.IsCollection)
+                sb.AppendLine($"        builder.HasOne(x => x.{nav.PropertyName}).WithMany().HasForeignKey(x => x.{nav.ForeignKeyPropertyName});");
         }
 
         sb.AppendLine("        ConfigureNavigation(builder);");
@@ -663,7 +675,7 @@ public sealed class DbContextGenerator : IIncrementalGenerator
             var usedNames = new HashSet<string>(StringComparer.Ordinal);
             var scalarPropertyNameByColumnName = new Dictionary<string, (string EscapedPropertyName, string UnescapedPropertyName)>(StringComparer.Ordinal);
 
-            foreach (var entry in build.Entries.Where(static e => !e.IsId && e.ElementCount == 1))
+            foreach (var entry in build.Entries.Where(static e => !e.IsId && (e.ElementCount == 1 || (e.ElementCount > 1 && e.ReferencedTableName is { Length: > 0 }))))
             {
                 var columnName = entry.Name;
                 var propertyName = NameNormalizer.NormalizePropertyName(columnName);
@@ -687,7 +699,7 @@ public sealed class DbContextGenerator : IIncrementalGenerator
                 scalarPropertyNameByColumnName[columnName] = (escapedPropertyName, propertyName);
             }
 
-            foreach (var entry in build.Entries.Where(static e => !e.IsId && e.ElementCount == 1))
+            foreach (var entry in build.Entries.Where(static e => !e.IsId && (e.ElementCount == 1 || (e.ElementCount > 1 && e.ReferencedTableName is { Length: > 0 }))))
             {
                 if (entry.ReferencedTableName is not { Length: > 0 } targetTable)
                     continue;
@@ -708,11 +720,14 @@ public sealed class DbContextGenerator : IIncrementalGenerator
 
                 navName = NameNormalizer.MakeUnique(navName, usedNames);
 
+                var isForeignKeyArray = entry.ElementCount > 1;
+
                 navigations.Add(new NavigationSpec(
                     targetTableName: targetTable,
                     foreignKeyPropertyName: scalarProperty.EscapedPropertyName,
                     propertyName: NameNormalizer.EscapeIdentifier(navName),
-                    isCollection: false));
+                    isCollection: isForeignKeyArray,
+                    isForeignKeyArray: isForeignKeyArray));
             }
 
             return new EntitySpec(tableName, className, idType, [.. scalarProperties], [.. navigations]);
@@ -763,6 +778,17 @@ public sealed class DbContextGenerator : IIncrementalGenerator
         /// Gets a value indicating whether the navigation is a collection.
         /// </summary>
         public bool IsCollection { get; } = isCollection;
+
+        /// <summary>
+        /// Gets a value indicating whether the navigation is configured using <c>HasForeignKeyArray</c>.
+        /// </summary>
+        public bool IsForeignKeyArray { get; } = false;
+
+        public NavigationSpec(string targetTableName, string foreignKeyPropertyName, string propertyName, bool isCollection, bool isForeignKeyArray)
+            : this(targetTableName, foreignKeyPropertyName, propertyName, isCollection)
+        {
+            IsForeignKeyArray = isForeignKeyArray;
+        }
     }
 
     private static class NameNormalizer

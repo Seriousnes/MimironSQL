@@ -13,7 +13,7 @@ namespace MimironSQL.EntityFrameworkCore.Db2.Query;
 internal static class Db2NavigationQueryCompiler
 {
     public static bool TryCompileSemiJoinPredicate<TEntity, TRow>(
-        Db2Model model,
+        Db2ModelBinding model,
         IDb2File<TRow> rootFile,
         Func<string, (IDb2File<TRow> File, Db2TableSchema Schema)> tableResolver,
         Expression<Func<TEntity, bool>> predicate,
@@ -349,7 +349,7 @@ internal static class Db2NavigationQueryCompiler
     }
 
     private static Expression<Func<TEntity, bool>> RewriteCollectionCountComparisonsToAny<TEntity>(
-        Db2Model model,
+        Db2ModelBinding model,
         Expression<Func<TEntity, bool>> predicate)
     {
         if (predicate.Parameters is not { Count: 1 })
@@ -363,7 +363,7 @@ internal static class Db2NavigationQueryCompiler
         return Expression.Lambda<Func<TEntity, bool>>(rewrittenBody, predicate.Parameters[0]);
     }
 
-    private sealed class CollectionCountToAnyRewriter(Db2Model model, ParameterExpression rootParam) : ExpressionVisitor
+    private sealed class CollectionCountToAnyRewriter(Db2ModelBinding model, ParameterExpression rootParam) : ExpressionVisitor
     {
         protected override Expression VisitBinary(BinaryExpression node)
         {
@@ -463,7 +463,7 @@ internal static class Db2NavigationQueryCompiler
     }
 
     private static HashSet<int> FindMatchingRootIdsForCollectionAny<TRow>(
-        Db2Model model,
+        Db2ModelBinding model,
         Func<string, (IDb2File<TRow> File, Db2TableSchema Schema)> tableResolver,
         Db2CollectionNavigation navigation,
         LambdaExpression? dependentPredicate)
@@ -489,7 +489,7 @@ internal static class Db2NavigationQueryCompiler
         where TRow : struct, IRowHandle
     {
         private static readonly ConcurrentDictionary<Type, Func<
-            Db2Model,
+            Db2ModelBinding,
             Func<string, (IDb2File<TRow> File, Db2TableSchema Schema)>,
             Db2CollectionNavigation,
             LambdaExpression?,
@@ -497,7 +497,7 @@ internal static class Db2NavigationQueryCompiler
 
         public static HashSet<int> Invoke(
             Type dependentEntityClrType,
-            Db2Model model,
+            Db2ModelBinding model,
             Func<string, (IDb2File<TRow> File, Db2TableSchema Schema)> tableResolver,
             Db2CollectionNavigation navigation,
             LambdaExpression? dependentPredicate)
@@ -507,7 +507,7 @@ internal static class Db2NavigationQueryCompiler
         }
 
         private static Func<
-            Db2Model,
+            Db2ModelBinding,
             Func<string, (IDb2File<TRow> File, Db2TableSchema Schema)>,
             Db2CollectionNavigation,
             LambdaExpression?,
@@ -518,12 +518,12 @@ internal static class Db2NavigationQueryCompiler
                 .MakeGenericMethod(dependentEntityClrType, typeof(TRow));
 
             return (Func<
-                Db2Model,
+                Db2ModelBinding,
                 Func<string, (IDb2File<TRow> File, Db2TableSchema Schema)>,
                 Db2CollectionNavigation,
                 LambdaExpression?,
                 HashSet<int>>)method.CreateDelegate(typeof(Func<
-                    Db2Model,
+                    Db2ModelBinding,
                     Func<string, (IDb2File<TRow> File, Db2TableSchema Schema)>,
                     Db2CollectionNavigation,
                     LambdaExpression?,
@@ -532,7 +532,7 @@ internal static class Db2NavigationQueryCompiler
     }
 
     private static HashSet<int> FindMatchingRootIdsForCollectionAnyTyped<TDependent, TRow>(
-        Db2Model model,
+        Db2ModelBinding model,
         Func<string, (IDb2File<TRow> File, Db2TableSchema Schema)> tableResolver,
         Db2CollectionNavigation navigation,
         LambdaExpression? dependentPredicate)

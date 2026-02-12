@@ -3,7 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 namespace MimironSQL.EntityFrameworkCore;
 
 /// <summary>
-/// Abstraction for configuring the MimironSQL DB2 provider when building an EF Core <see cref="Microsoft.EntityFrameworkCore.DbContext"/>.
+/// Abstraction for configuring the MimironSQL DB2 provider when building an EF Core DbContext.
 /// </summary>
 public interface IMimironDb2DbContextOptionsBuilder
 {
@@ -13,13 +13,6 @@ public interface IMimironDb2DbContextOptionsBuilder
     /// <param name="wowVersion">The WoW version string (for example, <c>12.0.0.65655</c>).</param>
     /// <returns>The same builder instance to enable chaining.</returns>
     IMimironDb2DbContextOptionsBuilder WithWowVersion(string wowVersion);
-
-    /// <summary>
-    /// Sets how the internal DB2 model is built (eager or lazy).
-    /// </summary>
-    /// <param name="buildMode">The DB2 model build mode.</param>
-    /// <returns>The same builder instance to enable chaining.</returns>
-    IMimironDb2DbContextOptionsBuilder WithDb2ModelBuildMode(Db2ModelBuildMode buildMode);
 
     /// <summary>
     /// Configures the provider implementation and registers any provider-specific services.

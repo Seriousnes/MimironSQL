@@ -108,7 +108,7 @@ internal sealed class MimironDb2Store : IMimironDb2Store, IDisposable
         }
     }
 
-    public bool TryMaterializeById<TEntity>(string tableName, int id, Db2Model model, IDb2EntityFactory entityFactory, out TEntity? entity)
+    public bool TryMaterializeById<TEntity>(string tableName, int id, Db2ModelBinding model, IDb2EntityFactory entityFactory, out TEntity? entity)
         where TEntity : class
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(tableName);
@@ -139,7 +139,7 @@ internal sealed class MimironDb2Store : IMimironDb2Store, IDisposable
         }
     }
 
-    public IReadOnlyList<TEntity> MaterializeByIds<TEntity>(string tableName, IReadOnlyList<int> ids, int? takeCount, Db2Model model, IDb2EntityFactory entityFactory)
+    public IReadOnlyList<TEntity> MaterializeByIds<TEntity>(string tableName, IReadOnlyList<int> ids, int? takeCount, Db2ModelBinding model, IDb2EntityFactory entityFactory)
         where TEntity : class
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(tableName);

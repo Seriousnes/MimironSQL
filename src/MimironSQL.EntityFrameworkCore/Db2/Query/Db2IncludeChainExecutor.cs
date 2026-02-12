@@ -20,7 +20,7 @@ internal static class Db2IncludeChainExecutor
 
     public static IEnumerable<TEntity> Apply<TEntity, TRow>(
         IEnumerable<TEntity> source,
-        Db2Model model,
+        Db2ModelBinding model,
         Func<string, (IDb2File<TRow> File, Db2TableSchema Schema)> tableResolver,
         IReadOnlyList<MemberInfo> members,
         IDb2EntityFactory entityFactory)
@@ -118,7 +118,7 @@ internal static class Db2IncludeChainExecutor
             IIncludeEntityList,
             MemberInfo,
             Db2ReferenceNavigation,
-            Db2Model,
+            Db2ModelBinding,
             Func<string, (IDb2File<TRow> File, Db2TableSchema Schema)>,
             IDb2EntityFactory,
             IIncludeEntityList>> Cache = new();
@@ -129,7 +129,7 @@ internal static class Db2IncludeChainExecutor
             IIncludeEntityList current,
             MemberInfo navMember,
             Db2ReferenceNavigation navigation,
-            Db2Model model,
+            Db2ModelBinding model,
             Func<string, (IDb2File<TRow> File, Db2TableSchema Schema)> tableResolver,
             IDb2EntityFactory entityFactory)
         {
@@ -141,7 +141,7 @@ internal static class Db2IncludeChainExecutor
             IIncludeEntityList,
             MemberInfo,
             Db2ReferenceNavigation,
-            Db2Model,
+            Db2ModelBinding,
             Func<string, (IDb2File<TRow> File, Db2TableSchema Schema)>,
             IDb2EntityFactory,
             IIncludeEntityList> Create((Type EntityType, Type TargetType) key)
@@ -154,14 +154,14 @@ internal static class Db2IncludeChainExecutor
                 IIncludeEntityList,
                 MemberInfo,
                 Db2ReferenceNavigation,
-                Db2Model,
+                Db2ModelBinding,
                 Func<string, (IDb2File<TRow> File, Db2TableSchema Schema)>,
                 IDb2EntityFactory,
                 IIncludeEntityList>)method.CreateDelegate(typeof(Func<
                     IIncludeEntityList,
                     MemberInfo,
                     Db2ReferenceNavigation,
-                    Db2Model,
+                    Db2ModelBinding,
                     Func<string, (IDb2File<TRow> File, Db2TableSchema Schema)>,
                     IDb2EntityFactory,
                     IIncludeEntityList>));
@@ -175,7 +175,7 @@ internal static class Db2IncludeChainExecutor
             IIncludeEntityList,
             MemberInfo,
             Db2CollectionNavigation,
-            Db2Model,
+            Db2ModelBinding,
             Func<string, (IDb2File<TRow> File, Db2TableSchema Schema)>,
             IDb2EntityFactory,
             IIncludeEntityList>> ForeignKeyArrayCache = new();
@@ -184,7 +184,7 @@ internal static class Db2IncludeChainExecutor
             IIncludeEntityList,
             MemberInfo,
             Db2CollectionNavigation,
-            Db2Model,
+            Db2ModelBinding,
             Func<string, (IDb2File<TRow> File, Db2TableSchema Schema)>,
             IDb2EntityFactory,
             IIncludeEntityList>> DependentForeignKeyCache = new();
@@ -195,7 +195,7 @@ internal static class Db2IncludeChainExecutor
             IIncludeEntityList current,
             MemberInfo navMember,
             Db2CollectionNavigation navigation,
-            Db2Model model,
+            Db2ModelBinding model,
             Func<string, (IDb2File<TRow> File, Db2TableSchema Schema)> tableResolver,
             IDb2EntityFactory entityFactory)
         {
@@ -215,7 +215,7 @@ internal static class Db2IncludeChainExecutor
             IIncludeEntityList,
             MemberInfo,
             Db2CollectionNavigation,
-            Db2Model,
+            Db2ModelBinding,
             Func<string, (IDb2File<TRow> File, Db2TableSchema Schema)>,
             IDb2EntityFactory,
             IIncludeEntityList> CreateForeignKeyArray((Type EntityType, Type TargetType) key)
@@ -228,14 +228,14 @@ internal static class Db2IncludeChainExecutor
                 IIncludeEntityList,
                 MemberInfo,
                 Db2CollectionNavigation,
-                Db2Model,
+                Db2ModelBinding,
                 Func<string, (IDb2File<TRow> File, Db2TableSchema Schema)>,
                 IDb2EntityFactory,
                 IIncludeEntityList>)method.CreateDelegate(typeof(Func<
                     IIncludeEntityList,
                     MemberInfo,
                     Db2CollectionNavigation,
-                    Db2Model,
+                    Db2ModelBinding,
                     Func<string, (IDb2File<TRow> File, Db2TableSchema Schema)>,
                     IDb2EntityFactory,
                     IIncludeEntityList>));
@@ -245,7 +245,7 @@ internal static class Db2IncludeChainExecutor
             IIncludeEntityList,
             MemberInfo,
             Db2CollectionNavigation,
-            Db2Model,
+            Db2ModelBinding,
             Func<string, (IDb2File<TRow> File, Db2TableSchema Schema)>,
             IDb2EntityFactory,
             IIncludeEntityList> CreateDependentForeignKey((Type EntityType, Type TargetType) key)
@@ -258,14 +258,14 @@ internal static class Db2IncludeChainExecutor
                 IIncludeEntityList,
                 MemberInfo,
                 Db2CollectionNavigation,
-                Db2Model,
+                Db2ModelBinding,
                 Func<string, (IDb2File<TRow> File, Db2TableSchema Schema)>,
                 IDb2EntityFactory,
                 IIncludeEntityList>)method.CreateDelegate(typeof(Func<
                     IIncludeEntityList,
                     MemberInfo,
                     Db2CollectionNavigation,
-                    Db2Model,
+                    Db2ModelBinding,
                     Func<string, (IDb2File<TRow> File, Db2TableSchema Schema)>,
                     IDb2EntityFactory,
                     IIncludeEntityList>));
@@ -276,7 +276,7 @@ internal static class Db2IncludeChainExecutor
         IIncludeEntityList current,
         MemberInfo navMember,
         Db2ReferenceNavigation navigation,
-        Db2Model model,
+        Db2ModelBinding model,
         Func<string, (IDb2File<TRow> File, Db2TableSchema Schema)> tableResolver,
         IDb2EntityFactory entityFactory)
         where TEntity : class
@@ -308,7 +308,7 @@ internal static class Db2IncludeChainExecutor
         IIncludeEntityList current,
         MemberInfo navMember,
         Db2CollectionNavigation navigation,
-        Db2Model model,
+        Db2ModelBinding model,
         Func<string, (IDb2File<TRow> File, Db2TableSchema Schema)> tableResolver,
         IDb2EntityFactory entityFactory)
         where TEntity : class
@@ -362,7 +362,7 @@ internal static class Db2IncludeChainExecutor
         IIncludeEntityList current,
         MemberInfo navMember,
         Db2CollectionNavigation navigation,
-        Db2Model model,
+        Db2ModelBinding model,
         Func<string, (IDb2File<TRow> File, Db2TableSchema Schema)> tableResolver,
         IDb2EntityFactory entityFactory)
         where TEntity : class
@@ -416,7 +416,7 @@ internal static class Db2IncludeChainExecutor
         List<TEntity> entities,
         MemberInfo navMember,
         Db2ReferenceNavigation navigation,
-        Db2Model model,
+        Db2ModelBinding model,
         Func<string, (IDb2File<TRow> File, Db2TableSchema Schema)> tableResolver,
         IDb2EntityFactory entityFactory)
         where TEntity : class
@@ -477,7 +477,7 @@ internal static class Db2IncludeChainExecutor
         List<TEntity> entities,
         MemberInfo navMember,
         Db2CollectionNavigation navigation,
-        Db2Model model,
+        Db2ModelBinding model,
         Func<string, (IDb2File<TRow> File, Db2TableSchema Schema)> tableResolver,
         IDb2EntityFactory entityFactory)
         where TEntity : class
@@ -574,7 +574,7 @@ internal static class Db2IncludeChainExecutor
         List<TEntity> entities,
         MemberInfo navMember,
         Db2CollectionNavigation navigation,
-        Db2Model model,
+        Db2ModelBinding model,
         Func<string, (IDb2File<TRow> File, Db2TableSchema Schema)> tableResolver,
         IDb2EntityFactory entityFactory)
         where TEntity : class

@@ -17,11 +17,11 @@ internal sealed class QuerySession<TRow>
 {
     private readonly DbContext _context;
     private readonly IMimironDb2Store _store;
-    private readonly Db2Model _model;
+    private readonly Db2ModelBinding _model;
 
     private readonly Dictionary<string, (IDb2File<TRow> File, Db2TableSchema Schema)> _tables = new(StringComparer.OrdinalIgnoreCase);
 
-    public QuerySession(DbContext context, IMimironDb2Store store, Db2Model model)
+    public QuerySession(DbContext context, IMimironDb2Store store, Db2ModelBinding model)
     {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(store);

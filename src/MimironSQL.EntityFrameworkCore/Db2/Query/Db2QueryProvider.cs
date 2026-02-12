@@ -12,7 +12,7 @@ namespace MimironSQL.EntityFrameworkCore.Db2.Query;
 
 internal sealed class Db2QueryProvider<TEntity, TRow>(
     IDb2File<TRow> file,
-    Db2Model model,
+    Db2ModelBinding model,
     Func<string, (IDb2File<TRow> File, Db2TableSchema Schema)> tableResolver,
     IDb2EntityFactory entityFactory) : IQueryProvider
     where TEntity : class
@@ -34,7 +34,7 @@ internal sealed class Db2QueryProvider<TEntity, TRow>(
     private readonly Db2EntityType _rootEntityType = model.GetEntityType(typeof(TEntity));
     private readonly IDb2EntityFactory _entityFactory = entityFactory ?? throw new ArgumentNullException(nameof(entityFactory));
     private readonly Db2EntityMaterializer<TEntity, TRow> _materializer = new(model.GetEntityType(typeof(TEntity)), entityFactory);
-    private readonly Db2Model _model = model;
+    private readonly Db2ModelBinding _model = model;
     private readonly Func<string, (IDb2File<TRow> File, Db2TableSchema Schema)> _tableResolver = tableResolver;
 
     public IQueryable CreateQuery(Expression expression)

@@ -6,6 +6,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
 
+using MimironSQL.EntityFrameworkCore.Db2.Model;
 using MimironSQL.EntityFrameworkCore.Db2.Query;
 using MimironSQL.EntityFrameworkCore.Db2.Schema;
 using MimironSQL.EntityFrameworkCore.Query;
@@ -17,13 +18,13 @@ namespace MimironSQL.EntityFrameworkCore.ChangeTracking;
 internal sealed class MimironDb2LazyLoader(
     ICurrentDbContext currentDbContext,
     IMimironDb2Store store,
-    IMimironDb2Db2ModelProvider db2ModelProvider) : ILazyLoader
+    IDb2ModelBinding modelBinding) : ILazyLoader
 {
     private static readonly ConcurrentDictionary<(Type EntityClrType, Type RowType), Action<MimironDb2LazyLoader, object, PropertyInfo>> LoadDelegates = new();
 
     private readonly DbContext _context = currentDbContext?.Context ?? throw new ArgumentNullException(nameof(currentDbContext));
     private readonly IMimironDb2Store _store = store ?? throw new ArgumentNullException(nameof(store));
-    private readonly IMimironDb2Db2ModelProvider _db2ModelProvider = db2ModelProvider ?? throw new ArgumentNullException(nameof(db2ModelProvider));
+    private readonly IDb2ModelBinding _modelBinding = modelBinding ?? throw new ArgumentNullException(nameof(modelBinding));
 
     private readonly IDb2EntityFactory _entityFactory = new EfLazyLoadingProxyDb2EntityFactory(
         currentDbContext?.Context ?? throw new ArgumentNullException(nameof(currentDbContext)),
@@ -129,7 +130,7 @@ internal sealed class MimironDb2LazyLoader(
         where TEntity : class
         where TRow : struct, IRowHandle
     {
-        var model = _db2ModelProvider.GetDb2Model();
+        var model = _modelBinding.GetBinding();
 
         using var session = new QuerySession<TRow>(_context, _store, model);
 

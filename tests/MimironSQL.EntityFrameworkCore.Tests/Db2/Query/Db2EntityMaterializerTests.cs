@@ -43,23 +43,25 @@ public sealed class Db2EntityMaterializerTests
     [Fact]
     public void Materializer_throws_for_non_writable_property()
     {
-        var builder = new Db2ModelBuilder();
-        builder.Entity<NonWritableEntity>().HasKey(x => x.Id);
+        var model = TestModelBindingFactory.CreateBinding(
+            static modelBuilder =>
+            {
+                modelBuilder.Entity<NonWritableEntity>().HasKey(x => x.Id);
+            },
+            static tableName => tableName switch
+            {
+                nameof(NonWritableEntity) => new Db2TableSchema(
+                    tableName: nameof(NonWritableEntity),
+                    layoutHash: 0,
+                    physicalColumnCount: 2,
+                    fields:
+                    [
+                        new Db2FieldSchema("ID", Db2ValueType.Int64, ColumnStartIndex: 0, ElementCount: 1, IsVerified: true, IsVirtual: false, IsId: true, IsRelation: false, ReferencedTableName: null),
+                        new Db2FieldSchema(nameof(NonWritableEntity.ReadOnlyValue), Db2ValueType.Int64, ColumnStartIndex: 1, ElementCount: 1, IsVerified: true, IsVirtual: false, IsId: false, IsRelation: false, ReferencedTableName: null),
+                    ]),
 
-        var model = builder.Build(static tableName => tableName switch
-        {
-            nameof(NonWritableEntity) => new Db2TableSchema(
-                tableName: nameof(NonWritableEntity),
-                layoutHash: 0,
-                physicalColumnCount: 2,
-                fields:
-                [
-                    new Db2FieldSchema("ID", Db2ValueType.Int64, ColumnStartIndex: 0, ElementCount: 1, IsVerified: true, IsVirtual: false, IsId: true, IsRelation: false, ReferencedTableName: null),
-                    new Db2FieldSchema(nameof(NonWritableEntity.ReadOnlyValue), Db2ValueType.Int64, ColumnStartIndex: 1, ElementCount: 1, IsVerified: true, IsVirtual: false, IsId: false, IsRelation: false, ReferencedTableName: null),
-                ]),
-
-            _ => throw new InvalidOperationException($"Unknown table: {tableName}"),
-        });
+                _ => throw new InvalidOperationException($"Unknown table: {tableName}"),
+            });
 
         var entityType = model.GetEntityType(typeof(NonWritableEntity));
 
@@ -71,27 +73,29 @@ public sealed class Db2EntityMaterializerTests
 
     private static (Db2EntityType EntityType, IDb2File<RowHandle> File) CreateEntityTypeAndFile()
     {
-        var builder = new Db2ModelBuilder();
-        builder.Entity<MaterializeEntity>().HasKey(x => x.Id);
+        var model = TestModelBindingFactory.CreateBinding(
+            static modelBuilder =>
+            {
+                modelBuilder.Entity<MaterializeEntity>().HasKey(x => x.Id);
+            },
+            static tableName => tableName switch
+            {
+                nameof(MaterializeEntity) => new Db2TableSchema(
+                    tableName: nameof(MaterializeEntity),
+                    layoutHash: 0,
+                    physicalColumnCount: 6,
+                    fields:
+                    [
+                        new Db2FieldSchema("ID", Db2ValueType.Int64, ColumnStartIndex: 0, ElementCount: 1, IsVerified: true, IsVirtual: false, IsId: true, IsRelation: false, ReferencedTableName: null),
+                        new Db2FieldSchema(nameof(MaterializeEntity.Values), Db2ValueType.Int64, ColumnStartIndex: 1, ElementCount: 3, IsVerified: true, IsVirtual: false, IsId: false, IsRelation: false, ReferencedTableName: null),
+                        new Db2FieldSchema(nameof(MaterializeEntity.Numbers), Db2ValueType.Int64, ColumnStartIndex: 2, ElementCount: 2, IsVerified: true, IsVirtual: false, IsId: false, IsRelation: false, ReferencedTableName: null),
+                        new Db2FieldSchema(nameof(MaterializeEntity.VirtualName), Db2ValueType.String, ColumnStartIndex: 3, ElementCount: 1, IsVerified: true, IsVirtual: true, IsId: false, IsRelation: false, ReferencedTableName: null),
+                        new Db2FieldSchema(nameof(MaterializeEntity.Strings), Db2ValueType.String, ColumnStartIndex: 4, ElementCount: 2, IsVerified: true, IsVirtual: false, IsId: false, IsRelation: false, ReferencedTableName: null),
+                        new Db2FieldSchema(nameof(MaterializeEntity.NotPrimitiveNumbers), Db2ValueType.Int64, ColumnStartIndex: 5, ElementCount: 2, IsVerified: true, IsVirtual: false, IsId: false, IsRelation: false, ReferencedTableName: null),
+                    ]),
 
-        var model = builder.Build(static tableName => tableName switch
-        {
-            nameof(MaterializeEntity) => new Db2TableSchema(
-                tableName: nameof(MaterializeEntity),
-                layoutHash: 0,
-                physicalColumnCount: 6,
-                fields:
-                [
-                    new Db2FieldSchema("ID", Db2ValueType.Int64, ColumnStartIndex: 0, ElementCount: 1, IsVerified: true, IsVirtual: false, IsId: true, IsRelation: false, ReferencedTableName: null),
-                    new Db2FieldSchema(nameof(MaterializeEntity.Values), Db2ValueType.Int64, ColumnStartIndex: 1, ElementCount: 3, IsVerified: true, IsVirtual: false, IsId: false, IsRelation: false, ReferencedTableName: null),
-                    new Db2FieldSchema(nameof(MaterializeEntity.Numbers), Db2ValueType.Int64, ColumnStartIndex: 2, ElementCount: 2, IsVerified: true, IsVirtual: false, IsId: false, IsRelation: false, ReferencedTableName: null),
-                    new Db2FieldSchema(nameof(MaterializeEntity.VirtualName), Db2ValueType.String, ColumnStartIndex: 3, ElementCount: 1, IsVerified: true, IsVirtual: true, IsId: false, IsRelation: false, ReferencedTableName: null),
-                    new Db2FieldSchema(nameof(MaterializeEntity.Strings), Db2ValueType.String, ColumnStartIndex: 4, ElementCount: 2, IsVerified: true, IsVirtual: false, IsId: false, IsRelation: false, ReferencedTableName: null),
-                    new Db2FieldSchema(nameof(MaterializeEntity.NotPrimitiveNumbers), Db2ValueType.Int64, ColumnStartIndex: 5, ElementCount: 2, IsVerified: true, IsVirtual: false, IsId: false, IsRelation: false, ReferencedTableName: null),
-                ]),
-
-            _ => throw new InvalidOperationException($"Unknown table: {tableName}"),
-        });
+                _ => throw new InvalidOperationException($"Unknown table: {tableName}"),
+            });
 
         var entityType = model.GetEntityType(typeof(MaterializeEntity));
 

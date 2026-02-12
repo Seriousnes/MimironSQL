@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 
+using MimironSQL.Db2;
 using MimironSQL.EntityFrameworkCore.Tests;
 using MimironSQL.Formats;
 using MimironSQL.Formats.Wdc5;
@@ -154,9 +155,8 @@ public sealed class MimironDb2QueryExecutionTests
         }
     }
 
-    private sealed class GarrType
+    private sealed class GarrType : Db2Entity<int>
     {
-        public int Id { get; set; }
     }
 
     private static class TestDataPaths

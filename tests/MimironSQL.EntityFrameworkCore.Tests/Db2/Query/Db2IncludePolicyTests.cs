@@ -116,17 +116,13 @@ public sealed class Db2IncludePolicyTests
             _ => throw new InvalidOperationException($"Unknown table: {tableName}"),
         };
 
-    private sealed class Parent
+    private sealed class Parent : Db2Entity<int>
     {
-        public int Id { get; set; }
-
         public string Name { get; set; } = string.Empty;
     }
 
-    private sealed class Child
+    private sealed class Child : Db2Entity<int>
     {
-        public int Id { get; set; }
-
         public int ParentId { get; set; }
 
         public Parent? Parent { get; set; }

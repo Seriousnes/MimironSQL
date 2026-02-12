@@ -906,10 +906,8 @@ public sealed class Db2QueryProviderTests
     private static bool AlwaysThrowsNullRef(Parent _)
         => throw new NullReferenceException("boom");
 
-    private sealed class Parent
+    private sealed class Parent : Db2Entity<int>
     {
-        public int Id { get; set; }
-
         public int Level { get; set; }
 
         public string Name { get; set; } = string.Empty;
@@ -917,10 +915,8 @@ public sealed class Db2QueryProviderTests
         public ICollection<Child> Children { get; set; } = [];
     }
 
-    private sealed class Child
+    private sealed class Child : Db2Entity<int>
     {
-        public int Id { get; set; }
-
         public int ParentId { get; set; }
 
         public string Name { get; set; } = string.Empty;
@@ -928,28 +924,22 @@ public sealed class Db2QueryProviderTests
         public Parent? Parent { get; set; }
     }
 
-    private sealed class ChildWithReadOnlyParent
+    private sealed class ChildWithReadOnlyParent : Db2Entity<int>
     {
-        public int Id { get; set; }
-
         public int ParentId { get; set; }
 
         public Parent? Parent { get; }
     }
 
-    private sealed class ChildWithUnconfiguredParent
+    private sealed class ChildWithUnconfiguredParent : Db2Entity<int>
     {
-        public int Id { get; set; }
-
         public int ParentId { get; set; }
 
         public Parent? Parent { get; set; }
     }
 
-    private sealed class ParentWithChildIds
+    private sealed class ParentWithChildIds : Db2Entity<int>
     {
-        public int Id { get; set; }
-
         public int[] ChildIds { get; set; } = [];
 
         public ICollection<Child> Children { get; set; } = [];
@@ -1026,19 +1016,15 @@ public sealed class Db2QueryProviderTests
         Eleven = 11,
     }
 
-    private sealed class ParentWithNullableEnumChildIds
+    private sealed class ParentWithNullableEnumChildIds : Db2Entity<int>
     {
-        public int Id { get; set; }
-
         public TestKey?[] ChildIds { get; set; } = [];
 
         public ICollection<Child> Children { get; set; } = [];
     }
 
-    private sealed class EntityWithStringKeys
+    private sealed class EntityWithStringKeys : Db2Entity<int>
     {
-        public int Id { get; set; }
-
         public string Keys { get; set; } = string.Empty;
 
         public ICollection<Child> Children { get; set; } = [];

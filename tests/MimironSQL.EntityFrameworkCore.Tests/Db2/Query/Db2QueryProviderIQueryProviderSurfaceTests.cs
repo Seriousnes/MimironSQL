@@ -14,9 +14,8 @@ namespace MimironSQL.EntityFrameworkCore.Tests;
 
 public sealed class Db2QueryProviderIQueryProviderSurfaceTests
 {
-    private sealed class Entity
+    private sealed class Entity : Db2Entity<int>
     {
-        public int Id { get; init; }
     }
 
     [Fact]

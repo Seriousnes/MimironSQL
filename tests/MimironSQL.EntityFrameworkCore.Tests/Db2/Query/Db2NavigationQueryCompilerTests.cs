@@ -1749,10 +1749,8 @@ public sealed class Db2NavigationQueryCompilerTests
         return (Bytes: bytes.ToArray(), OffsetByString: offsetByString);
     }
 
-    private sealed class Parent
+    private sealed class Parent : Db2Entity<int>
     {
-        public int Id { get; set; }
-
         public int Level { get; set; }
 
         public string Name { get; set; } = string.Empty;
@@ -1760,10 +1758,8 @@ public sealed class Db2NavigationQueryCompilerTests
         public ICollection<Child> Children { get; set; } = [];
     }
 
-    private sealed class Child
+    private sealed class Child : Db2Entity<int>
     {
-        public int Id { get; set; }
-
         public int ParentId { get; set; }
 
         public string Name { get; set; } = string.Empty;
@@ -1771,17 +1767,13 @@ public sealed class Db2NavigationQueryCompilerTests
         public Parent? Parent { get; set; }
     }
 
-    private sealed class Category
+    private sealed class Category : Db2Entity<int>
     {
-        public int Id { get; set; }
-
         public string Name { get; set; } = string.Empty;
     }
 
-    private sealed class ChildWithTwoRefs
+    private sealed class ChildWithTwoRefs : Db2Entity<int>
     {
-        public int Id { get; set; }
-
         public int ParentId { get; set; }
 
         public int CategoryId { get; set; }
@@ -1793,10 +1785,8 @@ public sealed class Db2NavigationQueryCompilerTests
         public Category? Category { get; set; }
     }
 
-    private sealed class ParentWithTwoCollections
+    private sealed class ParentWithTwoCollections : Db2Entity<int>
     {
-        public int Id { get; set; }
-
         public string Name { get; set; } = string.Empty;
 
         public ICollection<ChildA> ChildrenA { get; set; } = [];
@@ -1804,44 +1794,34 @@ public sealed class Db2NavigationQueryCompilerTests
         public ICollection<ChildB> ChildrenB { get; set; } = [];
     }
 
-    private sealed class ChildA
+    private sealed class ChildA : Db2Entity<int>
     {
-        public int Id { get; set; }
-
         public int ParentId { get; set; }
 
         public string Name { get; set; } = string.Empty;
     }
 
-    private sealed class ChildB
+    private sealed class ChildB : Db2Entity<int>
     {
-        public int Id { get; set; }
-
         public int ParentId { get; set; }
 
         public string Name { get; set; } = string.Empty;
     }
 
-    private sealed class SpkParent
+    private sealed class SpkParent : Db2Entity<int>
     {
-        public int Id { get; set; }
-
         public string Name { get; set; } = string.Empty;
     }
 
-    private sealed class SpkChild
+    private sealed class SpkChild : Db2Entity<int>
     {
-        public int Id { get; set; }
-
         public string Name { get; set; } = string.Empty;
 
         public SpkParent? Parent { get; set; }
     }
 
-    private sealed class ScalarParent
+    private sealed class ScalarParent : Db2Entity<int>
     {
-        public int Id { get; set; }
-
         public bool IsActive { get; set; }
 
         public byte ByteValue { get; set; }
@@ -1851,10 +1831,8 @@ public sealed class Db2NavigationQueryCompilerTests
         public float FloatValue { get; set; }
     }
 
-    private sealed class ScalarChild
+    private sealed class ScalarChild : Db2Entity<int>
     {
-        public int Id { get; set; }
-
         public int ParentId { get; set; }
 
         public ScalarParent? Parent { get; set; }

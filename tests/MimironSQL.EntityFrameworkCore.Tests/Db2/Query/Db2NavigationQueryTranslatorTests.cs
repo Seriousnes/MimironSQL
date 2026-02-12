@@ -416,10 +416,8 @@ public sealed class Db2NavigationQueryTranslatorTests
         Beta = 1,
     }
 
-    private sealed class Parent
+    private sealed class Parent : Db2Entity<int>
     {
-        public int Id { get; set; }
-
         public int Level { get; set; }
 
         public ParentKind Kind { get; set; }
@@ -458,10 +456,8 @@ public sealed class Db2NavigationQueryTranslatorTests
         public int Level { get; set; }
     }
 
-    private sealed class Child
+    private sealed class Child : Db2Entity<int>
     {
-        public int Id { get; set; }
-
         public int ParentId { get; set; }
 
         public Parent? Parent { get; set; }

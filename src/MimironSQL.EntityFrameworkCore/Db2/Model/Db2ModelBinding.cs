@@ -7,6 +7,7 @@ using System.Threading;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata;
 
+using MimironSQL.Db2;
 using MimironSQL.EntityFrameworkCore.Db2.Schema;
 using MimironSQL.EntityFrameworkCore.Extensions;
 
@@ -93,6 +94,7 @@ internal sealed class Db2ModelBinding(IModel efModel, Func<string, Db2TableSchem
 
     private Db2EntityType BuildEntityType(Type clrType)
     {
+        ValidateEntityType(clrType);
         ValidateTypeAttributes(clrType);
 
         var efEntityType = _efModel.FindEntityType(clrType)
@@ -162,6 +164,14 @@ internal sealed class Db2ModelBinding(IModel efModel, Func<string, Db2TableSchem
             throw new FileNotFoundException(
                 $"DB2 file not found for table '{tableName}' (CLR type '{clrType.FullName}').",
                 ex);
+        }
+    }
+
+    private static void ValidateEntityType(Type clrType)
+    {
+        if (!(clrType.BaseType is { IsGenericType: true } baseType && baseType.GetGenericTypeDefinition() == typeof(Db2Entity<>)))
+        {
+            throw new NotSupportedException($"Entity type '{clrType.FullName}' must derive from '{typeof(Db2Entity<>).FullName}' to be queried/materialized by MimironSQL.");
         }
     }
 

@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 
+using MimironSQL.Db2;
 using MimironSQL.EntityFrameworkCore.Tests;
 using MimironSQL.Providers;
 
@@ -139,15 +140,12 @@ public sealed class MimironDb2AutoIncludeAndLazyLoadingTests
         }
     }
 
-    public class Map
+    public class Map : Db2Entity<int>
     {
-        public int Id { get; set; }
     }
 
-    public class MapChallengeMode
+    public class MapChallengeMode : Db2Entity<int>
     {
-        public int Id { get; set; }
-
         public int MapID { get; set; }
 
         public virtual Map? Map { get; set; }

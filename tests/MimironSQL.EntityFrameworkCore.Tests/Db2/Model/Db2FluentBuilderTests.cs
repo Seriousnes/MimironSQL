@@ -194,10 +194,8 @@ public sealed class Db2FluentBuilderTests
         };
     }
 
-    private sealed class Parent
+    private sealed class Parent : Db2Entity<int>
     {
-        public int Id { get; set; }
-
         public int Level { get; set; }
 
         public string Name { get; set; } = string.Empty;
@@ -207,35 +205,27 @@ public sealed class Db2FluentBuilderTests
         public Child? Child { get; set; }
     }
 
-    private sealed class Child
+    private sealed class Child : Db2Entity<int>
     {
-        public int Id { get; set; }
-
         public int ParentId { get; set; }
 
         public Parent? Parent { get; set; }
     }
 
-    private sealed class ParentWithChildIds
+    private sealed class ParentWithChildIds : Db2Entity<int>
     {
-        public int Id { get; set; }
-
         public int[] ChildIds { get; set; } = [];
 
         public ICollection<Child> Children { get; set; } = [];
     }
 
-    private sealed class ColumnMapped
+    private sealed class ColumnMapped : Db2Entity<int>
     {
-        public int Id { get; set; }
-
         public string DisplayName { get; set; } = string.Empty;
     }
 
-    private sealed class HasColumnAttribute
+    private sealed class HasColumnAttribute : Db2Entity<int>
     {
-        public int Id { get; set; }
-
         [Column]
         public string Name { get; set; } = string.Empty;
     }

@@ -210,45 +210,35 @@ public sealed class Db2IncludeChainExecutorTests
         Two = 2,
     }
 
-    private sealed class ParentFkArray
+    private sealed class ParentFkArray : Db2Entity<int>
     {
-        public int Id { get; set; }
-
         public Key[] ChildIds { get; set; } = [];
 
         public ICollection<ChildFkArray> Children { get; set; } = [];
     }
 
-    private sealed class ChildFkArray
+    private sealed class ChildFkArray : Db2Entity<int>
     {
-        public int Id { get; set; }
     }
 
-    private sealed class ParentStringKeys
+    private sealed class ParentStringKeys : Db2Entity<int>
     {
-        public int Id { get; set; }
-
         public string[] ChildIds { get; set; } = [];
 
         public ICollection<ChildStringKeys> Children { get; set; } = [];
     }
 
-    private sealed class ChildStringKeys
+    private sealed class ChildStringKeys : Db2Entity<int>
     {
-        public int Id { get; set; }
     }
 
-    private sealed class ParentDependent
+    private sealed class ParentDependent : Db2Entity<int>
     {
-        public int Id { get; set; }
-
         public ICollection<ChildDependent> Children { get; set; } = [];
     }
 
-    private sealed class ChildDependent
+    private sealed class ChildDependent : Db2Entity<int>
     {
-        public int Id { get; set; }
-
         public int ParentId { get; set; }
     }
 

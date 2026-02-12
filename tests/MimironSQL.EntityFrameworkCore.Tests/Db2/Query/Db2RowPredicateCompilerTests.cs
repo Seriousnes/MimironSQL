@@ -357,10 +357,8 @@ public sealed class Db2RowPredicateCompilerTests
         return (bytes.ToArray(), offsetByString);
     }
 
-    private sealed class Entity
+    private sealed class Entity : Db2Entity<int>
     {
-        public int Id { get; set; }
-
         public int Level { get; set; }
 
         public string Name { get; set; } = string.Empty;

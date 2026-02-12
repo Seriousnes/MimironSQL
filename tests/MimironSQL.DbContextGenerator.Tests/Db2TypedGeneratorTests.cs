@@ -6,6 +6,7 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.Text;
 
 using MimironSQL.DbContextGenerator.Tests.Helpers;
+using MimironSQL.Db2;
 
 using Shouldly;
 
@@ -172,7 +173,8 @@ Foo<32>
             ]);
 
         var entity = results.Single(s => s.HintName.EndsWith("NoIdTableEntity.g.cs", StringComparison.Ordinal));
-        entity.SourceText.ShouldContain("public int Id { get; set; }");
+        entity.SourceText.ShouldContain("public partial class NoIdTableEntity : Db2Entity<int>");
+        entity.SourceText.ShouldContain("public override int Id { get; set; }");
     }
 
     [Fact]

@@ -114,10 +114,8 @@ public sealed class Db2EntityMaterializerTests
         return (entityType, file);
     }
 
-    private sealed class MaterializeEntity
+    private sealed class MaterializeEntity : Db2Entity<int>
     {
-        public int Id { get; set; }
-
         public int[] Values { get; set; } = [];
 
         public ICollection<int> Numbers { get; set; } = [];
@@ -129,10 +127,8 @@ public sealed class Db2EntityMaterializerTests
         public ICollection<decimal>? NotPrimitiveNumbers { get; set; }
     }
 
-    private sealed class NonWritableEntity
+    private sealed class NonWritableEntity : Db2Entity<int>
     {
-        public int Id { get; set; }
-
         public int ReadOnlyValue { get; } = 0;
     }
 

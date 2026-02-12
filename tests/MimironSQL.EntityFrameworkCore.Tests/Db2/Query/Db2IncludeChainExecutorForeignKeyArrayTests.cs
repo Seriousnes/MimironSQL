@@ -82,18 +82,15 @@ public sealed class Db2IncludeChainExecutorForeignKeyArrayTests
         One = 1,
     }
 
-    private sealed class Parent
+    private sealed class Parent : Db2Entity<int>
     {
-        public int Id { get; set; }
-
         public Key[] ChildIds { get; set; } = [];
 
         public ICollection<Child> Children { get; set; } = [];
     }
 
-    private sealed class Child
+    private sealed class Child : Db2Entity<int>
     {
-        public int Id { get; set; }
     }
 
     private sealed class EmptyDb2File : IDb2File<RowHandle>

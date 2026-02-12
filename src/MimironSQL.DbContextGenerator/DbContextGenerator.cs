@@ -359,15 +359,16 @@ public sealed class DbContextGenerator : IIncrementalGenerator
         sb.AppendLine("#nullable enable");
         sb.AppendLine();
         sb.AppendLine("using System.Collections.Generic;");
+        sb.AppendLine("using MimironSQL.Db2;");
         sb.AppendLine();
         sb.AppendLine("namespace MimironSQL;");
         sb.AppendLine();
 
-        sb.AppendLine($"public partial class {entity.ClassName}");
+        sb.AppendLine($"public partial class {entity.ClassName} : Db2Entity<{entity.IdTypeName}>");
         sb.AppendLine("{");
 
         var idInitializer = TypeMapping.GetInitializer(entity.IdTypeName);
-        sb.AppendLine($"    public {entity.IdTypeName} Id {{ get; set; }}{idInitializer}");
+        sb.AppendLine($"    public override {entity.IdTypeName} Id {{ get; set; }}{idInitializer}");
         sb.AppendLine();
 
         var navsByForeignKey = entity.Navigations

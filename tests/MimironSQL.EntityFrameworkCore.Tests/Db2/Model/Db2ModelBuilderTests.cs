@@ -135,8 +135,8 @@ public sealed class Db2ModelBindingTests
             static modelBuilder =>
             {
                 var entity = modelBuilder.Entity<FieldKeyEntity>();
-                entity.Property<int>("Id");
-                entity.HasKey("Id");
+                entity.Property<int>("Key");
+                entity.HasKey("Key");
             },
             FieldKeyEntitySchemaResolver);
 
@@ -207,19 +207,19 @@ public sealed class Db2ModelBindingTests
         };
     }
 
-    private sealed class EntityWithFieldColumnAttribute
+    private sealed class EntityWithFieldColumnAttribute : Db2Entity<int>
     {
         [Column]
         public int Field;
     }
 
-    private sealed class EntityWithPrivateColumnProperty
+    private sealed class EntityWithPrivateColumnProperty : Db2Entity<int>
     {
         [Column]
         private int Value { get; set; }
     }
 
-    private sealed class EntityWithPrivateForeignKeyProperty
+    private sealed class EntityWithPrivateForeignKeyProperty : Db2Entity<int>
     {
         [ForeignKey("Foo")]
         private int FooId { get; set; }
@@ -227,26 +227,24 @@ public sealed class Db2ModelBindingTests
         public object Foo { get; set; } = new();
     }
 
-    private sealed class NoKeyEntity
+    private sealed class NoKeyEntity : Db2Entity<int>
     {
         public int Key { get; set; }
     }
 
-    private sealed class FieldKeyEntity
+    private sealed class FieldKeyEntity : Db2Entity<int>
     {
-        public int Id;
     }
 
-    private sealed class ColumnMappedPrimaryKey
+    private sealed class ColumnMappedPrimaryKey : Db2Entity<int>
     {
         [Column("Other")]
-        public int Id { get; set; }
+        public new int Id { get; set; }
     }
 
     [Table("MyTable")]
-    private sealed class EntityWithTableAttribute
+    private sealed class EntityWithTableAttribute : Db2Entity<int>
     {
-        public int Id { get; set; }
     }
 
     private sealed class TableAttributeContext(DbContextOptions options) : DbContext(options)
@@ -260,10 +258,8 @@ public sealed class Db2ModelBindingTests
         }
     }
 
-    private sealed class AutoIncludeParent
+    private sealed class AutoIncludeParent : Db2Entity<int>
     {
-        public int Id { get; set; }
-
         public int AChildId { get; set; }
 
         public AutoIncludeChild? AChild { get; set; }
@@ -271,8 +267,7 @@ public sealed class Db2ModelBindingTests
         public ICollection<AutoIncludeChild> ZChildren { get; set; } = [];
     }
 
-    private sealed class AutoIncludeChild
+    private sealed class AutoIncludeChild : Db2Entity<int>
     {
-        public int Id { get; set; }
     }
 }

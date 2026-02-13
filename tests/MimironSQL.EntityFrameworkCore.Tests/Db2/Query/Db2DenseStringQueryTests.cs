@@ -1,5 +1,3 @@
-using System.Text;
-
 using MimironSQL.EntityFrameworkCore.Db2.Query;
 using MimironSQL.Formats;
 

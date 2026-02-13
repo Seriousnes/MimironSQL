@@ -1,7 +1,5 @@
 using System.Text;
 
-using MimironSQL.Db2;
-
 namespace MimironSQL.Formats.Wdc5.Db2;
 
 internal static class Wdc5LayoutReader
@@ -28,15 +26,15 @@ internal static class Wdc5LayoutReader
             if (magic != Wdc5Magic)
                 throw new InvalidDataException("Expected WDC5.");
 
-            _ = reader.ReadUInt32(); // schemaVersion
-            _ = reader.ReadBytes(128); // schema string
+            reader.ReadUInt32(); // schemaVersion
+            reader.ReadBytes(128); // schema string
 
-            _ = reader.ReadInt32(); // recordsCount
+            reader.ReadInt32(); // recordsCount
             var fieldsCount = reader.ReadInt32();
 
-            _ = reader.ReadInt32(); // recordSize
-            _ = reader.ReadInt32(); // stringTableSize
-            _ = reader.ReadUInt32(); // tableHash
+            reader.ReadInt32(); // recordSize
+            reader.ReadInt32(); // stringTableSize
+            reader.ReadUInt32(); // tableHash
             var layoutHash = reader.ReadUInt32();
 
             return new Db2FileLayout(layoutHash, fieldsCount);

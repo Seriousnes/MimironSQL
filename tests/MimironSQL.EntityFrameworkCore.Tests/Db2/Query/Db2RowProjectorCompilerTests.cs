@@ -372,5 +372,7 @@ public sealed class Db2RowProjectorCompilerTests
         }
 
         public readonly record struct Row(int Id, object[] Values);
+
+        public void Dispose() { }
     }
 }

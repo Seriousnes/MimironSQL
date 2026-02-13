@@ -13,7 +13,7 @@ namespace MimironSQL.Formats.Wdc5.Db2;
 /// <summary>
 /// Represents an opened WDC5 DB2 file.
 /// </summary>
-public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexProvider<RowHandle>, IDisposable
+public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexProvider<RowHandle>
 {
     private const int HeaderSize = 200;
     private const uint Wdc5Magic = 0x35434457; // "WDC5"
@@ -281,7 +281,7 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
 
                 ReadOnlyMemory<byte> tactKey = ReadOnlyMemory<byte>.Empty;
                 if (section is { TactKeyLookup: not 0 } && Options.TactKeyProvider is not null)
-                    _ = Options.TactKeyProvider.TryGetKey(section.TactKeyLookup, out tactKey);
+                    Options.TactKeyProvider.TryGetKey(section.TactKeyLookup, out tactKey);
 
                 byte[]? recordsData = null;
                 int recordDataSizeBytes;
@@ -377,8 +377,8 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
                 if (section is { ParentLookupDataSize: > 0 })
                 {
                     var numRecords = _reader.ReadInt32();
-                    _ = _reader.ReadInt32(); // minId
-                    _ = _reader.ReadInt32(); // maxId
+                    _reader.ReadInt32(); // minId
+                    _reader.ReadInt32(); // maxId
 
                     for (var i = 0; i < numRecords; i++)
                     {
@@ -818,7 +818,7 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
             return section.IndexData[rowIndex];
 
         // Read just this row's bytes and decode up to the ID field.
-        var rowBytes = GetRowBytesFromStream(sectionIndex, section, rowIndex, out var rowSizeBytes, out var rowStartBitOffset);
+        var rowBytes = GetRowBytesFromStream(sectionIndex, section, rowIndex, out _, out var rowStartBitOffset);
         var tmp = new Wdc5RowReader(rowBytes, positionBits: rowStartBitOffset);
 
         for (var i = 0; i <= Header.IdFieldIndex; i++)
@@ -834,10 +834,8 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
             if (i == Header.IdFieldIndex)
                 return Wdc5FieldDecoder.ReadScalar<int>(id: 0, ref tmp, fieldMeta, columnMeta, palletData, commonData);
 
-            _ = Wdc5FieldDecoder.ReadScalar<uint>(id: 0, ref tmp, fieldMeta, columnMeta, palletData, commonData);
+            Wdc5FieldDecoder.ReadScalar<uint>(id: 0, ref tmp, fieldMeta, columnMeta, palletData, commonData);
         }
-
-        _ = rowSizeBytes;
         return -1;
     }
 
@@ -894,7 +892,7 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
             if (i == Header.IdFieldIndex)
                 return Wdc5FieldDecoder.ReadScalar<int>(id: 0, ref tmp, fieldMeta, columnMeta, palletData, commonData);
 
-            _ = Wdc5FieldDecoder.ReadScalar<uint>(id: 0, ref tmp, fieldMeta, columnMeta, palletData, commonData);
+            Wdc5FieldDecoder.ReadScalar<uint>(id: 0, ref tmp, fieldMeta, columnMeta, palletData, commonData);
         }
 
         return -1;
@@ -948,7 +946,7 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
                 ? section.IndexData[handle.RowIndexInSection]
                 : handle.RowIndexInSection;
 
-            _ = section.ParentLookupEntries.TryGetValue(referenceKey2, out var parentRelationId2);
+            section.ParentLookupEntries.TryGetValue(referenceKey2, out var parentRelationId2);
 
             if (section.IsDecryptable)
             {
@@ -976,7 +974,7 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
             ? section.IndexData[handle.RowIndexInSection]
             : handle.RowIndexInSection;
 
-        _ = section.ParentLookupEntries.TryGetValue(referenceKey, out var parentRelationId);
+        section.ParentLookupEntries.TryGetValue(referenceKey, out var parentRelationId);
 
         if (section.IsDecryptable)
         {
@@ -1091,7 +1089,7 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
 
         if (type == typeof(string))
         {
-            _ = TryGetString(section, globalRowIndex, readerAtStart, recordBytes, rowEndExclusive, sourceId, fieldIndex, out var s);
+            TryGetString(section, globalRowIndex, readerAtStart, recordBytes, rowEndExclusive, sourceId, fieldIndex, out var s);
             return Unsafe.As<string, T>(ref s);
         }
 
@@ -1265,7 +1263,7 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
             ? section.IndexData[handle.RowIndexInSection]
             : handle.RowIndexInSection;
 
-        _ = section.ParentLookupEntries.TryGetValue(referenceKey, out var parentRelationId);
+        section.ParentLookupEntries.TryGetValue(referenceKey, out var parentRelationId);
 
         if (section.IsDecryptable)
         {
@@ -1326,7 +1324,7 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
             ? section.IndexData[handle.RowIndexInSection]
             : handle.RowIndexInSection;
 
-        _ = section.ParentLookupEntries.TryGetValue(referenceKey, out var parentRelationId);
+        section.ParentLookupEntries.TryGetValue(referenceKey, out var parentRelationId);
 
         if (section.IsDecryptable)
         {
@@ -1371,7 +1369,7 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
 
         if (type == typeof(string))
         {
-            _ = TryGetString(section, globalRowIndex, readerAtStart, recordBytes, rowEndExclusive, sourceId, fieldIndex, out var s);
+            TryGetString(section, globalRowIndex, readerAtStart, recordBytes, rowEndExclusive, sourceId, fieldIndex, out var s);
             return s;
         }
 
@@ -1380,7 +1378,7 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
             ref readonly var fieldMeta = ref FieldMeta[fieldIndex];
             if (fieldMeta.Bits == 0)
             {
-                _ = TryGetString(section, globalRowIndex, readerAtStart, recordBytes, rowEndExclusive, sourceId, fieldIndex, out var s);
+                TryGetString(section, globalRowIndex, readerAtStart, recordBytes, rowEndExclusive, sourceId, fieldIndex, out var s);
                 return s;
             }
 
@@ -1598,7 +1596,7 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
                 }
 
             default:
-                _ = Wdc5FieldDecoder.ReadScalar<long>(id, ref reader, fieldMeta, columnMeta, PalletData[fieldIndex], CommonData[fieldIndex]);
+                Wdc5FieldDecoder.ReadScalar<long>(id, ref reader, fieldMeta, columnMeta, PalletData[fieldIndex], CommonData[fieldIndex]);
                 break;
         }
     }

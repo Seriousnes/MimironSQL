@@ -442,6 +442,8 @@ public sealed class Db2RowPredicateCompilerTests
         }
 
         public readonly record struct Row(int Id, object[] Values);
+
+        public void Dispose() { }
     }
 
     private sealed class DenseStringInMemoryDb2File(string tableName,
@@ -522,5 +524,7 @@ public sealed class Db2RowPredicateCompilerTests
         }
 
         public readonly record struct Row(int Id, object[] Values);
+
+        public void Dispose() { }
     }
 }

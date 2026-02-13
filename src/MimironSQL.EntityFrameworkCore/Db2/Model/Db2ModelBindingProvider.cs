@@ -1,5 +1,7 @@
-using Microsoft.EntityFrameworkCore;
+using System.Runtime.CompilerServices;
+
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Metadata;
 
 using MimironSQL.EntityFrameworkCore.Storage;
 
@@ -9,13 +11,10 @@ internal sealed class Db2ModelBindingProvider(
     ICurrentDbContext currentDbContext,
     IMimironDb2Store store) : IDb2ModelBinding
 {
-    private readonly DbContext _context = currentDbContext?.Context ?? throw new ArgumentNullException(nameof(currentDbContext));
-    private readonly IMimironDb2Store _store = store ?? throw new ArgumentNullException(nameof(store));
-
-    private Db2ModelBinding? _binding;
+    private static readonly ConditionalWeakTable<IModel, Db2ModelBinding> Cache = new();
 
     public Db2ModelBinding GetBinding()
-        => _binding ??= new Db2ModelBinding(
-            _context.Model,
-            tableName => _store.GetSchema(tableName));
+        => Cache.GetValue(
+            currentDbContext.Context.Model,
+            model => new Db2ModelBinding(model, store.GetSchema));
 }

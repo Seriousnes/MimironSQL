@@ -1,8 +1,6 @@
 using System.ComponentModel.DataAnnotations.Schema;
-using System.Reflection;
 
 using MimironSQL.Db2;
-using MimironSQL.EntityFrameworkCore;
 using MimironSQL.Providers;
 
 using Microsoft.Extensions.DependencyInjection;

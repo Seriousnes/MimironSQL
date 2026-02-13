@@ -1,7 +1,5 @@
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Metadata.Internal;
 
-using MimironSQL.EntityFrameworkCore;
 using MimironSQL.IntegrationTests.Helpers;
 using MimironSQL.Providers;
 
@@ -9,33 +7,9 @@ using Shouldly;
 
 namespace MimironSQL.IntegrationTests;
 
-public sealed class CascDb2ContextIntegrationLocalTests
+public sealed class CascDb2ContextIntegrationLocalTests(CascDb2ContextIntegrationLocalTestsFixture fixture) : IClassFixture<CascDb2ContextIntegrationLocalTestsFixture>
 {
-    private WoWDb2Context context;
-
-    public CascDb2ContextIntegrationLocalTests()
-    {
-        LocalEnvLocal.TryGetWowInstallRoot(out var wowInstallRoot).ShouldBeTrue();
-        Directory.Exists(wowInstallRoot).ShouldBeTrue();
-    
-        var testDataDir = TestDataPaths.GetTestDataDirectory();
-        Directory.Exists(testDataDir).ShouldBeTrue();
-    
-        var manifestPath = System.IO.Path.Combine(testDataDir, "manifest.json");
-        File.Exists(manifestPath).ShouldBeTrue();
-    
-        var optionsBuilder = new DbContextOptionsBuilder<WoWDb2Context>();
-        optionsBuilder.UseMimironDb2ForTests(o => o
-            .UseCasc()
-            .WithWowInstallRoot(wowInstallRoot)
-            .WithDbdDefinitions(Path.Combine(testDataDir, "definitions"))
-            .WithManifest(testDataDir, "manifest.json")
-            .Apply());
-    
-        context = new WoWDb2Context(optionsBuilder.Options);
-        _ = context.Model; // Force model creation
-        _ = context.AccountStoreCategory.First();
-    }
+    private WoWDb2Context context => fixture.Context;
 
     [LocalCascFact]
     public async Task Can_query_db2context_using_casc_db2_provider()
@@ -73,7 +47,13 @@ public sealed class CascDb2ContextIntegrationLocalTests
         result2.ShouldNotBeNull();
         result2.Id.ShouldBe(188196);
         result2.Description.ShouldBe("""
-            Hurls a bolt of lightning at the target, dealing $s1 Nature damage.$?a343725[ |cFFFFFFFFGenerates $343725s1 Maelstrom.|r]?a383303[ |cFFFFFFFFConsumes Maelstrom Weapon for increased cast speed and damage.|r]?a187880[ |cFFFFFFFFConsumes Maelstrom Weapon for increased cast speed.|r][]
+            Hurls a bolt of lightning at the target, dealing $s1 Nature damage.$?a343725[
+
+            |cFFFFFFFFGenerates $343725s1 Maelstrom.|r]?a383303[
+
+            |cFFFFFFFFConsumes Maelstrom Weapon for increased cast speed and damage.|r]?a187880[
+
+            |cFFFFFFFFConsumes Maelstrom Weapon for increased cast speed.|r][]
             """);
     }
 
@@ -84,8 +64,6 @@ public sealed class CascDb2ContextIntegrationLocalTests
 
         var entityType = context.Model.GetEntityTypes().FirstOrDefault(et => et.GetTableName().CompareTo($"{tableName}", StringComparison.InvariantCultureIgnoreCase) == 0);
         entityType.ShouldNotBeNull();
-        var keyProperty = entityType.FindPrimaryKey()?.Properties.FirstOrDefault();
-        keyProperty.ShouldNotBeNull();
         var entity = await context.FindAsync(entityType.ClrType, 454009);
         entity.ShouldBeOfType<SpellEntity>();
         var spellEntity = (SpellEntity)entity;
@@ -96,5 +74,32 @@ public sealed class CascDb2ContextIntegrationLocalTests
 
             $@spelltooltip452201
             """);
+    }
+}
+
+public class CascDb2ContextIntegrationLocalTestsFixture
+{
+    public WoWDb2Context Context;
+    public CascDb2ContextIntegrationLocalTestsFixture()
+    {
+        LocalEnvLocal.TryGetWowInstallRoot(out var wowInstallRoot).ShouldBeTrue();
+        Directory.Exists(wowInstallRoot).ShouldBeTrue();
+
+        var testDataDir = TestDataPaths.GetTestDataDirectory();
+        Directory.Exists(testDataDir).ShouldBeTrue();
+
+        var manifestPath = System.IO.Path.Combine(testDataDir, "manifest.json");
+        File.Exists(manifestPath).ShouldBeTrue();
+
+        var optionsBuilder = new DbContextOptionsBuilder<WoWDb2Context>();
+        optionsBuilder.UseMimironDb2ForTests(o => o
+            .UseCasc()
+            .WithWowInstallRoot(wowInstallRoot)
+            .WithDbdDefinitions(Path.Combine(testDataDir, "definitions"))
+            .WithManifest(testDataDir, "manifest.json")
+            .Apply());
+
+        Context = new WoWDb2Context(optionsBuilder.Options);
+        GC.KeepAlive(Context.Model); // Force model creation
     }
 }

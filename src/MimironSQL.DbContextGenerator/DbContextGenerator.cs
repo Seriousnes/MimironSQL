@@ -455,8 +455,6 @@ public sealed class DbContextGenerator : IIncrementalGenerator
             if (!byTableName.TryGetValue(nav.TargetTableName, out var target))
                 continue;
 
-            _ = target;
-
             if (nav.IsForeignKeyArray)
             {
                 sb.AppendLine($"        builder.HasMany(x => x.{nav.PropertyName}).WithOne().HasForeignKeyArray(x => x.{nav.ForeignKeyPropertyName});");

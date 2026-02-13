@@ -1,5 +1,3 @@
-using System.Reflection;
-
 using Microsoft.EntityFrameworkCore.Metadata;
 
 namespace MimironSQL.EntityFrameworkCore.Db2.Model;

@@ -247,12 +247,12 @@ public class MimironDb2StoreTests
         var (file1, schema1) = store.OpenTableWithSchema(tableName);
         var (file2, schema2) = store.OpenTableWithSchema(tableName);
 
-        file1.ShouldNotBe(file2);
+        file1.ShouldBe(file2);
         schema1.ShouldBe(schema2);
 
-        db2StreamProvider.Received(2).OpenDb2Stream(tableName);
+        db2StreamProvider.Received(1).OpenDb2Stream(tableName);
         dbdProvider.Received(1).Open(tableName);
-        format.Received(2).OpenFile(Arg.Any<Stream>());
+        format.Received(1).OpenFile(Arg.Any<Stream>());
     }
 
     [Fact]
@@ -277,12 +277,12 @@ public class MimironDb2StoreTests
         var (file2, schema2) = store.OpenTableWithSchema("TESTTABLE");
         var (file3, schema3) = store.OpenTableWithSchema("testtable");
 
-        file1.ShouldNotBe(file2);
-        file1.ShouldNotBe(file3);
+        file1.ShouldBe(file2);
+        file1.ShouldBe(file3);
         schema1.ShouldBe(schema2);
         schema1.ShouldBe(schema3);
 
-        db2StreamProvider.Received(3).OpenDb2Stream(Arg.Any<string>());
+        db2StreamProvider.Received(1).OpenDb2Stream(Arg.Any<string>());
     }
 
     [Fact]

@@ -212,8 +212,6 @@ public sealed class CascDb2StreamProvider(IManifestProvider manifestProvider, Ca
 
             // Avoid cancellation poisoning: once we begin caching a state for a given install/build,
             // we want it to complete and be reused for subsequent callers.
-            _ = cancellationToken;
-
             if (buildConfig.EncodingEKey is not { } encodingEKey)
                 throw new NotSupportedException("Build config did not include an ENCODING EKey; local-only resolution is not implemented for this case.");
 

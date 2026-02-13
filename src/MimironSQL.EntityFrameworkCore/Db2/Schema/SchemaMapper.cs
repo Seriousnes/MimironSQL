@@ -15,7 +15,7 @@ internal sealed class SchemaMapper(IDbdProvider dbdProvider, string wowVersionRa
         ArgumentException.ThrowIfNullOrWhiteSpace(tableName);
 
         var dbd = dbdProvider.Open(tableName);
-        var (build, allowedLayoutHashes, isGlobalBuild) = SelectBuildBlock(tableName, dbd);
+        var (build, allowedLayoutHashes, _) = SelectBuildBlock(tableName, dbd);
 
         var expectedPhysicalCount = build.GetPhysicalColumnCount();
 
@@ -64,7 +64,6 @@ internal sealed class SchemaMapper(IDbdProvider dbdProvider, string wowVersionRa
                 $"Resolved schema physical column count {physicalIndex} does not match DBD physical column count {expectedPhysicalCount} for {tableName}.dbd.");
         }
 
-        _ = isGlobalBuild;
         return new Db2TableSchema(tableName, physicalIndex, fields, allowedLayoutHashes);
     }
 

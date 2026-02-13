@@ -1,45 +1,51 @@
-using System.Collections;
 using System.Linq.Expressions;
 using System.Reflection;
 
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Query;
-
-using MimironSQL.EntityFrameworkCore.Query;
+using Microsoft.EntityFrameworkCore.Query.Internal;
 
 namespace MimironSQL.EntityFrameworkCore.Query.Internal;
 
 internal static class MimironDb2AsyncQueryAdapter
 {
-    public static TResult ExecuteAsync<TResult>(IMimironDb2QueryExecutor executor, Expression query, CancellationToken cancellationToken)
+#pragma warning disable EF1001 // Internal EF Core API usage is isolated to this shim.
+    public static TResult ExecuteAsync<TResult>(IQueryCompiler queryCompiler, Expression query, CancellationToken cancellationToken)
     {
-        ArgumentNullException.ThrowIfNull(executor);
+        ArgumentNullException.ThrowIfNull(queryCompiler);
         ArgumentNullException.ThrowIfNull(query);
 
         var resultType = typeof(TResult);
 
         if (TryGetTaskInnerType(resultType, out var taskInnerType))
-            return (TResult)CreateTaskResult(executor, query, taskInnerType);
+            return (TResult)CreateTaskResult(queryCompiler, query, taskInnerType);
 
         if (TryGetValueTaskInnerType(resultType, out var valueTaskInnerType))
-            return (TResult)CreateValueTaskResult(executor, query, valueTaskInnerType);
+            return (TResult)CreateValueTaskResult(queryCompiler, query, valueTaskInnerType);
 
         if (TryGetIAsyncEnumerableElementType(resultType, out var elementType))
-            return (TResult)CreateAsyncEnumerableResult(executor, query, elementType, cancellationToken);
+            return (TResult)CreateAsyncEnumerableResult(queryCompiler, query, elementType, cancellationToken);
 
         throw new NotSupportedException($"Async query execution only supports Task<T>, ValueTask<T>, and IAsyncEnumerable<T> results; found '{resultType.FullName}'.");
     }
 
-    public static Expression<Func<QueryContext, TResult>> PrecompileQuery<TResult>(IMimironDb2QueryExecutor executor, Expression query, bool async)
+    public static Expression<Func<QueryContext, TResult>> PrecompileQuery<TResult>(Expression query, bool async)
     {
-        ArgumentNullException.ThrowIfNull(executor);
         ArgumentNullException.ThrowIfNull(query);
 
         var qc = Expression.Parameter(typeof(QueryContext), "qc");
+        var context = Expression.Property(qc, nameof(QueryContext.Context));
+
+        var getService = typeof(AccessorExtensions)
+            .GetMethod(nameof(AccessorExtensions.GetService))!
+            .MakeGenericMethod(typeof(IQueryCompiler));
+
+        var compilerExpr = Expression.Call(getService, context);
 
         if (!async)
         {
             var execute = Expression.Call(
-                instance: Expression.Constant(executor),
+                instance: compilerExpr,
                 method: GetExecuteMethod<TResult>(),
                 arguments: Expression.Constant(query));
 
@@ -48,20 +54,20 @@ internal static class MimironDb2AsyncQueryAdapter
 
         var asyncCall = Expression.Call(
             GetExecuteAsyncMethod<TResult>(),
-            Expression.Constant(executor),
+            compilerExpr,
             Expression.Constant(query));
 
         return Expression.Lambda<Func<QueryContext, TResult>>(asyncCall, qc);
     }
 
-    public static TResult ExecuteAsync<TResult>(IMimironDb2QueryExecutor executor, Expression query)
-        => ExecuteAsync<TResult>(executor, query, CancellationToken.None);
+    public static TResult ExecuteAsync<TResult>(IQueryCompiler queryCompiler, Expression query)
+        => ExecuteAsync<TResult>(queryCompiler, query, CancellationToken.None);
 
     private static MethodInfo GetExecuteMethod<TResult>()
-        => typeof(IMimironDb2QueryExecutor).GetMethod(nameof(IMimironDb2QueryExecutor.Execute))!.MakeGenericMethod(typeof(TResult));
+        => typeof(IQueryCompiler).GetMethod(nameof(IQueryCompiler.Execute))!.MakeGenericMethod(typeof(TResult));
 
     private static MethodInfo GetExecuteAsyncMethod<TResult>()
-        => typeof(MimironDb2AsyncQueryAdapter).GetMethod(nameof(ExecuteAsync), [typeof(IMimironDb2QueryExecutor), typeof(Expression)])!
+        => typeof(MimironDb2AsyncQueryAdapter).GetMethod(nameof(ExecuteAsync), [typeof(IQueryCompiler), typeof(Expression)])!
             .MakeGenericMethod(typeof(TResult));
 
     private static bool TryGetTaskInnerType(Type type, out Type innerType)
@@ -100,41 +106,41 @@ internal static class MimironDb2AsyncQueryAdapter
         return false;
     }
 
-    private static object CreateTaskResult(IMimironDb2QueryExecutor executor, Expression query, Type innerType)
+    private static object CreateTaskResult(IQueryCompiler queryCompiler, Expression query, Type innerType)
     {
         var method = typeof(MimironDb2AsyncQueryAdapter)
             .GetMethod(nameof(CreateTaskResultTyped), BindingFlags.NonPublic | BindingFlags.Static)!
             .MakeGenericMethod(innerType);
 
-        return method.Invoke(obj: null, parameters: [executor, query])!;
+        return method.Invoke(obj: null, parameters: [queryCompiler, query])!;
     }
 
-    private static Task<T> CreateTaskResultTyped<T>(IMimironDb2QueryExecutor executor, Expression query)
-        => Task.FromResult(executor.Execute<T>(query));
+    private static Task<T> CreateTaskResultTyped<T>(IQueryCompiler queryCompiler, Expression query)
+        => Task.FromResult(queryCompiler.Execute<T>(query));
 
-    private static object CreateValueTaskResult(IMimironDb2QueryExecutor executor, Expression query, Type innerType)
+    private static object CreateValueTaskResult(IQueryCompiler queryCompiler, Expression query, Type innerType)
     {
         var method = typeof(MimironDb2AsyncQueryAdapter)
             .GetMethod(nameof(CreateValueTaskResultTyped), BindingFlags.NonPublic | BindingFlags.Static)!
             .MakeGenericMethod(innerType);
 
-        return method.Invoke(obj: null, parameters: [executor, query])!;
+        return method.Invoke(obj: null, parameters: [queryCompiler, query])!;
     }
 
-    private static ValueTask<T> CreateValueTaskResultTyped<T>(IMimironDb2QueryExecutor executor, Expression query)
-        => new(executor.Execute<T>(query));
+    private static ValueTask<T> CreateValueTaskResultTyped<T>(IQueryCompiler queryCompiler, Expression query)
+        => new(queryCompiler.Execute<T>(query));
 
-    private static object CreateAsyncEnumerableResult(IMimironDb2QueryExecutor executor, Expression query, Type elementType, CancellationToken cancellationToken)
+    private static object CreateAsyncEnumerableResult(IQueryCompiler queryCompiler, Expression query, Type elementType, CancellationToken cancellationToken)
     {
         var method = typeof(MimironDb2AsyncQueryAdapter)
             .GetMethod(nameof(CreateAsyncEnumerableResultTyped), BindingFlags.NonPublic | BindingFlags.Static)!
             .MakeGenericMethod(elementType);
 
-        return method.Invoke(obj: null, parameters: [executor, query, cancellationToken])!;
+        return method.Invoke(obj: null, parameters: [queryCompiler, query, cancellationToken])!;
     }
 
-    private static IAsyncEnumerable<T> CreateAsyncEnumerableResultTyped<T>(IMimironDb2QueryExecutor executor, Expression query, CancellationToken cancellationToken)
-        => new SyncAsyncEnumerable<T>(executor.Execute<IEnumerable<T>>(query), cancellationToken);
+    private static IAsyncEnumerable<T> CreateAsyncEnumerableResultTyped<T>(IQueryCompiler queryCompiler, Expression query, CancellationToken cancellationToken)
+        => new SyncAsyncEnumerable<T>(queryCompiler.Execute<IEnumerable<T>>(query), cancellationToken);
 
     private sealed class SyncAsyncEnumerable<T>(IEnumerable<T> source, CancellationToken cancellationToken) : IAsyncEnumerable<T>
     {
@@ -188,4 +194,5 @@ internal static class MimironDb2AsyncQueryAdapter
             }
         }
     }
+#pragma warning restore EF1001
 }

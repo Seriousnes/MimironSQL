@@ -3,8 +3,6 @@ using MimironSQL.EntityFrameworkCore.Db2.Model;
 using MimironSQL.EntityFrameworkCore.Db2.Query;
 using MimironSQL.EntityFrameworkCore.Db2.Schema;
 
-using Microsoft.EntityFrameworkCore;
-
 using Shouldly;
 
 using System.Linq.Expressions;

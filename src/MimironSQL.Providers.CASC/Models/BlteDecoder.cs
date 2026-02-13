@@ -1,6 +1,5 @@
 using System.Buffers.Binary;
 using System.Security.Cryptography;
-using System.Runtime.InteropServices;
 
 using System.Buffers;
 
@@ -67,7 +66,7 @@ internal static class BlteDecoder
 
         // Parse chunk table once while computing total output size.
         // This avoids a second pass of repeated slicing and BigEndian reads.
-        var blocks = new (uint RawSize, uint LogicalSize) [numBlocks];
+        var blocks = new (uint RawSize, uint LogicalSize)[numBlocks];
         long totalLogicalSize = 0;
         int entryOffset = tableHeaderSize;
 
@@ -197,13 +196,13 @@ internal static class BlteDecoder
         switch (mode)
         {
             case 'N':
-            {
-                if (payload.Length != destination.Length)
-                    throw new InvalidDataException("BLTE uncompressed block size mismatch");
+                {
+                    if (payload.Length != destination.Length)
+                        throw new InvalidDataException("BLTE uncompressed block size mismatch");
 
-                payload.CopyTo(destination);
-                return;
-            }
+                    payload.CopyTo(destination);
+                    return;
+                }
 
             case 'Z':
                 DecodeZlibInto(payload, destination);
@@ -231,15 +230,13 @@ internal static class BlteDecoder
                 throw new InvalidDataException("Decoded size too large");
 
             var output = new byte[(int)hint];
-            var status = decompressor.Decompress(payload, output, out int bytesWritten, out int bytesConsumed);
+            var status = decompressor.Decompress(payload, output, out int bytesWritten, out _);
 
             if (status == OperationStatus.DestinationTooSmall)
                 throw new InvalidDataException("BLTE zlib produced more data than expected");
 
             if (status != OperationStatus.Done)
                 throw new InvalidDataException("BLTE zlib decoded size mismatch");
-
-            _ = bytesConsumed;
 
             if (bytesWritten == output.Length)
                 return output;
@@ -260,7 +257,7 @@ internal static class BlteDecoder
                 rented = ArrayPool<byte>.Shared.Rent(capacity);
                 var dest = rented.AsSpan(0, capacity);
 
-                var status = decompressor.Decompress(payload, dest, out int bytesWritten, out int bytesConsumed);
+                var status = decompressor.Decompress(payload, dest, out int bytesWritten, out _);
 
                 if (status == OperationStatus.DestinationTooSmall)
                 {
@@ -273,8 +270,6 @@ internal static class BlteDecoder
 
                 if (status != OperationStatus.Done)
                     throw new InvalidDataException("BLTE zlib decoded size mismatch");
-
-                _ = bytesConsumed;
 
                 var output = new byte[bytesWritten];
                 dest[..bytesWritten].CopyTo(output);
@@ -292,7 +287,7 @@ internal static class BlteDecoder
     {
         var decompressor = t_zlibDecompressor ??= new ZlibDecompressor();
 
-        var status = decompressor.Decompress(payload, destination, out int bytesWritten, out int bytesConsumed);
+        var status = decompressor.Decompress(payload, destination, out int bytesWritten, out _);
 
         if (status == OperationStatus.DestinationTooSmall)
             throw new InvalidDataException("BLTE zlib produced more data than expected");
@@ -301,7 +296,6 @@ internal static class BlteDecoder
             throw new InvalidDataException("BLTE zlib decoded size mismatch");
 
         // Preserve previous behavior: do not reject trailing bytes in the compressed payload.
-        _ = bytesConsumed;
     }
 
     private static byte[] DecodeLz4Hc(ReadOnlySpan<byte> payload, uint? logicalSizeHint)

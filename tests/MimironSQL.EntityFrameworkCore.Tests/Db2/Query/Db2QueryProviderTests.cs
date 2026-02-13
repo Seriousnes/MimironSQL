@@ -16,16 +16,15 @@ namespace MimironSQL.EntityFrameworkCore.Tests;
 public sealed class Db2QueryProviderTests
 {
     [Fact]
-    public void Db2QueryPipeline_recognizes_Include_expression()
+    public void Preprocessor_recognizes_Include_expression()
     {
         var (children, _, _) = CreateParentChildTables();
 
         var query = EfInclude(children, c => c.Parent);
 
-        var pipeline = Db2QueryPipeline.Parse(query.Expression);
-        var includeCount = pipeline.Operations.OfType<Db2IncludeOperation>().Count();
+        var preprocessed = Db2ExpressionPreprocessor.Preprocess(query.Expression);
 
-        includeCount.ShouldBe(1, "Include not recognized. Call chain: " + DescribeCallChain(query.Expression));
+        preprocessed.IncludeChains.Count.ShouldBe(1, "Include not recognized. Call chain: " + DescribeCallChain(query.Expression));
     }
 
     private static string DescribeCallChain(Expression expression)
@@ -174,16 +173,16 @@ public sealed class Db2QueryProviderTests
     }
 
     [Fact]
-    public void Where_after_Select_suppresses_ArgumentNullException_in_predicates()
+    public void Where_after_Select_propagates_ArgumentNullException_from_predicates()
     {
         var (table, _) = CreateParentTable();
 
-        var result = table
-            .Select(static p => p)
-            .Where(static p => AlwaysThrowsArgNull(p))
-            .ToArray();
-
-        result.ShouldBeEmpty();
+        // Post-Select Where is executed via LINQ-to-Objects and does not null-swallow.
+        Should.Throw<ArgumentNullException>(() =>
+            table
+                .Select(static p => p)
+                .Where(static p => AlwaysThrowsArgNull(p))
+                .ToArray());
     }
 
     [Fact]
@@ -527,17 +526,16 @@ public sealed class Db2QueryProviderTests
     }
 
     [Fact]
-    public void Reverse_is_not_supported()
+    public void Reverse_reverses_entity_order()
     {
         var (table, _) = CreateParentTable();
 
-        var ex = Should.Throw<NotSupportedException>(() =>
-            table
-                .Reverse()
-                .ToArray());
+        var result = table
+            .Reverse()
+            .Select(static p => p.Id)
+            .ToArray();
 
-        ex.Message.ShouldContain("Unsupported Queryable operator");
-        ex.Message.ShouldContain("Reverse");
+        result.ShouldBe([3, 2, 1]);
     }
 
     [Fact]
@@ -1008,6 +1006,8 @@ public sealed class Db2QueryProviderTests
         }
 
         public readonly record struct Row(int Id, object[] Values);
+
+        public void Dispose() { }
     }
 
     private enum TestKey

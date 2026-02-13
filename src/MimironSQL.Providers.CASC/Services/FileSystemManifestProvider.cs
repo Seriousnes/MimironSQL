@@ -15,8 +15,6 @@ public sealed class FileSystemManifestProvider(CascDb2ProviderOptions options) :
     /// <inheritdoc />
     public Task EnsureManifestExistsAsync(CancellationToken cancellationToken = default)
     {
-        _ = cancellationToken;
-
         var path = GetManifestPath();
         if (!File.Exists(path))
             throw new FileNotFoundException($"Manifest file not found: '{path}'.", path);

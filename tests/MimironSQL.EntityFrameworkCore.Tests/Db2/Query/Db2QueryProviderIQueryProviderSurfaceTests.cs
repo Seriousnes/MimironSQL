@@ -1,7 +1,6 @@
 using System.Linq.Expressions;
 
 using MimironSQL.Db2;
-using MimironSQL.EntityFrameworkCore.Db2.Model;
 using MimironSQL.EntityFrameworkCore.Db2.Query;
 using MimironSQL.EntityFrameworkCore.Db2.Schema;
 using MimironSQL.Formats;

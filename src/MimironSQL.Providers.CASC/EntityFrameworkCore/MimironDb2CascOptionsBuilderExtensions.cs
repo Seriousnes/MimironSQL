@@ -73,8 +73,8 @@ public static class MimironDb2CascOptionsBuilderExtensions
         var dbdDefsDir = ReadString(casc, configuration, "DbdDefinitionsDirectory");
         var cacheDir = ReadString(casc, configuration, "ManifestDirectory") ?? string.Empty;
 
-        var assetName = casc["ManifestAssetName"]?.Trim() ?? 
-                        configuration["ManifestAssetName"]?.Trim() ?? 
+        var assetName = casc["ManifestAssetName"]?.Trim() ??
+                        configuration["ManifestAssetName"]?.Trim() ??
                         "manifest.json";
 
         return new CascDb2ProviderOptions

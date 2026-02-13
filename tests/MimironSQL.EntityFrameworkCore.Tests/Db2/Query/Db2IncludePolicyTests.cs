@@ -1,8 +1,6 @@
 using System.Linq.Expressions;
 using System.Reflection;
 
-using Microsoft.EntityFrameworkCore;
-
 using MimironSQL.Db2;
 using MimironSQL.EntityFrameworkCore.Db2.Model;
 using MimironSQL.EntityFrameworkCore.Db2.Query;
@@ -49,16 +47,16 @@ public sealed class Db2IncludePolicyTests
     }
 
     [Fact]
-    public void ThrowIfNavigationRequiresInclude_supports_Db2WhereOperation_and_Db2SelectOperation_overloads()
+    public void ThrowIfNavigationRequiresInclude_supports_lambda_with_navigation_access()
     {
         var model = CreateModel();
         var includedRootMembers = new HashSet<MemberInfo>();
 
         Expression<Func<Child, bool>> where = x => x.Parent != null;
-        Should.Throw<NotSupportedException>(() => Db2IncludePolicy.ThrowIfNavigationRequiresInclude(model, includedRootMembers, new Db2WhereOperation(where)));
+        Should.Throw<NotSupportedException>(() => Db2IncludePolicy.ThrowIfNavigationRequiresInclude(model, includedRootMembers, where));
 
         Expression<Func<Child, string>> select = x => x.Parent!.Name;
-        Should.Throw<NotSupportedException>(() => Db2IncludePolicy.ThrowIfNavigationRequiresInclude(model, includedRootMembers, new Db2SelectOperation(select)));
+        Should.Throw<NotSupportedException>(() => Db2IncludePolicy.ThrowIfNavigationRequiresInclude(model, includedRootMembers, select));
     }
 
     [Fact]

@@ -1,31 +1,57 @@
 using System.Collections.Concurrent;
-using System.Collections;
-using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
 
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Query;
+using Microsoft.EntityFrameworkCore.Query.Internal;
 
 using MimironSQL.EntityFrameworkCore.Db2.Query;
 using MimironSQL.EntityFrameworkCore.Db2.Model;
 using MimironSQL.EntityFrameworkCore.Db2.Schema;
+using MimironSQL.EntityFrameworkCore.Query.Internal;
 using MimironSQL.EntityFrameworkCore.Storage;
 using MimironSQL.Formats;
 
 namespace MimironSQL.EntityFrameworkCore.Query;
 
+#pragma warning disable EF1001 // Internal EF Core API usage is isolated to this provider.
 internal sealed class MimironDb2QueryExecutor(
     ICurrentDbContext currentDbContext,
     IMimironDb2Store store,
-    IDb2ModelBinding db2ModelBinding) : IMimironDb2QueryExecutor
+    IDb2ModelBinding db2ModelBinding) : IQueryCompiler
 {
     private static readonly ConcurrentDictionary<(Type EntityType, Type RowType, Type ResultType), Func<MimironDb2QueryExecutor, Expression, object?>> ExecuteDelegates = new();
 
     private readonly DbContext _context = currentDbContext?.Context ?? throw new ArgumentNullException(nameof(currentDbContext));
     private readonly IMimironDb2Store _store = store ?? throw new ArgumentNullException(nameof(store));
     private readonly IDb2ModelBinding _db2ModelBinding = db2ModelBinding ?? throw new ArgumentNullException(nameof(db2ModelBinding));
+
+    public Func<QueryContext, TResult> CreateCompiledQuery<TResult>(Expression query)
+    {
+        ArgumentNullException.ThrowIfNull(query);
+
+        // Don't capture this scoped service in a delegate that EF Core may cache.
+        return qc => qc.Context.GetService<IQueryCompiler>().Execute<TResult>(query);
+    }
+
+    public Func<QueryContext, TResult> CreateCompiledAsyncQuery<TResult>(Expression query)
+    {
+        ArgumentNullException.ThrowIfNull(query);
+
+        return qc =>
+        {
+            var compiler = qc.Context.GetService<IQueryCompiler>();
+            return MimironDb2AsyncQueryAdapter.ExecuteAsync<TResult>(compiler, query);
+        };
+    }
+
+    public TResult ExecuteAsync<TResult>(Expression query, CancellationToken cancellationToken)
+        => MimironDb2AsyncQueryAdapter.ExecuteAsync<TResult>(this, query, cancellationToken);
+
+    public Expression<Func<QueryContext, TResult>> PrecompileQuery<TResult>(Expression query, bool async)
+        => MimironDb2AsyncQueryAdapter.PrecompileQuery<TResult>(query, async);
 
     public TResult Execute<TResult>(Expression query)
     {
@@ -60,11 +86,13 @@ internal sealed class MimironDb2QueryExecutor(
     {
         var model = _db2ModelBinding.GetBinding();
 
-        var pipeline = Db2QueryPipeline.Parse(query);
+        // Step 1: Preprocess expression — strip Include/ThenInclude and EF query modifiers.
+        var preprocessed = Db2ExpressionPreprocessor.Preprocess(query);
 
+        // Step 2: Try PK key-lookup fast path.
         if (typeof(TRow) == typeof(RowHandle)
             && TryGetPrimaryKeyMemberName(model, typeof(TEntity), out var pkMemberName)
-            && TryGetKeyLookupRequest<TEntity>(pipeline, pkMemberName, out var request))
+            && TryGetKeyLookupInfo<TEntity>(preprocessed.CleanedExpression, pkMemberName, out var keyLookup))
         {
             IDb2EntityFactory keyLookupEntityFactory = new EfLazyLoadingProxyDb2EntityFactory(_context, new ReflectionDb2EntityFactory());
 
@@ -73,158 +101,51 @@ internal sealed class MimironDb2QueryExecutor(
 
             var tableName2 = efEntityType2.GetTableName() ?? typeof(TEntity).Name;
 
-            using var keyLookupSession = new QuerySession<RowHandle>(_context, _store, model);
-            keyLookupSession.Warm(pipeline, typeof(TEntity));
+            var (rootFile, rootSchema) = _store.OpenTableWithSchema<RowHandle>(tableName2);
 
-            var (rootFile, rootSchema) = keyLookupSession.Resolve(tableName2);
+            var rootEntities = MaterializeByIdsFromOpenFile<TEntity>(rootFile, rootSchema, tableName2, keyLookup.Ids, keyLookup.TakeCount, model, keyLookupEntityFactory);
 
-            var rootEntities = MaterializeByIdsFromOpenFile<TEntity>(rootFile, rootSchema, tableName2, request.Ids, request.TakeCount, model, keyLookupEntityFactory);
-
-            IEnumerable current = rootEntities;
-            var currentElementType = typeof(TEntity);
-
-            // Apply includes before Select, matching provider semantics.
-            for (var i = 0; i < request.Includes.Count; i++)
+            // Apply includes.
+            IEnumerable<TEntity> current = rootEntities;
+            for (var i = 0; i < preprocessed.IncludeChains.Count; i++)
             {
                 current = Db2IncludeChainExecutor.Apply<TEntity, RowHandle>(
-                    (IEnumerable<TEntity>)current,
+                    current,
                     model,
-                    keyLookupSession.Resolve,
-                    request.Includes[i].Members,
+                    name => _store.OpenTableWithSchema<RowHandle>(name),
+                    preprocessed.IncludeChains[i],
                     keyLookupEntityFactory);
             }
 
-            if (request.Select is not null)
-            {
-                current = ApplySelect(current, currentElementType, request.Select.Selector);
-                currentElementType = request.Select.Selector.ReturnType;
-            }
-
-            return request.FinalOperator switch
-            {
-                Db2FinalOperator.None => MaterializeSequenceResult<TResult>(current, currentElementType),
-                Db2FinalOperator.First => (TResult)ApplyScalarOperator(Db2FinalOperator.First, current, currentElementType, request.FinalPredicate)!,
-                Db2FinalOperator.FirstOrDefault => (TResult?)ApplyScalarOperator(Db2FinalOperator.FirstOrDefault, current, currentElementType, request.FinalPredicate),
-                Db2FinalOperator.Single => (TResult)ApplyScalarOperator(Db2FinalOperator.Single, current, currentElementType, request.FinalPredicate)!,
-                Db2FinalOperator.SingleOrDefault => (TResult?)ApplyScalarOperator(Db2FinalOperator.SingleOrDefault, current, currentElementType, request.FinalPredicate),
-                Db2FinalOperator.Any => (TResult)(object)(bool)ApplyScalarOperator(Db2FinalOperator.Any, current, currentElementType, request.FinalPredicate)!,
-                Db2FinalOperator.Count => (TResult)(object)(int)ApplyScalarOperator(Db2FinalOperator.Count, current, currentElementType, request.FinalPredicate)!,
-                Db2FinalOperator.All => (TResult)(object)(bool)ApplyScalarOperator(Db2FinalOperator.All, current, currentElementType, request.FinalPredicate)!,
-                _ => throw new NotSupportedException($"Unsupported terminal operator for key lookup: {request.FinalOperator}.")
-            };
+            // Materialize the included entities, substitute the root in the residual
+            // expression, and let LINQ-to-Objects handle Select + terminal operators.
+            var entities = current.ToList();
+            var residual = SubstituteRoot<TEntity>(keyLookup.ResidualExpression, entities);
+            return CompileAndExecute<TResult>(residual);
         }
 
+        // Step 3: Provider path — let Db2QueryProvider handle optimizations.
         var efEntityType = _context.Model.FindEntityType(typeof(TEntity))
             ?? throw new NotSupportedException($"Entity type '{typeof(TEntity).FullName}' is not part of the EF model.");
 
         var tableName = efEntityType.GetTableName() ?? typeof(TEntity).Name;
 
-        // For sequence results, defer opening DB2 files until enumeration and ensure they are disposed
-        // when enumeration completes or is aborted.
-        if (pipeline.FinalOperator == Db2FinalOperator.None && TryGetEnumerableElementType(typeof(TResult), out var elementType))
-        {
-            var sequenceInterface = typeof(IEnumerable<>).MakeGenericType(elementType);
-            if (typeof(TResult).IsAssignableFrom(sequenceInterface))
-            {
-                return ExecuteDeferredEnumerable<TEntity, TRow>(query, model, tableName, elementType);
-            }
-        }
-
-        using var session = new QuerySession<TRow>(_context, _store, model);
-        session.Warm(pipeline, typeof(TEntity));
-
-        var (file, schema) = session.Resolve(tableName);
+        var (file, schema) = _store.OpenTableWithSchema<TRow>(tableName);
 
         (IDb2File<TRow> File, Db2TableSchema Schema) TableResolver(string name)
-            => session.Resolve(name);
+            => _store.OpenTableWithSchema<TRow>(name);
 
         IDb2EntityFactory queryEntityFactory = new EfLazyLoadingProxyDb2EntityFactory(_context, new ReflectionDb2EntityFactory());
         var provider = new Db2QueryProvider<TEntity, TRow>(file, model, TableResolver, queryEntityFactory);
 
-        var db2EntityType = model.GetEntityType(typeof(TEntity)).WithSchema(tableName, schema);
-        _ = db2EntityType;
+        model.GetEntityType(typeof(TEntity)).WithSchema(tableName, schema);
         var rootQueryable = new Db2Queryable<TEntity>(provider);
 
         var rewritten = new RootQueryRewriter<TEntity>(rootQueryable).Visit(query);
         return provider.Execute<TResult>(rewritten!);
     }
 
-    private object ExecuteDeferredEnumerable<TEntity, TRow>(Expression query, Db2ModelBinding model, string tableName, Type elementType)
-        where TEntity : class
-        where TRow : struct, IRowHandle
-    {
-        var method = typeof(MimironDb2QueryExecutor)
-            .GetMethod(nameof(ExecuteDeferredEnumerableTyped), BindingFlags.NonPublic | BindingFlags.Instance)!
-            .MakeGenericMethod(typeof(TEntity), typeof(TRow), elementType);
-
-        return method.Invoke(this, [query, model, tableName])!;
-    }
-
-    private object ExecuteDeferredEnumerableTyped<TEntity, TRow, TElement>(Expression query, Db2ModelBinding model, string tableName)
-        where TEntity : class
-        where TRow : struct, IRowHandle
-    {
-        var enumerable = new DeferredScopeEnumerable<TElement>(() =>
-        {
-            var session = new QuerySession<TRow>(_context, _store, model);
-
-            // Ensure all required tables are opened once before enumeration begins.
-            session.Warm(query, typeof(TEntity));
-
-            var (file, schema) = session.Resolve(tableName);
-
-            (IDb2File<TRow> File, Db2TableSchema Schema) TableResolver(string name)
-                => session.Resolve(name);
-
-            IDb2EntityFactory queryEntityFactory = new EfLazyLoadingProxyDb2EntityFactory(_context, new ReflectionDb2EntityFactory());
-            var provider = new Db2QueryProvider<TEntity, TRow>(file, model, TableResolver, queryEntityFactory);
-
-            var db2EntityType = model.GetEntityType(typeof(TEntity)).WithSchema(tableName, schema);
-            _ = db2EntityType;
-            var rootQueryable = new Db2Queryable<TEntity>(provider);
-
-            var rewritten = new RootQueryRewriter<TEntity>(rootQueryable).Visit(query);
-            var result = provider.Execute<IEnumerable<TElement>>(rewritten!);
-
-            return (result, session);
-        });
-
-        return enumerable;
-    }
-
-    private static bool TryGetEnumerableElementType(Type resultType, out Type elementType)
-    {
-        if (resultType == typeof(string))
-        {
-            elementType = null!;
-            return false;
-        }
-
-        if (resultType.IsGenericType)
-        {
-            var args = resultType.GetGenericArguments();
-            if (args.Length == 1 && typeof(IEnumerable<>).MakeGenericType(args[0]).IsAssignableFrom(resultType))
-            {
-                elementType = args[0];
-                return true;
-            }
-        }
-
-        foreach (var i in resultType.GetInterfaces())
-        {
-            if (!i.IsGenericType)
-                continue;
-
-            if (i.GetGenericTypeDefinition() != typeof(IEnumerable<>))
-                continue;
-
-            elementType = i.GetGenericArguments()[0];
-            return true;
-        }
-
-        elementType = null!;
-        return false;
-    }
+    // ──────── Key-lookup helpers ────────
 
     private static bool TryGetPrimaryKeyMemberName(Db2ModelBinding model, Type entityClrType, out string memberName)
     {
@@ -233,104 +154,135 @@ internal sealed class MimironDb2QueryExecutor(
         return true;
     }
 
-    private static TResult MaterializeEnumerableResult<TEntity, TResult>(IReadOnlyList<TEntity> entities)
-        where TEntity : class
+    /// <summary>
+    /// Walks the (pre-processed / Include-stripped) expression tree to detect a
+    /// PK-based key lookup query.  If successful, returns the extracted IDs,
+    /// optional Take count, and a <em>residual</em> expression — the original
+    /// expression with the PK Where and Take calls stripped so that LINQ-to-Objects
+    /// can evaluate the rest (Select, terminal operators, etc.).
+    /// </summary>
+    private static bool TryGetKeyLookupInfo<TEntity>(
+        Expression cleanedExpression,
+        string pkMemberName,
+        out KeyLookupInfo keyLookup)
     {
-        // This handles e.g. Where(x => x.Id == const) without a scalar terminal operator.
-        if (entities.Count == 0)
-        {
-            if (typeof(TResult).IsAssignableFrom(typeof(IEnumerable<TEntity>)))
-                return (TResult)(object)Array.Empty<TEntity>();
+        // Walk the expression chain and classify nodes.
+        var current = cleanedExpression;
+        MethodCallExpression? pkWhereNode = null;
+        MethodCallExpression? takeNode = null;
+        var rootEntityWhereCount = 0;
+        var hasSkip = false;
+        var selectCount = 0;
 
-            // Fallback for unexpected result shapes.
-            return default!;
+        // Peel off a terminal operator (First, Single, Any, Count, All) at the outermost level.
+        // These are valid in the key-lookup path and will be kept in the residual expression.
+        if (current is MethodCallExpression { Method.DeclaringType: { } declaring } outermost
+            && declaring == typeof(Queryable)
+            && outermost.Method.Name is nameof(Queryable.First) or nameof(Queryable.FirstOrDefault)
+                or nameof(Queryable.Single) or nameof(Queryable.SingleOrDefault)
+                or nameof(Queryable.Any) or nameof(Queryable.All)
+                or nameof(Queryable.Count))
+        {
+            current = outermost.Arguments[0];
         }
 
-        var array = entities as TEntity[] ?? entities.ToArray();
-        if (typeof(TResult).IsAssignableFrom(array.GetType()))
-            return (TResult)(object)array;
-
-        return (TResult)(object)array;
-    }
-
-    private static bool TryGetKeyLookupRequest<TEntity>(Db2QueryPipeline pipeline, string pkMemberName, out KeyLookupRequest request)
-    {
-        // Skip remains disqualifying for the key lookup path.
-        if (pipeline.Operations.Any(op => op is Db2SkipOperation))
+        // Walk outermost → innermost along the source chain.
+        while (current is MethodCallExpression m)
         {
-            request = default;
-            return false;
-        }
-
-        var take = pipeline.Operations.OfType<Db2TakeOperation>().FirstOrDefault();
-
-        // Key lookup can apply Take safely since it controls result ordering.
-        // Keep Skip disqualifying for now.
-        if (take is not null && take.Count < 0)
-        {
-            request = default;
-            return false;
-        }
-
-        var whereOps = pipeline.Operations
-            .OfType<Db2WhereOperation>()
-            .Where(w => w.Predicate.Parameters is { Count: 1 } && w.Predicate.Parameters[0].Type == typeof(TEntity))
-            .ToList();
-
-        if (whereOps.Count != 1)
-        {
-            request = default;
-            return false;
-        }
-
-        if (!TryExtractPkIds<TEntity>((Expression<Func<TEntity, bool>>)whereOps[0].Predicate, pkMemberName, out var ids))
-        {
-            request = default;
-            return false;
-        }
-
-        var finalPredicate = pipeline.FinalOperator == Db2FinalOperator.All ? pipeline.FinalPredicate : null;
-        var includes = pipeline.Operations.OfType<Db2IncludeOperation>().ToArray();
-
-        Db2SelectOperation? select = null;
-        for (var i = 0; i < pipeline.Operations.Count; i++)
-        {
-            if (pipeline.Operations[i] is Db2SelectOperation s)
+            if (m.Method.DeclaringType == typeof(Queryable))
             {
-                if (select is not null)
+                switch (m.Method.Name)
                 {
-                    request = default;
-                    return false;
-                }
+                    case nameof(Queryable.Where):
+                        {
+                            var predicate = Db2ExpressionPreprocessor.UnquoteLambda(m.Arguments[1]);
+                            if (predicate.Parameters is { Count: 1 } && predicate.Parameters[0].Type == typeof(TEntity))
+                            {
+                                rootEntityWhereCount++;
 
-                if (s.Selector is not { Parameters.Count: 1 } || s.Selector.Parameters[0].Type != typeof(TEntity))
-                {
-                    request = default;
-                    return false;
-                }
+                                if (TryExtractPkIds<TEntity>((Expression<Func<TEntity, bool>>)predicate, pkMemberName, out _))
+                                    pkWhereNode = m;
+                            }
 
-                select = s;
-            }
-        }
+                            current = m.Arguments[0];
+                            continue;
+                        }
 
-        // Include must appear before Select (same as provider behavior).
-        if (select is not null)
-        {
-            var sawSelect = false;
-            for (var i = 0; i < pipeline.Operations.Count; i++)
-            {
-                var op = pipeline.Operations[i];
-                if (op == select)
-                    sawSelect = true;
-                else if (sawSelect && op is Db2IncludeOperation)
-                {
-                    request = default;
-                    return false;
+                    case nameof(Queryable.Skip):
+                        hasSkip = true;
+                        current = m.Arguments[0];
+                        continue;
+
+                    case nameof(Queryable.Take):
+                        {
+                            if (m.Arguments[1] is ConstantExpression { Value: int count } && count >= 0)
+                                takeNode = m;
+
+                            current = m.Arguments[0];
+                            continue;
+                        }
+
+                    case nameof(Queryable.Select):
+                        selectCount++;
+                        if (selectCount > 1)
+                        {
+                            keyLookup = default;
+                            return false;
+                        }
+
+                        // Validate the select parameter type matches TEntity.
+                        var selector = Db2ExpressionPreprocessor.UnquoteLambda(m.Arguments[1]);
+                        if (selector is not { Parameters.Count: 1 } || selector.Parameters[0].Type != typeof(TEntity))
+                        {
+                            keyLookup = default;
+                            return false;
+                        }
+
+                        current = m.Arguments[0];
+                        continue;
+
+                    default:
+                        current = m.Arguments[0];
+                        continue;
                 }
             }
+
+            // Non-Queryable method in the chain — bail.
+            if (m.Arguments.Count > 0)
+                current = m.Arguments[0];
+            else
+                break;
         }
 
-        request = new KeyLookupRequest(ids, take?.Count, pipeline.FinalOperator, finalPredicate, includes, select);
+        // Disqualifiers:
+        // - Skip present → key-lookup cannot reorder correctly
+        // - Not exactly one root-entity Where with PK access
+        if (hasSkip || rootEntityWhereCount != 1 || pkWhereNode is null)
+        {
+            keyLookup = default;
+            return false;
+        }
+
+        // Extract the IDs from the PK Where predicate.
+        var pkPredicate = (Expression<Func<TEntity, bool>>)Db2ExpressionPreprocessor.UnquoteLambda(pkWhereNode.Arguments[1]);
+        if (!TryExtractPkIds<TEntity>(pkPredicate, pkMemberName, out var ids))
+        {
+            keyLookup = default;
+            return false;
+        }
+
+        int? takeCount = null;
+        if (takeNode is not null && takeNode.Arguments[1] is ConstantExpression { Value: int tc })
+            takeCount = tc;
+
+        // Build the residual expression by stripping the PK Where and Take nodes.
+        var nodesToStrip = new HashSet<Expression>(ReferenceEqualityComparer.Instance) { pkWhereNode };
+        if (takeNode is not null)
+            nodesToStrip.Add(takeNode);
+
+        var residual = new OperationStripper(nodesToStrip).Visit(cleanedExpression);
+
+        keyLookup = new KeyLookupInfo(ids, takeCount, residual);
         return true;
     }
 
@@ -386,42 +338,72 @@ internal sealed class MimironDb2QueryExecutor(
         return results;
     }
 
-    private static IEnumerable ApplySelect(IEnumerable source, Type sourceElementType, LambdaExpression selector)
+    // ──────── Expression tree helpers ────────
+
+    /// <summary>
+    /// Replaces the root <see cref="EntityQueryRootExpression"/> in <paramref name="expression"/>
+    /// with a <c>Constant(entities.AsQueryable())</c>, producing an expression that
+    /// LINQ-to-Objects can evaluate directly.
+    /// </summary>
+    private static Expression SubstituteRoot<TEntity>(Expression expression, List<TEntity> entities)
+        where TEntity : class
     {
-        var resultType = selector.ReturnType;
-        var typedSelector = selector.Compile();
-        return EnumerableDispatch.GetSelect(sourceElementType, resultType)(source, typedSelector);
+        var queryable = entities.AsQueryable();
+        return new RootQueryRewriter<TEntity>(queryable).Visit(expression);
     }
 
-    private static TResult MaterializeSequenceResult<TResult>(IEnumerable sequence, Type elementType)
+    /// <summary>
+    /// Compiles a self-contained expression (no parameters) and executes it,
+    /// returning the result as <typeparamref name="TResult"/>.
+    /// Handles type conversions (e.g. IQueryable&lt;T&gt; → IEnumerable&lt;T&gt;).
+    /// </summary>
+    internal static TResult CompileAndExecute<TResult>(Expression expression)
     {
-        var array = EnumerableDispatch.GetToArray(elementType)(sequence);
-        if (typeof(TResult).IsAssignableFrom(array.GetType()))
-            return (TResult)array;
+        // Residual expressions are executed via LINQ-to-Objects after we materialize entities.
+        // EF sometimes injects EF.Property<T>(entity, "Member") calls (e.g., in Find/PK predicates).
+        // Those must be rewritten to normal member access before compilation.
+        var body = RewriteEfPropertyCalls(expression);
 
-        var enumerableType = typeof(IEnumerable<>).MakeGenericType(elementType);
-        if (typeof(TResult).IsAssignableFrom(enumerableType))
-            return (TResult)array;
+        // The expression might produce IQueryable<T> while TResult is IEnumerable<T>.
+        // Insert a Convert when the types don't match exactly but are assignable.
+        if (body.Type != typeof(TResult))
+            body = Expression.Convert(body, typeof(TResult));
 
-        return (TResult)array;
+        return Expression.Lambda<Func<TResult>>(body).Compile()();
     }
 
-    private static object? ApplyScalarOperator(Db2FinalOperator op, IEnumerable sequence, Type elementType, LambdaExpression? finalPredicate)
+    private static Expression RewriteEfPropertyCalls(Expression expression)
+        => new EfPropertyToMemberAccessRewriter().Visit(expression);
+
+    private sealed class EfPropertyToMemberAccessRewriter : ExpressionVisitor
     {
-        return op switch
+        protected override Expression VisitMethodCall(MethodCallExpression node)
         {
-            Db2FinalOperator.First => EnumerableDispatch.GetFirst(elementType)(sequence),
-            Db2FinalOperator.FirstOrDefault => EnumerableDispatch.GetFirstOrDefault(elementType)(sequence),
-            Db2FinalOperator.Single => EnumerableDispatch.GetSingle(elementType)(sequence),
-            Db2FinalOperator.SingleOrDefault => EnumerableDispatch.GetSingleOrDefault(elementType)(sequence),
-            Db2FinalOperator.Any => EnumerableDispatch.GetAny(elementType)(sequence),
-            Db2FinalOperator.Count => EnumerableDispatch.GetCount(elementType)(sequence),
-            Db2FinalOperator.All => finalPredicate is null
-                ? throw new NotSupportedException("Queryable.All requires a predicate for this provider.")
-                : EnumerableDispatch.GetAll(elementType)(sequence, finalPredicate.Compile()),
-            _ => throw new NotSupportedException($"Unsupported scalar operator: {op}.")
-        };
+            // EF.Property<T>(entity, "Member")
+            if (node.Method.Name == "Property"
+                && node.Method.DeclaringType is { Name: "EF", Namespace: "Microsoft.EntityFrameworkCore" }
+                && node.Arguments.Count == 2)
+            {
+                var entity = Visit(node.Arguments[0]);
+                if (node.Arguments[1] is ConstantExpression { Value: string memberName })
+                {
+                    // Prefer field/property access; fallback to reflection-based property access.
+                    var member = entity.Type.GetMember(memberName, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+                        .FirstOrDefault(m => m is PropertyInfo or FieldInfo);
+
+                    if (member is PropertyInfo pi)
+                        return Expression.Property(entity, pi);
+
+                    if (member is FieldInfo fi)
+                        return Expression.Field(entity, fi);
+                }
+            }
+
+            return base.VisitMethodCall(node);
+        }
     }
+
+    // ──────── PK extraction ────────
 
     private static bool TryExtractPkIds<TEntity>(Expression<Func<TEntity, bool>> predicate, string pkMemberName, out int[] ids)
     {
@@ -642,145 +624,27 @@ internal sealed class MimironDb2QueryExecutor(
         return false;
     }
 
-    private readonly record struct KeyLookupRequest(
+    // ──────── Supporting types ────────
+
+    private readonly record struct KeyLookupInfo(
         int[] Ids,
         int? TakeCount,
-        Db2FinalOperator FinalOperator,
-        LambdaExpression? FinalPredicate,
-        IReadOnlyList<Db2IncludeOperation> Includes,
-        Db2SelectOperation? Select);
+        Expression ResidualExpression);
 
-    private static class EnumerableDispatch
+    /// <summary>
+    /// Strips specific <see cref="MethodCallExpression"/> nodes from an expression tree
+    /// by replacing them with their source argument (first argument for Queryable extension methods).
+    /// </summary>
+    internal sealed class OperationStripper(HashSet<Expression> toStrip) : ExpressionVisitor
     {
-        private static readonly ConcurrentDictionary<(Type Source, Type Result), Func<IEnumerable, Delegate, IEnumerable>> SelectDelegates = new();
-        private static readonly ConcurrentDictionary<Type, Func<IEnumerable, object>> ToArrayDelegates = new();
-        private static readonly ConcurrentDictionary<Type, Func<IEnumerable, object?>> FirstDelegates = new();
-        private static readonly ConcurrentDictionary<Type, Func<IEnumerable, object?>> FirstOrDefaultDelegates = new();
-        private static readonly ConcurrentDictionary<Type, Func<IEnumerable, object?>> SingleDelegates = new();
-        private static readonly ConcurrentDictionary<Type, Func<IEnumerable, object?>> SingleOrDefaultDelegates = new();
-        private static readonly ConcurrentDictionary<Type, Func<IEnumerable, bool>> AnyDelegates = new();
-        private static readonly ConcurrentDictionary<Type, Func<IEnumerable, int>> CountDelegates = new();
-        private static readonly ConcurrentDictionary<Type, Func<IEnumerable, Delegate, bool>> AllDelegates = new();
+        protected override Expression VisitMethodCall(MethodCallExpression node)
+        {
+            if (toStrip.Contains(node))
+                return Visit(node.Arguments[0]);
 
-        public static Func<IEnumerable, Delegate, IEnumerable> GetSelect(Type sourceType, Type resultType)
-            => SelectDelegates.GetOrAdd((sourceType, resultType), static key =>
-            {
-                var m = typeof(Enumerable)
-                    .GetMethods(BindingFlags.Public | BindingFlags.Static)
-                    .Single(x =>
-                        x.Name == nameof(Enumerable.Select)
-                        && x.GetParameters().Length == 2
-                        && x.GetParameters()[1].ParameterType.IsGenericType
-                        && x.GetParameters()[1].ParameterType.GetGenericTypeDefinition() == typeof(Func<,>))
-                    .MakeGenericMethod(key.Source, key.Result);
-
-                return (source, selector) => (IEnumerable)m.Invoke(null, [source, selector])!;
-            });
-
-        public static Func<IEnumerable, object> GetToArray(Type elementType)
-            => ToArrayDelegates.GetOrAdd(elementType, static elementType =>
-            {
-                var m = typeof(Enumerable)
-                    .GetMethods(BindingFlags.Public | BindingFlags.Static)
-                    .Single(x => x.Name == nameof(Enumerable.ToArray) && x.GetParameters().Length == 1)
-                    .MakeGenericMethod(elementType);
-
-                return source => m.Invoke(null, [source])!;
-            });
-
-        public static Func<IEnumerable, object?> GetFirst(Type elementType)
-            => FirstDelegates.GetOrAdd(elementType, static elementType =>
-            {
-                var m = typeof(Enumerable)
-                    .GetMethods(BindingFlags.Public | BindingFlags.Static)
-                    .Single(x => x.Name == nameof(Enumerable.First) && x.GetParameters().Length == 1)
-                    .MakeGenericMethod(elementType);
-
-                return source => m.Invoke(null, [source]);
-            });
-
-        public static Func<IEnumerable, object?> GetFirstOrDefault(Type elementType)
-            => FirstOrDefaultDelegates.GetOrAdd(elementType, static elementType =>
-            {
-                var m = typeof(Enumerable)
-                    .GetMethods(BindingFlags.Public | BindingFlags.Static)
-                    .Single(x => x.Name == nameof(Enumerable.FirstOrDefault) && x.GetParameters().Length == 1)
-                    .MakeGenericMethod(elementType);
-
-                return source => m.Invoke(null, [source]);
-            });
-
-        public static Func<IEnumerable, object?> GetSingle(Type elementType)
-            => SingleDelegates.GetOrAdd(elementType, static elementType =>
-            {
-                var m = typeof(Enumerable)
-                    .GetMethods(BindingFlags.Public | BindingFlags.Static)
-                    .Single(x => x.Name == nameof(Enumerable.Single) && x.GetParameters().Length == 1)
-                    .MakeGenericMethod(elementType);
-
-                return source => m.Invoke(null, [source]);
-            });
-
-        public static Func<IEnumerable, object?> GetSingleOrDefault(Type elementType)
-            => SingleOrDefaultDelegates.GetOrAdd(elementType, static elementType =>
-            {
-                var m = typeof(Enumerable)
-                    .GetMethods(BindingFlags.Public | BindingFlags.Static)
-                    .Single(x => x.Name == nameof(Enumerable.SingleOrDefault) && x.GetParameters().Length == 1)
-                    .MakeGenericMethod(elementType);
-
-                return source => m.Invoke(null, [source]);
-            });
-
-        public static Func<IEnumerable, bool> GetAny(Type elementType)
-            => AnyDelegates.GetOrAdd(elementType, static elementType =>
-            {
-                var m = typeof(Enumerable)
-                    .GetMethods(BindingFlags.Public | BindingFlags.Static)
-                    .Single(x => x.Name == nameof(Enumerable.Any) && x.GetParameters().Length == 1)
-                    .MakeGenericMethod(elementType);
-
-                return source => (bool)m.Invoke(null, [source])!;
-            });
-
-        public static Func<IEnumerable, int> GetCount(Type elementType)
-            => CountDelegates.GetOrAdd(elementType, static elementType =>
-            {
-                var m = typeof(Enumerable)
-                    .GetMethods(BindingFlags.Public | BindingFlags.Static)
-                    .Single(x => x.Name == nameof(Enumerable.Count) && x.GetParameters().Length == 1)
-                    .MakeGenericMethod(elementType);
-
-                return source => (int)m.Invoke(null, [source])!;
-            });
-
-        public static Func<IEnumerable, Delegate, bool> GetAll(Type elementType)
-            => AllDelegates.GetOrAdd(elementType, static elementType =>
-            {
-                var m = typeof(Enumerable)
-                    .GetMethods(BindingFlags.Public | BindingFlags.Static)
-                    .Single(x => x.Name == nameof(Enumerable.All) && x.GetParameters().Length == 2)
-                    .MakeGenericMethod(elementType);
-
-                return (source, predicate) => (bool)m.Invoke(null, [source, predicate])!;
-            });
+            return base.VisitMethodCall(node);
+        }
     }
-
-    private static Type GetRootEntityClrType(Expression expression)
-    {
-        var current = expression;
-        while (current is MethodCallExpression m)
-            current = m.Arguments[0];
-
-        return GetSequenceElementType(current.Type) ?? throw new NotSupportedException("Unable to determine root entity type for this query.");
-    }
-
-    private static Type? GetSequenceElementType(Type sequenceType)
-        => sequenceType.IsGenericType && sequenceType.GetGenericTypeDefinition() == typeof(IEnumerable<>)
-            ? sequenceType.GetGenericArguments()[0]
-            : sequenceType.GetInterfaces()
-                .FirstOrDefault(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IEnumerable<>))
-                ?.GetGenericArguments()[0];
 
     private sealed class RootQueryRewriter<TEntity>(IQueryable<TEntity> root) : ExpressionVisitor
     {
@@ -789,7 +653,7 @@ internal sealed class MimironDb2QueryExecutor(
         protected override Expression VisitExtension(Expression node)
         {
             if (node is EntityQueryRootExpression eqr && eqr.EntityType.ClrType == typeof(TEntity))
-                return Expression.Constant(_root, node.Type);
+                return Expression.Constant(_root, typeof(IQueryable<TEntity>));
 
             return base.VisitExtension(node);
         }
@@ -829,4 +693,22 @@ internal sealed class MimironDb2QueryExecutor(
             return node;
         }
     }
+
+    private static Type GetRootEntityClrType(Expression expression)
+    {
+        var current = expression;
+        while (current is MethodCallExpression m)
+            current = m.Arguments[0];
+
+        return GetSequenceElementType(current.Type) ?? throw new NotSupportedException("Unable to determine root entity type for this query.");
+    }
+
+    private static Type? GetSequenceElementType(Type sequenceType)
+        => sequenceType.IsGenericType && sequenceType.GetGenericTypeDefinition() == typeof(IEnumerable<>)
+            ? sequenceType.GetGenericArguments()[0]
+            : sequenceType.GetInterfaces()
+                .FirstOrDefault(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IEnumerable<>))
+                ?.GetGenericArguments()[0];
 }
+
+#pragma warning restore EF1001

@@ -4,8 +4,6 @@ using MimironSQL.EntityFrameworkCore.Db2.Query;
 using MimironSQL.EntityFrameworkCore.Db2.Schema;
 using MimironSQL.Formats;
 
-using Microsoft.EntityFrameworkCore;
-
 using Shouldly;
 
 namespace MimironSQL.EntityFrameworkCore.Tests;
@@ -122,5 +120,7 @@ public sealed class Db2IncludeChainExecutorForeignKeyArrayTests
             row = default;
             return false;
         }
+
+        public void Dispose() { }
     }
 }

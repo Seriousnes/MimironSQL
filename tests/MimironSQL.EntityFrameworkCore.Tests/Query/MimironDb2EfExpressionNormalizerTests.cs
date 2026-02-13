@@ -2,7 +2,6 @@ using MimironSQL.EntityFrameworkCore.Query;
 
 using Shouldly;
 
-using System.Linq;
 using System.Linq.Expressions;
 
 namespace MimironSQL.EntityFrameworkCore.Tests;

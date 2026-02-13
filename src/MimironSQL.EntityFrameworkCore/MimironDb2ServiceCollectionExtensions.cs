@@ -3,11 +3,11 @@ using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+
 using MimironSQL.EntityFrameworkCore.ChangeTracking;
 using MimironSQL.EntityFrameworkCore.Db2.Model;
 using MimironSQL.EntityFrameworkCore.Diagnostics;
 using MimironSQL.EntityFrameworkCore.Infrastructure;
-using MimironSQL.EntityFrameworkCore.Query;
 using MimironSQL.EntityFrameworkCore.Query.Internal;
 using MimironSQL.EntityFrameworkCore.Storage;
 using MimironSQL.Formats;
@@ -47,7 +47,6 @@ public static class MimironDb2ServiceCollectionExtensions
 
         services.TryAddScoped<IDb2ModelBinding, Db2ModelBindingProvider>();
 
-        services.TryAddScoped<IMimironDb2QueryExecutor, MimironDb2QueryExecutor>();
         MimironDb2EfCoreInternalServiceRegistration.Add(services);
     }
 }

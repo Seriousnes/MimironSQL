@@ -1,7 +1,6 @@
 using System.Diagnostics.CodeAnalysis;
 
 using MimironSQL.Db2;
-using MimironSQL.Formats;
 
 namespace MimironSQL.Formats.Wdc5.Db2;
 

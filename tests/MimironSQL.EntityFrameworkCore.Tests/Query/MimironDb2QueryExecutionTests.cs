@@ -1,12 +1,9 @@
 using Microsoft.EntityFrameworkCore;
 
 using MimironSQL.Db2;
-using MimironSQL.EntityFrameworkCore.Tests;
 using MimironSQL.Formats;
 using MimironSQL.Formats.Wdc5;
 using MimironSQL.Providers;
-
-using NSubstitute;
 
 using Shouldly;
 
@@ -101,7 +98,10 @@ public sealed class MimironDb2QueryExecutionTests
             .ToList();
 
         taken.Select(static x => x.Id).ToArray().ShouldBe(new[] { ids[0], ids[1] });
-        countingProvider.OpenCount.ShouldBe(1);
+
+        // Second query reuses the cached file from the first query (same store/DbContext),
+        // so no additional stream opens occur.
+        countingProvider.OpenCount.ShouldBe(0);
     }
 
     private static int ReadFirstRowId(IDb2StreamProvider db2Provider, string tableName)

@@ -1,12 +1,6 @@
-using System.Linq.Expressions;
-
-using Microsoft.EntityFrameworkCore.Query;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
-using MimironSQL.EntityFrameworkCore.Query;
 using MimironSQL.EntityFrameworkCore.Storage;
-
-using NSubstitute;
 
 using Shouldly;
 
@@ -17,8 +11,7 @@ public sealed class MimironDb2DatabaseAndTypeMappingTests
     [Fact]
     public void Database_is_read_only()
     {
-        var queryExecutor = Substitute.For<IMimironDb2QueryExecutor>();
-        var db = new MimironDb2Database(queryExecutor);
+        var db = new MimironDb2Database();
 
         Should.Throw<NotSupportedException>(() => db.SaveChanges([]))
             .Message.ShouldContain("read-only");
@@ -27,38 +20,11 @@ public sealed class MimironDb2DatabaseAndTypeMappingTests
             .Message.ShouldContain("read-only");
     }
 
-    [Fact]
-    public async Task CompileQuery_executes_via_executor_for_sync_and_async_over_sync()
-    {
-        var queryExecutor = Substitute.For<IMimironDb2QueryExecutor>();
-        var db = new MimironDb2Database(queryExecutor);
-
-        var query = Expression.Constant(123);
-
-        queryExecutor.Execute<int>(query).Returns(123);
-
-        var syncFunc = db.CompileQuery<int>(query, async: false);
-        syncFunc(null!).ShouldBe(123);
-
-        var asyncFunc = db.CompileQuery<Task<int>>(query, async: true);
-        (await asyncFunc(null!)).ShouldBe(123);
-    }
-
-    [Fact]
-    public async Task CompileQueryExpression_can_be_compiled_for_sync_and_async_over_sync()
-    {
-        var queryExecutor = Substitute.For<IMimironDb2QueryExecutor>();
-        var db = new MimironDb2Database(queryExecutor);
-
-        var query = Expression.Constant(123);
-        queryExecutor.Execute<int>(query).Returns(5);
-
-        var sync = db.CompileQueryExpression<int>(query, async: false).Compile();
-        sync(null!).ShouldBe(5);
-
-        var async = db.CompileQueryExpression<Task<int>>(query, async: true).Compile();
-        (await async(null!)).ShouldBe(5);
-    }
+    // CompileQuery and CompileQueryExpression resolve the executor from
+    // QueryContext.Context.GetService<IQueryCompiler>() per invocation,
+    // which requires a real EF Core service provider.  These paths are exercised
+    // by the integration tests in MimironDb2QueryExecutionTests; the normal query
+    // path goes through MimironDb2QueryExecutor (IQueryCompiler) instead.
 
     [Fact]
     public void TypeMapping_can_be_cloned_with_composed_converter()

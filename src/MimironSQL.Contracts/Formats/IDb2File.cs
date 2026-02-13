@@ -5,7 +5,7 @@ namespace MimironSQL.Formats;
 /// <summary>
 /// Represents an opened DB2 file.
 /// </summary>
-public interface IDb2File
+public interface IDb2File : IDisposable
 {
     /// <summary>
     /// Gets the parsed file header.

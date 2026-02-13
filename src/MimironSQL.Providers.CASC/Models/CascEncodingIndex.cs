@@ -50,9 +50,7 @@ internal sealed class CascEncodingIndex
             throw new InvalidDataException($"Unsupported key sizes (ckey={ckeySize}, ekey={ekeySize})");
 
         int cPageSize = checked(BinaryPrimitives.ReadUInt16BigEndian(decodedEncodingFile[5..7]) * 1024);
-        int ePageSize = checked(BinaryPrimitives.ReadUInt16BigEndian(decodedEncodingFile[7..9]) * 1024);
         int cPageCount = checked((int)BinaryPrimitives.ReadUInt32BigEndian(decodedEncodingFile[9..13]));
-        int ePageCount = checked((int)BinaryPrimitives.ReadUInt32BigEndian(decodedEncodingFile[13..17]));
 
         byte flags = decodedEncodingFile[17];
         if (flags != 0)
@@ -85,8 +83,6 @@ internal sealed class CascEncodingIndex
         var cPagesOffset = offset;
 
         // We currently ignore the EKeySpecPageTable and trailing encoding-spec strings.
-        _ = ePageSize;
-        _ = ePageCount;
 
         return new CascEncodingIndex(decodedEncodingFile, cPageSize, cPageCount, cPagesOffset);
     }

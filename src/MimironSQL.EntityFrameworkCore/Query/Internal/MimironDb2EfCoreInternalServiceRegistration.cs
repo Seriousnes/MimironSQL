@@ -11,7 +11,7 @@ internal static class MimironDb2EfCoreInternalServiceRegistration
     {
         ArgumentNullException.ThrowIfNull(services);
 
-        services.Replace(ServiceDescriptor.Scoped<IQueryCompiler, MimironDb2EfCoreQueryCompiler>());
+        services.Replace(ServiceDescriptor.Scoped<IQueryCompiler, MimironDb2QueryExecutor>());
     }
 #pragma warning restore EF1001
 }

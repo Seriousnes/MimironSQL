@@ -56,7 +56,7 @@ public static class ServiceCollectionExtensions
         services.TryAddSingleton<IManifestProvider, FileSystemManifestProvider>();
         services.TryAddSingleton<CascDb2StreamProvider>();
         services.TryAddSingleton<IDb2StreamProvider>(sp => sp.GetRequiredService<CascDb2StreamProvider>());
-        
+
         return services;
     }
 

@@ -173,5 +173,7 @@ public sealed class Db2EntityMaterializerTests
             row = default;
             return false;
         }
+
+        public void Dispose() { }
     }
 }

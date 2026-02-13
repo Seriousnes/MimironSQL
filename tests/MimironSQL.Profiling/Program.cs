@@ -30,7 +30,7 @@ static async Task RunCascSpellQueryAsync(int iterations, int warmup)
         throw new DirectoryNotFoundException(testDataDir);
 
     var optionsBuilder = new DbContextOptionsBuilder<WoWDb2Context>();
-    optionsBuilder.UseMimironDb2(o => o    
+    optionsBuilder.UseMimironDb2(o => o
             .WithWowVersion("12.0.0.65655")
             .UseCasc()
             .WithWowInstallRoot(wowInstallRoot)
@@ -39,19 +39,19 @@ static async Task RunCascSpellQueryAsync(int iterations, int warmup)
             .Apply());
 
     using var context = new WoWDb2Context(optionsBuilder.Options);
-    _ = context.Model; // Force model initialization before profiling.
+    GC.KeepAlive(context.Model); // Force model initialization before profiling.
 
     Func<SpellEntity?> querySpell = () => context.Spell.SingleOrDefault(x => x.Id == 454009);
 
     for (int i = 0; i < warmup; i++)
-        _ = querySpell();
+        querySpell();
 
     // Attach the CPU profiler to this process and start collection after you see this message.
     Console.WriteLine($"Profiling: scenario=casc-spell warmup={warmup} iterations={iterations}. Press any key to continue...");
     //Console.ReadKey();
 
     for (int i = 0; i < iterations; i++)
-        _ = querySpell();
+        querySpell();
 
     await Task.CompletedTask;
 }

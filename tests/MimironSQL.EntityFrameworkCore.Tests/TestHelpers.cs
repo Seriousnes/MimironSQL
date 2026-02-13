@@ -2,7 +2,6 @@ using Microsoft.EntityFrameworkCore;
 
 using MimironSQL.Db2;
 using MimironSQL.Dbd;
-using MimironSQL.EntityFrameworkCore;
 
 using NSubstitute;
 

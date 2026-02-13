@@ -4,9 +4,9 @@ using System.Collections.Concurrent;
 using System.Collections;
 using System.Linq.Expressions;
 using System.Reflection;
-using System.Runtime.CompilerServices;
 using MimironSQL.EntityFrameworkCore.Db2.Schema;
 using MimironSQL.EntityFrameworkCore.Db2.Model;
+using MimironSQL.EntityFrameworkCore.Query;
 
 namespace MimironSQL.EntityFrameworkCore.Db2.Query;
 
@@ -19,7 +19,6 @@ internal sealed class Db2QueryProvider<TEntity, TRow>(
     where TRow : struct, IRowHandle
 {
     private static readonly ConcurrentDictionary<Type, Func<Db2QueryProvider<TEntity, TRow>, Expression, IEnumerable>> ExecuteEnumerableDelegates = new();
-    private static readonly ConcurrentDictionary<Type, Func<Db2QueryProvider<TEntity, TRow>, Db2QueryPipeline, IEnumerable>> ExecuteEnumerablePipelineDelegates = new();
 
     private readonly Db2EntityType _rootEntityType = model.GetEntityType(typeof(TEntity));
     private readonly IDb2EntityFactory _entityFactory = entityFactory ?? throw new ArgumentNullException(nameof(entityFactory));
@@ -83,9 +82,6 @@ internal sealed class Db2QueryProvider<TEntity, TRow>(
     private static IEnumerable ExecuteEnumerableForResult<TElement>(Db2QueryProvider<TEntity, TRow> provider, Expression expression)
         => provider.ExecuteEnumerable<TElement>(expression);
 
-    private static IEnumerable ExecuteEnumerableForPipelineResult<TElement>(Db2QueryProvider<TEntity, TRow> provider, Db2QueryPipeline pipeline)
-        => provider.ExecuteEnumerable<TElement>(pipeline);
-
     private static Func<Db2QueryProvider<TEntity, TRow>, Expression, IEnumerable> GetExecuteEnumerableDelegate(Type elementType)
         => ExecuteEnumerableDelegates.GetOrAdd(elementType, static elementType =>
         {
@@ -97,291 +93,330 @@ internal sealed class Db2QueryProvider<TEntity, TRow>(
             return method.CreateDelegate<Func<Db2QueryProvider<TEntity, TRow>, Expression, IEnumerable>>();
         });
 
-    private static Func<Db2QueryProvider<TEntity, TRow>, Db2QueryPipeline, IEnumerable> GetExecuteEnumerablePipelineDelegate(Type elementType)
-        => ExecuteEnumerablePipelineDelegates.GetOrAdd(elementType, static elementType =>
-        {
-            var method = typeof(Db2QueryProvider<TEntity, TRow>).GetMethod(
-                nameof(ExecuteEnumerableForPipelineResult),
-                BindingFlags.Static | BindingFlags.NonPublic)!
-                .MakeGenericMethod(elementType);
-
-            return method.CreateDelegate<Func<Db2QueryProvider<TEntity, TRow>, Db2QueryPipeline, IEnumerable>>();
-        });
+    // ──────── Core query execution ────────
 
     private IEnumerable<TElement> ExecuteEnumerable<TElement>(Expression expression)
     {
-        var pipeline = Db2QueryPipeline.Parse(expression);
-        return ExecuteEnumerable<TElement>(pipeline);
-    }
+        // Step 1: Preprocess — strip Include / EF modifiers, collect include chains.
+        var preprocessed = Db2ExpressionPreprocessor.Preprocess(expression);
+        var ignoreAutoIncludes = preprocessed.IgnoreAutoIncludes;
 
-    private IEnumerable<TElement> ExecuteEnumerable<TElement>(Db2QueryPipeline pipeline)
-    {
-        var ignoreAutoIncludes = pipeline.IgnoreAutoIncludes;
+        // Step 2: Walk the cleaned expression to extract pre-entity information.
+        var analysis = AnalyzePreEntityChain(preprocessed.CleanedExpression);
 
-        // Db2QueryPipeline.Parse currently produces a List<Db2QueryOperation>.
-        // Avoid copying when we already have a concrete list.
-        var ops = pipeline.Operations as List<Db2QueryOperation> ?? pipeline.Operations.ToList();
-
-        var selectIndex = ops.FindIndex(op => op is Db2SelectOperation);
-        if (selectIndex < 0)
-            selectIndex = ops.Count;
-
-        var preEntityWhere = ops
-            .Take(selectIndex)
-            .OfType<Db2WhereOperation>()
-            .Where(op => op is { Predicate.Parameters.Count: 1 } && op.Predicate.Parameters[0].Type == typeof(TEntity))
-            .Select(op => (Expression<Func<TEntity, bool>>)op.Predicate)
-            .ToList();
-
-        var selectOp = selectIndex < ops.Count ? ops[selectIndex] as Db2SelectOperation : null;
-
-        var preTake = ops
-            .Take(selectIndex)
-            .OfType<Db2TakeOperation>()
-            .FirstOrDefault();
-
-        var preSkip = ops
-            .Take(selectIndex)
-            .OfType<Db2SkipOperation>()
-            .FirstOrDefault();
-
-        var stopAfter = preTake?.Count;
-        var skipBeforeTake = preSkip?.Count;
-
-        var postOps = new List<Db2QueryOperation>(ops.Count);
-        for (var i = 0; i < ops.Count; i++)
-        {
-            var op = ops[i];
-
-            if (op == preTake)
-                continue;
-
-            if (op == preSkip)
-                continue;
-
-            if (i < selectIndex && op is Db2WhereOperation w && w is { Predicate.Parameters.Count: 1 } && w.Predicate.Parameters[0].Type == typeof(TEntity))
-            {
-                // Root entity predicates apply before Include/Take/Skip regardless of their position
-                // (so Take/Skip are not applied before filtering).
-                continue;
-            }
-
-            postOps.Add(op);
-        }
-
-        var includeOps = postOps.OfType<Db2IncludeOperation>().ToList();
-
+        // Step 3: Expand include chains (auto-includes) and build root member set.
+        var includeChains = preprocessed.IncludeChains.Select(static c => c.ToArray()).ToList();
         if (!ignoreAutoIncludes)
+            includeChains = ExpandIncludesWithAutoIncludes(includeChains);
+
+        // Reject Include after a Select that changes the element type.
+        for (var i = 0; i < includeChains.Count; i++)
         {
-            includeOps = ExpandIncludesWithAutoIncludes(includeOps);
+            if (includeChains[i].Length > 0 && includeChains[i][0].DeclaringType != typeof(TEntity))
+            {
+                throw new NotSupportedException(
+                    $"Include after a Select that changes the element type is not supported. " +
+                    $"Move the Include before the Select, or remove the type-changing projection.");
+            }
         }
 
-        var includedRootMembers = includeOps
-            .Where(static op => op.Members.Count != 0)
-            .Select(static op => op.Members[0])
+        var includedRootMembers = includeChains
+            .Where(static chain => chain.Length != 0)
+            .Select(static chain => chain[0])
             .ToHashSet();
 
-        // Enforce the explicit Include requirement for any root navigation usage.
-        for (var i = 0; i < preEntityWhere.Count; i++)
-            Db2IncludePolicy.ThrowIfNavigationRequiresInclude(_model, includedRootMembers, preEntityWhere[i]);
+        // Step 4: Enforce the explicit Include requirement for any root navigation usage.
+        for (var i = 0; i < analysis.PreEntityWherePredicates.Count; i++)
+            Db2IncludePolicy.ThrowIfNavigationRequiresInclude(_model, includedRootMembers, analysis.PreEntityWherePredicates[i]);
 
-        if (selectOp is not null)
+        // Validate Select doesn't use navigations without Include.
+        if (analysis.SelectSelector is not null)
+            Db2IncludePolicy.ThrowIfNavigationRequiresInclude(_model, includedRootMembers, analysis.SelectSelector);
+
+        // Validate post-entity lambdas.
+        foreach (var lambda in analysis.PostEntityLambdas)
+            Db2IncludePolicy.ThrowIfNavigationRequiresInclude(_model, includedRootMembers, lambda);
+
+        // Step 5: Try pruned execution path (row-level projectors, bypass entity materialization).
+        if (analysis.SelectSelector is not null && includeChains.Count == 0)
         {
             var canAttemptPrune =
-                selectOp.Selector is { Parameters.Count: 1 } &&
-                selectOp.Selector.Parameters[0].Type == typeof(TEntity) &&
-                selectOp.Selector.ReturnType == typeof(TElement) &&
-                !Db2IncludePolicy.UsesRootNavigation(_model, selectOp.Selector) &&
-                postOps.All(op => op is not Db2WhereOperation && op is not Db2IncludeOperation) &&
-                postOps.Count(op => op is Db2SelectOperation) <= 1;
+                analysis.SelectSelector is { Parameters.Count: 1 } &&
+                analysis.SelectSelector.Parameters[0].Type == typeof(TEntity) &&
+                analysis.SelectSelector.ReturnType == typeof(TElement) &&
+                !Db2IncludePolicy.UsesRootNavigation(_model, analysis.SelectSelector) &&
+                !analysis.HasPostSelectOperations &&
+                analysis.PostEntityLambdas.Count == 0;
 
             if (canAttemptPrune)
             {
-                if (TryExecuteEnumerablePruned<TElement>(preEntityWhere, stopAfter, selectOp.Selector, postOps, out var pruned))
+                if (TryExecuteEnumerablePruned<TElement>(analysis, out var pruned))
                     return pruned;
             }
         }
 
-        IEnumerable<TEntity> baseEntities = EnumerateEntities(preEntityWhere, skipBeforeTake, stopAfter);
+        // Step 6: Enumerate entities with row-level optimizations.
+        var entities = EnumerateEntities(analysis.PreEntityWherePredicates, analysis.PreSkipCount, analysis.PreTakeCount).ToList();
 
-        IEnumerable current = baseEntities;
-        var currentElementType = typeof(TEntity);
+        // Step 7: Apply includes.
+        IEnumerable<TEntity> current = entities;
+        for (var i = 0; i < includeChains.Count; i++)
+            current = Db2IncludeChainExecutor.Apply(current, _model, _tableResolver, includeChains[i], _entityFactory);
 
-        // Include must apply to the root entity sequence. Once Select changes the element type,
-        // Include no longer has a well-defined meaning for this provider.
+        // Step 8: Build residual expression and execute via LINQ-to-Objects.
+        // The residual expression has pre-entity Where/Take/Skip stripped
+        // (they were applied during enumeration).
+        var materialized = current is List<TEntity> list ? list : current.ToList();
+        var residual = BuildResidualExpression(preprocessed.CleanedExpression, analysis, materialized);
+        return MimironDb2QueryExecutor.CompileAndExecute<IEnumerable<TElement>>(residual);
+    }
+
+    private TResult ExecuteScalar<TResult>(Expression expression)
+    {
+        // Step 1: Preprocess — strip Include / EF modifiers, collect include chains.
+        var preprocessed = Db2ExpressionPreprocessor.Preprocess(expression);
+
+        // Step 2: Detect the terminal operator and get the inner expression.
+        var cleanedExpr = preprocessed.CleanedExpression;
+
+        // Verify there is a terminal operator (First, Count, Any, etc.).
+        if (cleanedExpr is not MethodCallExpression { Method.DeclaringType: { } declaring } outerCall
+            || declaring != typeof(Queryable)
+            || outerCall.Method.Name is not (nameof(Queryable.First) or nameof(Queryable.FirstOrDefault)
+                or nameof(Queryable.Single) or nameof(Queryable.SingleOrDefault)
+                or nameof(Queryable.Any) or nameof(Queryable.Count) or nameof(Queryable.All)))
         {
-            var elementType = typeof(TEntity);
-            for (var i = 0; i < postOps.Count; i++)
+            throw new NotSupportedException("Scalar execution requires a terminal operator.");
+        }
+
+        // Verify the terminal operator's return type is compatible with TResult.
+        var terminalReturnType = outerCall.Method.ReturnType;
+        if (terminalReturnType != typeof(TResult) && !typeof(TResult).IsAssignableFrom(terminalReturnType))
+        {
+            throw new NotSupportedException(
+                $"Terminal operator '{outerCall.Method.Name}' returns {terminalReturnType.Name} " +
+                $"but the expected result type is {typeof(TResult).Name}.");
+        }
+
+        // Step 3: Analyze the inner expression (without the terminal operator).
+        var innerExpression = outerCall.Arguments[0];
+        var analysis = AnalyzePreEntityChain(innerExpression);
+
+        // Step 4: Expand includes and enforce include policy.
+        var includeChains = preprocessed.IncludeChains.Select(static c => c.ToArray()).ToList();
+        if (!preprocessed.IgnoreAutoIncludes)
+            includeChains = ExpandIncludesWithAutoIncludes(includeChains);
+
+        var includedRootMembers = includeChains
+            .Where(static chain => chain.Length != 0)
+            .Select(static chain => chain[0])
+            .ToHashSet();
+
+        for (var i = 0; i < analysis.PreEntityWherePredicates.Count; i++)
+            Db2IncludePolicy.ThrowIfNavigationRequiresInclude(_model, includedRootMembers, analysis.PreEntityWherePredicates[i]);
+
+        // Step 5: Enumerate entities with optimizations.
+        var entities = EnumerateEntities(analysis.PreEntityWherePredicates, analysis.PreSkipCount, analysis.PreTakeCount).ToList();
+
+        // Step 6: Apply includes.
+        IEnumerable<TEntity> current = entities;
+        for (var i = 0; i < includeChains.Count; i++)
+            current = Db2IncludeChainExecutor.Apply(current, _model, _tableResolver, includeChains[i], _entityFactory);
+
+        // Step 7: Build residual expression with terminal operator and execute.
+        var materialized = current is List<TEntity> list ? list : current.ToList();
+        var residual = BuildResidualExpression(cleanedExpr, analysis, materialized);
+        return MimironDb2QueryExecutor.CompileAndExecute<TResult>(residual);
+    }
+
+    // ──────── Expression analysis ────────
+
+    /// <summary>
+    /// Walks the (Include-stripped) expression chain to extract pre-entity information:
+    /// root-entity Where predicates, Take/Skip counts, Select selector, and
+    /// identifies which nodes to strip for building the residual expression.
+    /// </summary>
+    private static PreEntityAnalysis AnalyzePreEntityChain(Expression expression)
+    {
+        var preEntityWhere = new List<Expression<Func<TEntity, bool>>>();
+        var preWhereNodes = new List<MethodCallExpression>();
+        var postEntityLambdas = new List<LambdaExpression>();
+        int? preTake = null;
+        int? preSkip = null;
+        MethodCallExpression? preTakeNode = null;
+        MethodCallExpression? preSkipNode = null;
+        LambdaExpression? selectSelector = null;
+        var hasPostSelectOperations = false;
+
+        var current = expression;
+
+        // Peel off terminal operator if present (First, Count, Any, All, Single, etc.).
+        LambdaExpression? terminalPredicate = null;
+        if (current is MethodCallExpression { Method.DeclaringType: { } declaring } outermost
+            && declaring == typeof(Queryable)
+            && outermost.Method.Name is nameof(Queryable.First) or nameof(Queryable.FirstOrDefault)
+                or nameof(Queryable.Single) or nameof(Queryable.SingleOrDefault)
+                or nameof(Queryable.Any) or nameof(Queryable.All) or nameof(Queryable.Count))
+        {
+            if (outermost.Arguments.Count == 2)
+                terminalPredicate = Db2ExpressionPreprocessor.UnquoteLambda(outermost.Arguments[1]);
+
+            current = outermost.Arguments[0];
+        }
+
+        // Collect all nodes walking outer-to-inner.
+        var nodes = new List<MethodCallExpression>();
+        while (current is MethodCallExpression m)
+        {
+            if (m.Method.DeclaringType != typeof(Queryable))
+                break;
+
+            nodes.Add(m);
+            current = m.Arguments[0];
+        }
+
+        // Process nodes from inner-to-outer (data-flow order).
+        // inner = closest to root = earliest in the query pipeline.
+        var foundSelect = false;
+        for (var i = nodes.Count - 1; i >= 0; i--)
+        {
+            var m = nodes[i];
+            switch (m.Method.Name)
             {
-                var op = postOps[i];
-                switch (op)
-                {
-                    case Db2SelectOperation select:
-                        elementType = select.Selector.ReturnType;
+                case nameof(Queryable.Where):
+                    {
+                        var predicate = Db2ExpressionPreprocessor.UnquoteLambda(m.Arguments[1]);
+                        if (!foundSelect
+                            && predicate.Parameters is { Count: 1 }
+                            && predicate.Parameters[0].Type == typeof(TEntity))
+                        {
+                            preEntityWhere.Add((Expression<Func<TEntity, bool>>)predicate);
+                            preWhereNodes.Add(m);
+                        }
+                        else
+                        {
+                            postEntityLambdas.Add(predicate);
+                            if (foundSelect)
+                                hasPostSelectOperations = true;
+                        }
+
                         break;
-                    case Db2IncludeOperation when elementType != typeof(TEntity):
-                        throw new NotSupportedException("Include must appear before Select for this provider.");
-                }
-            }
-        }
+                    }
 
-        foreach (var op in postOps)
-        {
-            Db2IncludePolicy.ThrowIfNavigationRequiresInclude(_model, includedRootMembers, op);
-        }
+                case nameof(Queryable.Select):
+                    {
+                        var selector = Db2ExpressionPreprocessor.UnquoteLambda(m.Arguments[1]);
+                        if (!foundSelect)
+                        {
+                            selectSelector = selector;
+                            foundSelect = true;
+                        }
+                        else
+                        {
+                            hasPostSelectOperations = true;
+                        }
 
-        // Apply includes first so navigations can be used in predicates/projections.
-        for (var i = 0; i < includeOps.Count; i++)
-        {
-            current = Db2IncludeChainExecutor.Apply((IEnumerable<TEntity>)current, _model, _tableResolver, includeOps[i].Members, _entityFactory);
-        }
+                        break;
+                    }
 
-        for (var opIndex = 0; opIndex < postOps.Count; opIndex++)
-        {
-            var op = postOps[opIndex];
-            switch (op)
-            {
-                case Db2WhereOperation where:
-                    current = ApplyWhere(current, currentElementType, where.Predicate);
-                    break;
-                case Db2SelectOperation select:
-                    current = ApplySelect(current, currentElementType, select.Selector);
-                    currentElementType = select.Selector.ReturnType;
-                    break;
-                case Db2IncludeOperation:
-                    // Applied up-front.
-                    break;
-                case Db2TakeOperation take:
-                    current = ApplyTake(current, currentElementType, take.Count);
-                    break;
-                case Db2SkipOperation skip:
-                    current = ApplySkip(current, currentElementType, skip.Count);
-                    break;
+                case nameof(Queryable.Take):
+                    {
+                        if (!foundSelect && m.Arguments[1] is ConstantExpression { Value: int count })
+                        {
+                            preTake = count;
+                            preTakeNode = m;
+                        }
+                        else if (foundSelect)
+                        {
+                            hasPostSelectOperations = true;
+                        }
+
+                        break;
+                    }
+
+                case nameof(Queryable.Skip):
+                    {
+                        if (!foundSelect && m.Arguments[1] is ConstantExpression { Value: int count })
+                        {
+                            preSkip = count;
+                            preSkipNode = m;
+                        }
+                        else if (foundSelect)
+                        {
+                            hasPostSelectOperations = true;
+                        }
+
+                        break;
+                    }
+
                 default:
-                    throw new NotSupportedException($"Unsupported query operation: {op.GetType().Name}.");
+                    hasPostSelectOperations = true;
+                    break;
             }
         }
 
-        return (IEnumerable<TElement>)current;
+        // Terminal predicates (e.g., First(x => ...)) are always post-entity.
+        if (terminalPredicate is not null)
+            postEntityLambdas.Add(terminalPredicate);
+
+        return new PreEntityAnalysis(
+            PreEntityWherePredicates: preEntityWhere,
+            PreWhereNodes: preWhereNodes,
+            PreTakeCount: preTake,
+            PreSkipCount: preSkip,
+            PreTakeNode: preTakeNode,
+            PreSkipNode: preSkipNode,
+            SelectSelector: selectSelector,
+            HasPostSelectOperations: hasPostSelectOperations,
+            PostEntityLambdas: postEntityLambdas);
     }
 
-    private List<Db2IncludeOperation> ExpandIncludesWithAutoIncludes(List<Db2IncludeOperation> explicitIncludes)
+    /// <summary>
+    /// Builds a residual expression by stripping pre-entity Where/Take/Skip nodes
+    /// (which have already been applied during enumeration) and substituting the root
+    /// with an <see cref="EnumerableQuery{T}"/> over the materialized entities.
+    /// </summary>
+    private static Expression BuildResidualExpression(
+        Expression cleanedExpression,
+        PreEntityAnalysis analysis,
+        List<TEntity> entities)
     {
-        var chains = explicitIncludes
-            .Where(static i => i.Members.Count != 0)
-            .Select(static i => i.Members.ToArray())
-            .ToList();
+        var nodesToStrip = new HashSet<Expression>(ReferenceEqualityComparer.Instance);
 
-        foreach (var member in _model.GetAutoIncludeNavigations(typeof(TEntity)))
-        {
-            if (chains.Any(c => c.Length == 1 && c[0] == member))
-                continue;
+        foreach (var node in analysis.PreWhereNodes)
+            nodesToStrip.Add(node);
 
-            chains.Add([member]);
-        }
+        if (analysis.PreTakeNode is not null)
+            nodesToStrip.Add(analysis.PreTakeNode);
 
-        var expanded = ExpandAutoIncludeChains(typeof(TEntity), chains);
+        if (analysis.PreSkipNode is not null)
+            nodesToStrip.Add(analysis.PreSkipNode);
 
-        var results = new List<Db2IncludeOperation>(expanded.Count);
-        for (var i = 0; i < expanded.Count; i++)
-            results.Add(new Db2IncludeOperation(expanded[i]));
+        Expression residual = cleanedExpression;
+        if (nodesToStrip.Count > 0)
+            residual = new MimironDb2QueryExecutor.OperationStripper(nodesToStrip).Visit(residual);
 
-        return results;
+        // Replace the root with entities.AsQueryable().
+        var queryable = entities.AsQueryable();
+        residual = new RootSubstitutor(queryable).Visit(residual);
+
+        return residual;
     }
 
-    private List<MemberInfo[]> ExpandAutoIncludeChains(Type rootType, List<MemberInfo[]> startingChains)
-    {
-        // EF semantics: auto-includes apply transitively on included entities.
-        // Prevent infinite recursion by de-duping chains and skipping cycles.
-        var seen = new HashSet<string>(StringComparer.Ordinal);
-        var queue = new Queue<MemberInfo[]>(startingChains);
-        var results = new List<MemberInfo[]>(startingChains.Count);
-
-        while (queue.TryDequeue(out var chain))
-        {
-            var key = BuildChainKey(chain);
-            if (!seen.Add(key))
-                continue;
-
-            results.Add(chain);
-
-            if (!TryGetLeafType(rootType, chain, out var leafType))
-                continue;
-
-            var nextMembers = _model.GetAutoIncludeNavigations(leafType);
-            if (nextMembers.Count == 0)
-                continue;
-
-            for (var i = 0; i < nextMembers.Count; i++)
-            {
-                var next = nextMembers[i];
-                if (chain.Contains(next))
-                    continue;
-
-                var appended = new MemberInfo[chain.Length + 1];
-                Array.Copy(chain, appended, chain.Length);
-                appended[^1] = next;
-                queue.Enqueue(appended);
-            }
-        }
-
-        return results;
-    }
-
-    private bool TryGetLeafType(Type rootType, MemberInfo[] chain, out Type leafType)
-    {
-        leafType = rootType;
-
-        for (var i = 0; i < chain.Length; i++)
-        {
-            var member = chain[i];
-
-            if (_model.TryGetReferenceNavigation(leafType, member, out var referenceNav))
-            {
-                leafType = referenceNav.TargetClrType;
-                continue;
-            }
-
-            if (_model.TryGetCollectionNavigation(leafType, member, out var collectionNav))
-            {
-                leafType = collectionNav.TargetClrType;
-                continue;
-            }
-
-            return false;
-        }
-
-        return true;
-    }
-
-    private static string BuildChainKey(MemberInfo[] chain)
-    {
-        if (chain.Length == 1)
-        {
-            var m0 = chain[0];
-            return (m0.DeclaringType?.FullName ?? "<null>") + "." + m0.Name;
-        }
-
-        return string.Join(
-            "->",
-            chain.Select(static m => (m.DeclaringType?.FullName ?? "<null>") + "." + m.Name));
-    }
+    // ──────── Pruned execution path ────────
 
     private bool TryExecuteEnumerablePruned<TProjected>(
-        IList<Expression<Func<TEntity, bool>>> preEntityWhere,
-        int? stopAfter,
-        LambdaExpression selector,
-        List<Db2QueryOperation> postOps,
+        PreEntityAnalysis analysis,
         out IEnumerable<TProjected> result)
     {
         result = [];
 
-        if (selector is not Expression<Func<TEntity, TProjected>> && selector.Parameters is not { Count: 1 })
+        if (analysis.SelectSelector is not Expression<Func<TEntity, TProjected>> && analysis.SelectSelector is not { Parameters.Count: 1 })
             return false;
 
         var rowPredicates = new List<Func<TRow, bool>>();
         var requirements = new Db2SourceRequirements(_rootEntityType);
-        foreach (var predicate in preEntityWhere)
+        foreach (var predicate in analysis.PreEntityWherePredicates)
         {
             if (!Db2RowPredicateCompiler.TryCompile(file, _rootEntityType, predicate, out var rowPredicate, out var predicateRequirements))
                 return false;
@@ -390,7 +425,7 @@ internal sealed class Db2QueryProvider<TEntity, TRow>(
             rowPredicates.Add(rowPredicate);
         }
 
-        var compiled = TryCreateProjector<TProjected>(selector);
+        var compiled = TryCreateProjector<TProjected>(analysis.SelectSelector!);
         if (compiled is null)
             return false;
 
@@ -401,31 +436,17 @@ internal sealed class Db2QueryProvider<TEntity, TRow>(
         if (requirements.Columns.Any(c => c is { Kind: Db2RequiredColumnKind.String, Field.IsVirtual: true }))
             return false;
 
-        var projected = EnumerateProjected(rowPredicates, compiled.Value.Projector, stopAfter);
+        var projected = EnumerateProjected(rowPredicates, compiled.Value.Projector, analysis.PreTakeCount);
 
-        IEnumerable current = projected;
-        var currentElementType = typeof(TProjected);
+        // Apply post-entity operations (only Take/Skip survive; Where/Include/Select are excluded).
+        IEnumerable<TProjected> current = projected;
 
-        foreach (var op in postOps)
-        {
-            switch (op)
-            {
-                case Db2SelectOperation:
-                    continue;
-                case Db2IncludeOperation:
-                    return false;
-                case Db2TakeOperation take:
-                    current = ApplyTake(current, currentElementType, take.Count);
-                    break;
-                case Db2SkipOperation skip:
-                    current = ApplySkip(current, currentElementType, skip.Count);
-                    break;
-                default:
-                    return false;
-            }
-        }
+        // Post-entity Take/Skip that were NOT pre-entity (after Select) need to be applied.
+        // However, AnalyzePreEntityChain only extracts pre-Select Take/Skip.
+        // Any post-Select Take/Skip remain in the expression tree but would be complex to handle
+        // in the pruned path, so we bail out if any exist.
 
-        result = (IEnumerable<TProjected>)current;
+        result = current;
         return true;
     }
 
@@ -466,78 +487,9 @@ internal sealed class Db2QueryProvider<TEntity, TRow>(
         }
     }
 
-    private TResult ExecuteScalar<TResult>(Expression expression)
-    {
-        var pipeline = Db2QueryPipeline.Parse(expression);
+    // ──────── Entity enumeration with optimizations ────────
 
-        if (pipeline.FinalOperator == Db2FinalOperator.None)
-            throw new NotSupportedException("Scalar execution requires a terminal operator.");
-
-        if (pipeline.FinalElementType != typeof(TResult))
-            throw new NotSupportedException($"Scalar execution expected result type {typeof(TResult).FullName} but pipeline produced {pipeline.FinalElementType.FullName}.");
-
-        if (!TryGetEnumerableElementType(pipeline.ExpressionWithoutFinalOperator.Type, out var sequenceElementType))
-            throw new NotSupportedException("Unable to determine sequence element type for scalar execution.");
-
-        switch (pipeline.FinalOperator)
-        {
-            case Db2FinalOperator.First:
-                {
-                    var sequence = ExecuteEnumerable<TResult>(pipeline);
-                    return Enumerable.First(sequence);
-                }
-            case Db2FinalOperator.FirstOrDefault:
-                {
-                    var sequence = ExecuteEnumerable<TResult>(pipeline);
-                    return Enumerable.FirstOrDefault(sequence)!;
-                }
-            case Db2FinalOperator.Single:
-                {
-                    var sequence = ExecuteEnumerable<TResult>(pipeline);
-                    return Enumerable.Single(sequence);
-                }
-            case Db2FinalOperator.SingleOrDefault:
-                {
-                    var sequence = ExecuteEnumerable<TResult>(pipeline);
-                    return Enumerable.SingleOrDefault(sequence)!;
-                }
-            case Db2FinalOperator.Any:
-                {
-                    if (typeof(TResult) != typeof(bool))
-                        throw new NotSupportedException("Queryable.Any must return bool.");
-
-                    var sequence = GetExecuteEnumerablePipelineDelegate(sequenceElementType)(this, pipeline);
-                    var any = EnumerableDispatch.GetAny(sequenceElementType)(sequence);
-                    return Unsafe.As<bool, TResult>(ref any);
-                }
-            case Db2FinalOperator.Count:
-                {
-                    if (typeof(TResult) != typeof(int))
-                        throw new NotSupportedException("Queryable.Count must return int.");
-
-                    var sequence = GetExecuteEnumerablePipelineDelegate(sequenceElementType)(this, pipeline);
-                    var count = EnumerableDispatch.GetCount(sequenceElementType)(sequence);
-                    return Unsafe.As<int, TResult>(ref count);
-                }
-            case Db2FinalOperator.All:
-                {
-                    if (typeof(TResult) != typeof(bool))
-                        throw new NotSupportedException("Queryable.All must return bool.");
-
-                    if (pipeline.FinalPredicate is null)
-                        throw new NotSupportedException("Queryable.All requires a predicate for this provider.");
-
-                    var sequence = GetExecuteEnumerablePipelineDelegate(sequenceElementType)(this, pipeline);
-                    var predicate = pipeline.FinalPredicate.Compile();
-                    var all = EnumerableDispatch.GetAll(sequenceElementType)(sequence, predicate);
-                    return Unsafe.As<bool, TResult>(ref all);
-                }
-            default:
-                throw new NotSupportedException($"Unsupported scalar operator: {pipeline.FinalOperator}.");
-        }
-    }
-
-    private IEnumerable<TEntity> EnumerateEntities(IList<Expression<Func<TEntity, bool>>> predicates, int? skip, int? take)
+    private IEnumerable<TEntity> EnumerateEntities(IReadOnlyList<Expression<Func<TEntity, bool>>> predicates, int? skip, int? take)
     {
         if (take is 0)
             yield break;
@@ -713,6 +665,104 @@ internal sealed class Db2QueryProvider<TEntity, TRow>(
                 }
         }
     }
+
+    // ──────── Include expansion ────────
+
+    private List<MemberInfo[]> ExpandIncludesWithAutoIncludes(List<MemberInfo[]> explicitIncludes)
+    {
+        var chains = explicitIncludes.Select(static c => c.ToArray()).ToList();
+
+        foreach (var member in _model.GetAutoIncludeNavigations(typeof(TEntity)))
+        {
+            if (chains.Any(c => c.Length == 1 && c[0] == member))
+                continue;
+
+            chains.Add([member]);
+        }
+
+        var expanded = ExpandAutoIncludeChains(typeof(TEntity), chains);
+        return expanded;
+    }
+
+    private List<MemberInfo[]> ExpandAutoIncludeChains(Type rootType, List<MemberInfo[]> startingChains)
+    {
+        // EF semantics: auto-includes apply transitively on included entities.
+        // Prevent infinite recursion by de-duping chains and skipping cycles.
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var queue = new Queue<MemberInfo[]>(startingChains);
+        var results = new List<MemberInfo[]>(startingChains.Count);
+
+        while (queue.TryDequeue(out var chain))
+        {
+            var key = BuildChainKey(chain);
+            if (!seen.Add(key))
+                continue;
+
+            results.Add(chain);
+
+            if (!TryGetLeafType(rootType, chain, out var leafType))
+                continue;
+
+            var nextMembers = _model.GetAutoIncludeNavigations(leafType);
+            if (nextMembers.Count == 0)
+                continue;
+
+            for (var i = 0; i < nextMembers.Count; i++)
+            {
+                var next = nextMembers[i];
+                if (chain.Contains(next))
+                    continue;
+
+                var appended = new MemberInfo[chain.Length + 1];
+                Array.Copy(chain, appended, chain.Length);
+                appended[^1] = next;
+                queue.Enqueue(appended);
+            }
+        }
+
+        return results;
+    }
+
+    private bool TryGetLeafType(Type rootType, MemberInfo[] chain, out Type leafType)
+    {
+        leafType = rootType;
+
+        for (var i = 0; i < chain.Length; i++)
+        {
+            var member = chain[i];
+
+            if (_model.TryGetReferenceNavigation(leafType, member, out var referenceNav))
+            {
+                leafType = referenceNav.TargetClrType;
+                continue;
+            }
+
+            if (_model.TryGetCollectionNavigation(leafType, member, out var collectionNav))
+            {
+                leafType = collectionNav.TargetClrType;
+                continue;
+            }
+
+            return false;
+        }
+
+        return true;
+    }
+
+    private static string BuildChainKey(MemberInfo[] chain)
+    {
+        if (chain.Length == 1)
+        {
+            var m0 = chain[0];
+            return (m0.DeclaringType?.FullName ?? "<null>") + "." + m0.Name;
+        }
+
+        return string.Join(
+            "->",
+            chain.Select(static m => (m.DeclaringType?.FullName ?? "<null>") + "." + m.Name));
+    }
+
+    // ──────── PK extraction ────────
 
     private static bool TryExtractPkIds(Expression<Func<TEntity, bool>> predicate, string pkMemberName, out int[] ids)
     {
@@ -945,150 +995,38 @@ internal sealed class Db2QueryProvider<TEntity, TRow>(
             => node == from ? to : base.VisitParameter(node);
     }
 
-    private static IEnumerable ApplyWhere(IEnumerable source, Type sourceElementType, LambdaExpression predicate)
+    // ──────── Root substitution ────────
+
+    /// <summary>
+    /// Replaces the root expression (a Db2Queryable constant or IQueryable constant)
+    /// with a LINQ-to-Objects EnumerableQuery.
+    /// </summary>
+    private sealed class RootSubstitutor(IQueryable replacement) : ExpressionVisitor
     {
-        var typedPredicate = predicate.Compile();
-        return EnumerableDispatch.GetWhere(sourceElementType)(source, typedPredicate);
-    }
-
-    private static IEnumerable ApplySelect(IEnumerable source, Type sourceElementType, LambdaExpression selector)
-    {
-        var resultType = selector.ReturnType;
-        var typedSelector = selector.Compile();
-
-        return EnumerableDispatch.GetSelect(sourceElementType, resultType)(source, typedSelector);
-    }
-
-    private static IEnumerable ApplyTake(IEnumerable source, Type sourceElementType, int count)
-    {
-
-        return EnumerableDispatch.GetTake(sourceElementType)(source, count);
-    }
-
-    private static IEnumerable ApplySkip(IEnumerable source, Type sourceElementType, int count)
-    {
-        return EnumerableDispatch.GetSkip(sourceElementType)(source, count);
-    }
-
-    private static class EnumerableDispatch
-    {
-        private static readonly ConcurrentDictionary<Type, Func<IEnumerable, Delegate, IEnumerable>> WhereDelegates = new();
-        private static readonly ConcurrentDictionary<(Type Source, Type Result), Func<IEnumerable, Delegate, IEnumerable>> SelectDelegates = new();
-        private static readonly ConcurrentDictionary<Type, Func<IEnumerable, int, IEnumerable>> TakeDelegates = new();
-        private static readonly ConcurrentDictionary<Type, Func<IEnumerable, int, IEnumerable>> SkipDelegates = new();
-        private static readonly ConcurrentDictionary<Type, Func<IEnumerable, bool>> AnyDelegates = new();
-        private static readonly ConcurrentDictionary<Type, Func<IEnumerable, int>> CountDelegates = new();
-        private static readonly ConcurrentDictionary<Type, Func<IEnumerable, Delegate, bool>> AllDelegates = new();
-
-        public static Func<IEnumerable, Delegate, IEnumerable> GetWhere(Type elementType)
-            => WhereDelegates.GetOrAdd(elementType, static elementType =>
-            {
-                var m = typeof(EnumerableDispatch)
-                    .GetMethod(nameof(WhereImpl), BindingFlags.Static | BindingFlags.NonPublic)!
-                    .MakeGenericMethod(elementType);
-
-                return m.CreateDelegate<Func<IEnumerable, Delegate, IEnumerable>>();
-            });
-
-        public static Func<IEnumerable, Delegate, IEnumerable> GetSelect(Type sourceType, Type resultType)
-            => SelectDelegates.GetOrAdd((sourceType, resultType), static key =>
-            {
-                var m = typeof(EnumerableDispatch)
-                    .GetMethod(nameof(SelectImpl), BindingFlags.Static | BindingFlags.NonPublic)!
-                    .MakeGenericMethod(key.Source, key.Result);
-
-                return m.CreateDelegate<Func<IEnumerable, Delegate, IEnumerable>>();
-            });
-
-        public static Func<IEnumerable, int, IEnumerable> GetTake(Type elementType)
-            => TakeDelegates.GetOrAdd(elementType, static elementType =>
-            {
-                var m = typeof(EnumerableDispatch)
-                    .GetMethod(nameof(TakeImpl), BindingFlags.Static | BindingFlags.NonPublic)!
-                    .MakeGenericMethod(elementType);
-
-                return m.CreateDelegate<Func<IEnumerable, int, IEnumerable>>();
-            });
-
-        public static Func<IEnumerable, int, IEnumerable> GetSkip(Type elementType)
-            => SkipDelegates.GetOrAdd(elementType, static elementType =>
-            {
-                var m = typeof(EnumerableDispatch)
-                    .GetMethod(nameof(SkipImpl), BindingFlags.Static | BindingFlags.NonPublic)!
-                    .MakeGenericMethod(elementType);
-
-                return m.CreateDelegate<Func<IEnumerable, int, IEnumerable>>();
-            });
-
-        public static Func<IEnumerable, bool> GetAny(Type elementType)
-            => AnyDelegates.GetOrAdd(elementType, static elementType =>
-            {
-                var m = typeof(EnumerableDispatch)
-                    .GetMethod(nameof(AnyImpl), BindingFlags.Static | BindingFlags.NonPublic)!
-                    .MakeGenericMethod(elementType);
-
-                return m.CreateDelegate<Func<IEnumerable, bool>>();
-            });
-
-        public static Func<IEnumerable, int> GetCount(Type elementType)
-            => CountDelegates.GetOrAdd(elementType, static elementType =>
-            {
-                var m = typeof(EnumerableDispatch)
-                    .GetMethod(nameof(CountImpl), BindingFlags.Static | BindingFlags.NonPublic)!
-                    .MakeGenericMethod(elementType);
-
-                return m.CreateDelegate<Func<IEnumerable, int>>();
-            });
-
-        public static Func<IEnumerable, Delegate, bool> GetAll(Type elementType)
-            => AllDelegates.GetOrAdd(elementType, static elementType =>
-            {
-                var m = typeof(EnumerableDispatch)
-                    .GetMethod(nameof(AllImpl), BindingFlags.Static | BindingFlags.NonPublic)!
-                    .MakeGenericMethod(elementType);
-
-                return m.CreateDelegate<Func<IEnumerable, Delegate, bool>>();
-            });
-
-        private static IEnumerable WhereImpl<T>(IEnumerable source, Delegate predicate)
+        protected override Expression VisitConstant(ConstantExpression node)
         {
-            var typed = (Func<T, bool>)predicate;
-
-            return Enumerable.Where((IEnumerable<T>)source, x =>
+            if (node.Value is IQueryable q && q.ElementType == replacement.ElementType
+                && node.Value is Db2Queryable<TEntity>)
             {
-                try
-                {
-                    return typed(x);
-                }
-                catch (NullReferenceException)
-                {
-                    return false;
-                }
-                catch (ArgumentNullException)
-                {
-                    return false;
-                }
-            });
+                return Expression.Constant(replacement, typeof(IQueryable<TEntity>));
+            }
+
+            return base.VisitConstant(node);
         }
-
-        private static IEnumerable SelectImpl<TSource, TResult>(IEnumerable source, Delegate selector)
-            => Enumerable.Select((IEnumerable<TSource>)source, (Func<TSource, TResult>)selector);
-
-        private static IEnumerable TakeImpl<T>(IEnumerable source, int count)
-            => Enumerable.Take((IEnumerable<T>)source, count);
-
-        private static IEnumerable SkipImpl<T>(IEnumerable source, int count)
-            => Enumerable.Skip((IEnumerable<T>)source, count);
-
-        private static bool AnyImpl<T>(IEnumerable source)
-            => Enumerable.Any((IEnumerable<T>)source);
-
-        private static int CountImpl<T>(IEnumerable source)
-            => Enumerable.Count((IEnumerable<T>)source);
-
-        private static bool AllImpl<T>(IEnumerable source, Delegate predicate)
-            => Enumerable.All((IEnumerable<T>)source, (Func<T, bool>)predicate);
     }
+
+    // ──────── Supporting types ────────
+
+    private sealed record PreEntityAnalysis(
+        IReadOnlyList<Expression<Func<TEntity, bool>>> PreEntityWherePredicates,
+        IReadOnlyList<MethodCallExpression> PreWhereNodes,
+        int? PreTakeCount,
+        int? PreSkipCount,
+        MethodCallExpression? PreTakeNode,
+        MethodCallExpression? PreSkipNode,
+        LambdaExpression? SelectSelector,
+        bool HasPostSelectOperations,
+        IReadOnlyList<LambdaExpression> PostEntityLambdas);
 
     private static bool TryGetEnumerableElementType(Type type, out Type elementType)
     {

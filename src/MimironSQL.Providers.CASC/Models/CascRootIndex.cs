@@ -148,7 +148,6 @@ internal sealed class CascRootIndex
         offset += 4; // Signature
 
         uint rootVersion;
-        bool allowNonNamedFiles;
         uint? totalFilesHint = null;
 
         // Prefer 50893+ header if it looks valid.
@@ -168,7 +167,6 @@ internal sealed class CascRootIndex
             if (headerLooksValid)
             {
                 rootVersion = version;
-                allowNonNamedFiles = totalFiles != filesWithNameHash;
                 totalFilesHint = totalFiles;
                 offset = checked((int)sizeOfHeader);
             }
@@ -176,13 +174,11 @@ internal sealed class CascRootIndex
             {
                 // Fall through to 30080 header
                 rootVersion = 0;
-                allowNonNamedFiles = false;
             }
         }
         else
         {
             rootVersion = 0;
-            allowNonNamedFiles = false;
         }
 
         // 30080 header: [Signature][TotalFiles][FilesWithNameHash]
@@ -196,7 +192,6 @@ internal sealed class CascRootIndex
             if (filesWithNameHash > totalFiles)
                 throw new InvalidDataException("Invalid TSFM header (named files exceed total files).");
 
-            allowNonNamedFiles = totalFiles != filesWithNameHash;
             rootVersion = 0;
             totalFilesHint = totalFiles;
             offset = 12;
@@ -301,7 +296,6 @@ internal sealed class CascRootIndex
                 fileDataId++;
             }
 
-            _ = allowNonNamedFiles;
         }
 
         var map = new Dictionary<int, CascKey>(best.Count);

@@ -6,17 +6,18 @@ using MimironSQL.EntityFrameworkCore;
 using MimironSQL.IntegrationTests.Helpers;
 using MimironSQL.Providers;
 
-using NSubstitute;
-
 using Shouldly;
 
 using System.Reflection;
 
 namespace MimironSQL.IntegrationTests;
 
-public sealed class FileSystemDb2ContextIntegrationTests
+
+public class FileSystemTextFixture
 {
-    private static WoWDb2Context CreateContext()
+    public WoWDb2Context Context { get; }
+
+    public FileSystemTextFixture()
     {
         var testDataDir = TestDataPaths.GetTestDataDirectory();
         Directory.Exists(testDataDir).ShouldBeTrue();
@@ -26,14 +27,17 @@ public sealed class FileSystemDb2ContextIntegrationTests
             db2DirectoryPath: testDataDir,
             dbdDefinitionsDirectory: Path.Combine(testDataDir, "definitions")));
 
-        return new WoWDb2Context(optionsBuilder.Options);
+        Context = new WoWDb2Context(optionsBuilder.Options);
     }
+}
+
+public sealed class FileSystemDb2ContextIntegrationTests(FileSystemTextFixture fixture) : IClassFixture<FileSystemTextFixture>
+{
+    private WoWDb2Context context => fixture.Context;
 
     [Fact]
     public async Task ToListAsync_executes_end_to_end_via_async_over_sync()
     {
-        await using var context = CreateContext();
-
         var results = await context.Map
             .Where(x => x.Id > 0)
             .Take(10)
@@ -46,8 +50,6 @@ public sealed class FileSystemDb2ContextIntegrationTests
     [Fact]
     public async Task Can_query_db2context_for_spell()
     {
-        await using var context = CreateContext();
-
         var result = context.Set<SpellEntity>()
             .SingleOrDefault(x => x.Id == 454009);
         result.ShouldNotBeNull();
@@ -62,8 +64,6 @@ public sealed class FileSystemDb2ContextIntegrationTests
     [Fact]
     public async Task Key_lookup_does_not_cache_db2_tables_across_queries()
     {
-        await using var context = CreateContext();
-
         var sp = ((IInfrastructure<IServiceProvider>)context).Instance;
         var efAssembly = typeof(MimironDb2ServiceCollectionExtensions).Assembly;
         var storeServiceType = efAssembly.GetType("MimironSQL.EntityFrameworkCore.Storage.IMimironDb2Store", throwOnError: true)!;
@@ -78,15 +78,11 @@ public sealed class FileSystemDb2ContextIntegrationTests
         var result = context.Set<SpellEntity>().SingleOrDefault(x => x.Id == 454009);
         result.ShouldNotBeNull();
         result.Id.ShouldBe(454009);
-
-        _ = result;
     }
 
     [Fact]
     public void Can_query_and_include_collection_navigation()
     {
-        var context = CreateContext();
-
         var results = context.Map
             .Include(x => x.MapChallengeModes)
             .Where(x => x.MapChallengeModes.Count > 0)
@@ -110,8 +106,6 @@ public sealed class FileSystemDb2ContextIntegrationTests
     [Fact]
     public void Can_query_and_include_reference_navigation()
     {
-        var context = CreateContext();
-
         var results = context.MapChallengeMode
             .Include(x => x.Map)
             .Take(25)
@@ -129,8 +123,6 @@ public sealed class FileSystemDb2ContextIntegrationTests
     [Fact]
     public void Can_query_locstring_tables_via_filesystem_provider()
     {
-        var context = CreateContext();
-
         var spellNames = context.SpellName
             .Where(x => x.Name.Length > 0)
             .Take(50)
@@ -160,8 +152,6 @@ public sealed class FileSystemDb2ContextIntegrationTests
     [Fact]
     public void Can_filter_using_dense_string_contains()
     {
-        var context = CreateContext();
-
         var results = context.Map
             .Where(x => x.Directory.Contains('a'))
             .Take(50)
@@ -174,8 +164,6 @@ public sealed class FileSystemDb2ContextIntegrationTests
     [Fact]
     public void Can_filter_using_reference_navigation_member_access()
     {
-        var context = CreateContext();
-
         var directories = context.MapChallengeMode
             .Include(x => x.Map)
             .Where(x => x.Map != null)
@@ -190,8 +178,6 @@ public sealed class FileSystemDb2ContextIntegrationTests
     [Fact]
     public void Can_filter_using_reference_navigation_string_contains()
     {
-        var context = CreateContext();
-
         var matchingMapIds = context.Map
             .Where(x => x.Directory.Contains('a'))
             .Select(x => x.Id)
@@ -211,8 +197,6 @@ public sealed class FileSystemDb2ContextIntegrationTests
     [Fact]
     public void Select_with_navigation_access_and_post_where_uses_batched_navigation_projector()
     {
-        var context = CreateContext();
-
         // This shape intentionally forces the non-pruned navigation projection path:
         // Select uses a navigation member, but a Where appears after Select.
         var results = context.MapChallengeMode
@@ -234,8 +218,6 @@ public sealed class FileSystemDb2ContextIntegrationTests
     [Fact]
     public void Can_filter_using_reference_navigation_string_startswith_endswith_and_scalar_predicates()
     {
-        var context = CreateContext();
-
         var seedMode = context.MapChallengeMode
             .Include(x => x.Map)
             .Take(250)
@@ -283,8 +265,6 @@ public sealed class FileSystemDb2ContextIntegrationTests
     [Fact]
     public void Can_intersect_two_navigation_string_predicates_in_single_where()
     {
-        var context = CreateContext();
-
         var directory = context.MapChallengeMode
             .Include(x => x.Map)
             .Where(x => x.Map != null)
@@ -308,8 +288,6 @@ public sealed class FileSystemDb2ContextIntegrationTests
     [Fact]
     public void Can_intersect_two_navigation_scalar_predicates_in_single_where()
     {
-        var context = CreateContext();
-
         var mapId = context.MapChallengeMode
             .Include(x => x.Map)
             .Where(x => x.Map != null)
@@ -329,8 +307,6 @@ public sealed class FileSystemDb2ContextIntegrationTests
     [Fact]
     public void Can_intersect_navigation_string_and_scalar_predicates_in_single_where()
     {
-        var context = CreateContext();
-
         var seed = context.MapChallengeMode
             .Include(x => x.Map)
             .Where(x => x.Map != null)
@@ -352,8 +328,6 @@ public sealed class FileSystemDb2ContextIntegrationTests
     [Fact]
     public void Can_compile_navigation_null_check_and_scalar_predicate_same_navigation_left_to_right()
     {
-        var context = CreateContext();
-
         var mapId = context.MapChallengeMode
             .Include(x => x.Map)
             .Where(x => x.Map != null)
@@ -373,8 +347,6 @@ public sealed class FileSystemDb2ContextIntegrationTests
     [Fact]
     public void Can_compile_navigation_scalar_predicate_and_null_check_same_navigation_right_to_left()
     {
-        var context = CreateContext();
-
         var mapId = context.MapChallengeMode
             .Include(x => x.Map)
             .Where(x => x.Map != null)
@@ -394,8 +366,6 @@ public sealed class FileSystemDb2ContextIntegrationTests
     [Fact]
     public void Can_translate_collection_any_with_dependent_predicate()
     {
-        var context = CreateContext();
-
         var results = context.Map
             .Include(x => x.MapChallengeModes)
             .Where(x => x.MapChallengeModes.Any(m => m.MapID > 0))
@@ -408,8 +378,6 @@ public sealed class FileSystemDb2ContextIntegrationTests
     [Fact]
     public void Can_execute_all_and_single_or_default_terminal_operators()
     {
-        var context = CreateContext();
-
         var id = context.Map.Select(x => x.Id).First(x => x > 0);
 
         var single = context.Map.Where(x => x.Id == id).SingleOrDefault();
@@ -423,8 +391,6 @@ public sealed class FileSystemDb2ContextIntegrationTests
     [Fact]
     public void Selecting_navigation_entity_in_pruned_row_projection_throws()
     {
-        var context = CreateContext();
-
         Should.Throw<NotSupportedException>(() =>
         {
             _ = context.MapChallengeMode
@@ -441,8 +407,6 @@ public sealed class FileSystemDb2ContextIntegrationTests
     [Fact]
     public void Can_rewrite_collection_count_comparisons_to_any_and_execute_terminal_operators()
     {
-        var context = CreateContext();
-
         var hasChallengeModes = context.Map
             .Include(x => x.MapChallengeModes)
             .Where(x => x.MapChallengeModes.Count >= 1)

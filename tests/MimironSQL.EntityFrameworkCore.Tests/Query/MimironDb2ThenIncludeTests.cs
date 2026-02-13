@@ -1,10 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 
 using MimironSQL.Db2;
-using MimironSQL.EntityFrameworkCore.Tests;
 using MimironSQL.Providers;
-
-using NSubstitute;
 
 using Shouldly;
 

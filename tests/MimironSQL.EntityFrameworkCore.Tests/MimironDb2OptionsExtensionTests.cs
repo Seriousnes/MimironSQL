@@ -1,11 +1,8 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 
-using NSubstitute;
-
 using Shouldly;
 
-using MimironSQL.Providers;
 using MimironSQL.EntityFrameworkCore.Infrastructure;
 
 namespace MimironSQL.EntityFrameworkCore.Tests;

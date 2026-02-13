@@ -6,7 +6,6 @@ using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.Text;
 
 using MimironSQL.DbContextGenerator.Tests.Helpers;
-using MimironSQL.Db2;
 
 using Shouldly;
 

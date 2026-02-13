@@ -34,7 +34,7 @@ internal static class Db2EntityMaterializerCache
 
     private static void PrecompileTyped<TEntity>(IModel efModel, Db2EntityType entityType)
         where TEntity : class
-        => _ = GetOrCompile<TEntity>(efModel, entityType);
+        => GetOrCompile<TEntity>(efModel, entityType);
 
     public static Action<TEntity, IDb2File, RowHandle> GetOrCompile<TEntity>(IModel efModel, Db2EntityType entityType)
         where TEntity : class

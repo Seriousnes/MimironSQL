@@ -10,25 +10,6 @@ internal static class Db2IncludePolicy
     public static bool UsesRootNavigation(Db2ModelBinding model, LambdaExpression lambda)
         => GetRootNavigationMembers(model, lambda).Count != 0;
 
-    public static void ThrowIfNavigationRequiresInclude(Db2ModelBinding model, HashSet<MemberInfo> includedRootMembers, Db2QueryOperation op)
-    {
-        ArgumentNullException.ThrowIfNull(model);
-        ArgumentNullException.ThrowIfNull(includedRootMembers);
-        ArgumentNullException.ThrowIfNull(op);
-
-        var lambda = op switch
-        {
-            Db2WhereOperation w => w.Predicate,
-            Db2SelectOperation s => s.Selector,
-            _ => null,
-        };
-
-        if (lambda is null)
-            return;
-
-        ThrowIfNavigationRequiresInclude(model, includedRootMembers, lambda);
-    }
-
     public static void ThrowIfNavigationRequiresInclude(Db2ModelBinding model, HashSet<MemberInfo> includedRootMembers, LambdaExpression lambda)
     {
         ArgumentNullException.ThrowIfNull(model);

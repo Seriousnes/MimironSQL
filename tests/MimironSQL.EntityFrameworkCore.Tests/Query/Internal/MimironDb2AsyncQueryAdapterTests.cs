@@ -1,8 +1,7 @@
 using System.Linq.Expressions;
 
-using Microsoft.EntityFrameworkCore.Query;
+using Microsoft.EntityFrameworkCore.Query.Internal;
 
-using MimironSQL.EntityFrameworkCore.Query;
 using MimironSQL.EntityFrameworkCore.Query.Internal;
 
 using NSubstitute;
@@ -16,7 +15,7 @@ public sealed class MimironDb2AsyncQueryAdapterTests
     [Fact]
     public async Task ExecuteAsync_supports_Task_and_ValueTask()
     {
-        var executor = Substitute.For<IMimironDb2QueryExecutor>();
+        var executor = Substitute.For<IQueryCompiler>();
         var query = Expression.Constant(123);
 
         executor.Execute<int>(query).Returns(7);
@@ -36,7 +35,7 @@ public sealed class MimironDb2AsyncQueryAdapterTests
     [Fact]
     public async Task ExecuteAsync_supports_IAsyncEnumerable_and_cancellation()
     {
-        var executor = Substitute.For<IMimironDb2QueryExecutor>();
+        var executor = Substitute.For<IQueryCompiler>();
         var query = Expression.Constant(123);
 
         executor.Execute<IEnumerable<int>>(query).Returns([1, 2]);
@@ -81,27 +80,10 @@ public sealed class MimironDb2AsyncQueryAdapterTests
     [Fact]
     public void ExecuteAsync_throws_for_unsupported_result_types()
     {
-        var executor = Substitute.For<IMimironDb2QueryExecutor>();
+        var executor = Substitute.For<IQueryCompiler>();
         var query = Expression.Constant(123);
 
         Should.Throw<NotSupportedException>(() =>
             MimironDb2AsyncQueryAdapter.ExecuteAsync<int>(executor, query, CancellationToken.None));
-    }
-
-    [Fact]
-    public async Task PrecompileQuery_supports_sync_and_async()
-    {
-        var executor = Substitute.For<IMimironDb2QueryExecutor>();
-        var query = Expression.Constant(123);
-
-        executor.Execute<int>(query).Returns(7);
-
-        var sync = MimironDb2AsyncQueryAdapter.PrecompileQuery<int>(executor, query, async: false).Compile();
-        sync(null!).ShouldBe(7);
-
-        var async = MimironDb2AsyncQueryAdapter.PrecompileQuery<Task<int>>(executor, query, async: true).Compile();
-        (await async(null!)).ShouldBe(7);
-
-        executor.Received(2).Execute<int>(query);
     }
 }

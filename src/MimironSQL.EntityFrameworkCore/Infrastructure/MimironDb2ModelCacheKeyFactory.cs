@@ -24,11 +24,11 @@ public class MimironDb2ModelCacheKeyFactory : IModelCacheKeyFactory
             designTime);
     }
 
-        /// <summary>
-        /// Creates a model cache key for the given context.
-        /// </summary>
-        /// <param name="context">The EF Core context.</param>
-        /// <returns>A cache key object.</returns>
+    /// <summary>
+    /// Creates a model cache key for the given context.
+    /// </summary>
+    /// <param name="context">The EF Core context.</param>
+    /// <returns>A cache key object.</returns>
     public object Create(DbContext context)
         => Create(context, designTime: false);
 }

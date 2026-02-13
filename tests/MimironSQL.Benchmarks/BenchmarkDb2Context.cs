@@ -1,7 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 
 using MimironSQL.Benchmarks.Fixtures;
-using MimironSQL.Providers;
 
 namespace MimironSQL.Benchmarks;
 

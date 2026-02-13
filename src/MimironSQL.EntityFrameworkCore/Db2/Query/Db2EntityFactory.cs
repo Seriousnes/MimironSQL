@@ -1,7 +1,6 @@
 using System.Collections.Concurrent;
 using System.Linq.Expressions;
 using System.Reflection;
-using System.Threading;
 
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
@@ -42,7 +41,8 @@ internal sealed class EfLazyLoadingProxyDb2EntityFactory(DbContext context, IDb2
 {
     private static readonly ConcurrentDictionary<Type, Func<EfLazyLoadingProxyDb2EntityFactory, object>> CreatorCache = new();
 
-    private static Type[] s_proxyFactoryServiceTypes = [];
+    private static Type[]? s_proxyFactoryServiceTypes;
+    private static int s_assemblyCountAtResolution;
 
     private static readonly ConcurrentDictionary<Type, ProxyFactoryInvokers> ProxyInvokersByServiceType = new();
 
@@ -198,20 +198,19 @@ internal sealed class EfLazyLoadingProxyDb2EntityFactory(DbContext context, IDb2
 
     private static IReadOnlyList<Type> GetProxyFactoryServiceTypes()
     {
+        var currentAssemblyCount = AppDomain.CurrentDomain.GetAssemblies().Length;
         var cached = Volatile.Read(ref s_proxyFactoryServiceTypes);
-        if (cached.Length != 0)
+
+        // Re-resolve when new assemblies have been loaded since the last empty resolution,
+        // since test runners and plugin hosts can load proxy assemblies lazily.
+        if (cached is not null && (cached.Length > 0 || currentAssemblyCount == Volatile.Read(ref s_assemblyCountAtResolution)))
             return cached;
 
         var resolved = ResolveProxyFactoryServiceTypes();
-
-        // Important: do NOT permanently cache an empty result.
-        // Test runners can load assemblies lazily; proxy types may appear later.
-        if (resolved.Count == 0)
-            return resolved;
-
         var resolvedArray = resolved as Type[] ?? resolved.ToArray();
+        Volatile.Write(ref s_assemblyCountAtResolution, currentAssemblyCount);
         Interlocked.CompareExchange(ref s_proxyFactoryServiceTypes, resolvedArray, cached);
-        return Volatile.Read(ref s_proxyFactoryServiceTypes);
+        return Volatile.Read(ref s_proxyFactoryServiceTypes)!;
     }
 
     private sealed class ProxyFactoryInvokers(

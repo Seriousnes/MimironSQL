@@ -1,7 +1,5 @@
 using MimironSQL.Db2;
 
-using System.Diagnostics.CodeAnalysis;
-
 namespace MimironSQL.Dbd;
 
 /// <summary>

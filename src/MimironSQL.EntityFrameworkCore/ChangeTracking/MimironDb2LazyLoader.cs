@@ -9,7 +9,6 @@ using Microsoft.EntityFrameworkCore.Metadata;
 using MimironSQL.EntityFrameworkCore.Db2.Model;
 using MimironSQL.EntityFrameworkCore.Db2.Query;
 using MimironSQL.EntityFrameworkCore.Db2.Schema;
-using MimironSQL.EntityFrameworkCore.Query;
 using MimironSQL.EntityFrameworkCore.Storage;
 using MimironSQL.Formats;
 
@@ -132,10 +131,8 @@ internal sealed class MimironDb2LazyLoader(
     {
         var model = _modelBinding.GetBinding();
 
-        using var session = new QuerySession<TRow>(_context, _store, model);
-
         (IDb2File<TRow> File, Db2TableSchema Schema) TableResolver(string name)
-            => session.Resolve(name);
+            => _store.OpenTableWithSchema<TRow>(name);
 
         var typedEntity = (TEntity)entity;
 

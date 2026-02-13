@@ -6,8 +6,6 @@ using MimironSQL.EntityFrameworkCore.Db2.Query;
 using MimironSQL.EntityFrameworkCore.Db2.Schema;
 using MimironSQL.Formats;
 
-using Microsoft.EntityFrameworkCore;
-
 using Shouldly;
 
 namespace MimironSQL.EntityFrameworkCore.Tests;
@@ -1980,6 +1978,8 @@ public sealed class Db2NavigationQueryCompilerTests
         }
 
         public readonly record struct Row(int Id, object[] Values);
+
+        public void Dispose() { }
     }
 
     private static Db2ModelBinding BuildChildWithTwoReferencesModel()

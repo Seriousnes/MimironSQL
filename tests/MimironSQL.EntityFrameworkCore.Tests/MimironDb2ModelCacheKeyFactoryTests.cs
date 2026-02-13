@@ -1,7 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
-using MimironSQL.EntityFrameworkCore;
 using MimironSQL.EntityFrameworkCore.Infrastructure;
 using MimironSQL.Providers;
 

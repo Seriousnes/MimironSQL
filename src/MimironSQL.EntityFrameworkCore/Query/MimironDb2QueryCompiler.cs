@@ -141,8 +141,33 @@ internal sealed class MimironDb2QueryExecutor(
         model.GetEntityType(typeof(TEntity)).WithSchema(tableName, schema);
         var rootQueryable = new Db2Queryable<TEntity>(provider);
 
-        var rewritten = new RootQueryRewriter<TEntity>(rootQueryable).Visit(query);
-        return provider.Execute<TResult>(rewritten!);
+        // Use the cleaned expression (Include stripped) to avoid Include-related expression nodes
+        // that can't be processed by the EF Core pipeline in this provider.
+        var rewritten = new RootQueryRewriter<TEntity>(rootQueryable).Visit(preprocessed.CleanedExpression);
+        var result = provider.Execute<TResult>(rewritten!);
+
+        // If we have Include chains and the result is an enumerable of entities, apply Include chains.
+        if (preprocessed.IncludeChains.Count > 0 && typeof(TRow) == typeof(RowHandle))
+        {
+            if (result is IEnumerable<TEntity> entities)
+            {
+                IEnumerable<TEntity> current = entities;
+                for (var i = 0; i < preprocessed.IncludeChains.Count; i++)
+                {
+                    current = Db2IncludeChainExecutor.Apply<TEntity, RowHandle>(
+                        current,
+                        model,
+                        name => _store.OpenTableWithSchema<RowHandle>(name),
+                        preprocessed.IncludeChains[i],
+                        queryEntityFactory);
+                }
+                // Materialize to apply the Include effects
+                var materialized = current.ToList();
+                return (TResult)(object)materialized;
+            }
+        }
+
+        return result;
     }
 
     // ──────── Key-lookup helpers ────────

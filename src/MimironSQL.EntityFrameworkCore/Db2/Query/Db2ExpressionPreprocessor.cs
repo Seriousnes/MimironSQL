@@ -23,10 +23,13 @@ internal static class Db2ExpressionPreprocessor
     private static readonly Type IQueryableType = typeof(IQueryable);
 
     public static Db2PreprocessedExpression Preprocess(Expression expression)
+        => Preprocess(expression, stripIgnoreAutoIncludes: true);
+
+    public static Db2PreprocessedExpression Preprocess(Expression expression, bool stripIgnoreAutoIncludes)
     {
         ArgumentNullException.ThrowIfNull(expression);
 
-        var visitor = new StripVisitor();
+        var visitor = new StripVisitor(stripIgnoreAutoIncludes);
         var cleaned = visitor.Visit(expression);
         return new Db2PreprocessedExpression(cleaned, visitor.IncludeChains, visitor.IgnoreAutoIncludes);
     }
@@ -35,7 +38,7 @@ internal static class Db2ExpressionPreprocessor
     /// Strips Include/ThenInclude and EF query modifier calls from the expression tree,
     /// replacing them with their source argument. Collects include chain metadata.
     /// </summary>
-    private sealed class StripVisitor : ExpressionVisitor
+    private sealed class StripVisitor(bool stripIgnoreAutoIncludes) : ExpressionVisitor
     {
         public List<MemberInfo[]> IncludeChains { get; } = [];
         public bool IgnoreAutoIncludes { get; private set; }
@@ -52,7 +55,14 @@ internal static class Db2ExpressionPreprocessor
             if (LooksLikeEfQueryModifierMethod(node.Method))
             {
                 if (node.Method.Name == "IgnoreAutoIncludes")
+                {
                     IgnoreAutoIncludes = true;
+
+                    // If stripIgnoreAutoIncludes is false, keep the call in the expression
+                    // so EF's pipeline can process it
+                    if (!stripIgnoreAutoIncludes)
+                        return base.VisitMethodCall(node);
+                }
 
                 return Visit(node.Arguments[0]);
             }

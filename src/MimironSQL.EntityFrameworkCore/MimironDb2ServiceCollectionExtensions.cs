@@ -1,14 +1,15 @@
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Query;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
 using MimironSQL.EntityFrameworkCore.ChangeTracking;
 using MimironSQL.EntityFrameworkCore.Db2.Model;
+using MimironSQL.EntityFrameworkCore.Db2.Query;
 using MimironSQL.EntityFrameworkCore.Diagnostics;
 using MimironSQL.EntityFrameworkCore.Infrastructure;
-using MimironSQL.EntityFrameworkCore.Query.Internal;
 using MimironSQL.EntityFrameworkCore.Storage;
 using MimironSQL.Formats;
 using MimironSQL.Formats.Wdc5;
@@ -36,9 +37,13 @@ public static class MimironDb2ServiceCollectionExtensions
         services.TryAddEnumerable(
             ServiceDescriptor.Singleton<IDatabaseProvider, DatabaseProvider<MimironDb2OptionsExtension>>());
 
-        // EF Core requires an IDatabase implementation for DbContext initialization.
-        // This provider is read-only; SaveChanges is not supported.
+        // ── Standard EF Core query pipeline ──
+        // These use Replace to override EF Core's defaults registered by TryAddCoreServices
         services.TryAddScoped<IDatabase, MimironDb2Database>();
+        services.TryAddScoped<IQueryContextFactory, Db2QueryContextFactory>();
+        services.Replace(ServiceDescriptor.Scoped<IQueryableMethodTranslatingExpressionVisitorFactory, Db2QueryableMethodTranslatingExpressionVisitorFactory>());
+        services.Replace(ServiceDescriptor.Scoped<IShapedQueryCompilingExpressionVisitorFactory, Db2ShapedQueryCompilingExpressionVisitorFactory>());
+        services.Replace(ServiceDescriptor.Scoped<IQueryTranslationPreprocessorFactory, Db2QueryTranslationPreprocessorFactory>());
 
         services.TryAddSingleton<ITypeMappingSource, MimironDb2TypeMappingSource>();
 
@@ -46,7 +51,5 @@ public static class MimironDb2ServiceCollectionExtensions
         services.AddScoped<IMimironDb2Store, MimironDb2Store>();
 
         services.TryAddScoped<IDb2ModelBinding, Db2ModelBindingProvider>();
-
-        MimironDb2EfCoreInternalServiceRegistration.Add(services);
     }
 }

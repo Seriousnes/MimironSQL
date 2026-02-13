@@ -1,4 +1,8 @@
 <Solution>
+  <Folder Name="/plans/">
+    <File Path="plans/plan-ef-core-query-pipeline.md" />
+    <File Path="plans/plan-remaining-test-fixes.md" />
+  </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/MimironSQL.Benchmarks/MimironSQL.Benchmarks.csproj" />
     <Project Path="tests/MimironSQL.Contracts.Tests/MimironSQL.Contracts.Tests.csproj" />

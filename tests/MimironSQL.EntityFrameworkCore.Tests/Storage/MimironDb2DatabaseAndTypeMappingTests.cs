@@ -1,6 +1,13 @@
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.EntityFrameworkCore.Query;
+using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
+using Microsoft.EntityFrameworkCore.Update;
 
 using MimironSQL.EntityFrameworkCore.Storage;
+
+using NSubstitute;
 
 using Shouldly;
 
@@ -11,7 +18,11 @@ public sealed class MimironDb2DatabaseAndTypeMappingTests
     [Fact]
     public void Database_is_read_only()
     {
-        var db = new MimironDb2Database();
+        var dependencies = new DatabaseDependencies(
+            Substitute.For<IQueryCompilationContextFactory>(),
+            Substitute.For<IUpdateAdapterFactory>(),
+            Substitute.For<IDiagnosticsLogger<Microsoft.EntityFrameworkCore.DbLoggerCategory.Update>>());
+        var db = new MimironDb2Database(dependencies);
 
         Should.Throw<NotSupportedException>(() => db.SaveChanges([]))
             .Message.ShouldContain("read-only");

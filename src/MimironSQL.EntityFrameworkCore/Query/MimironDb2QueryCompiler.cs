@@ -58,15 +58,13 @@ internal sealed class MimironDb2QueryExecutor(
         where TEntity : class
         where TRow : struct, IRowHandle
     {
-        query = MimironDb2EfExpressionNormalizer.Normalize(query);
-
         var model = _db2ModelBinding.GetBinding();
 
         var pipeline = Db2QueryPipeline.Parse(query);
 
         if (typeof(TRow) == typeof(RowHandle)
             && TryGetPrimaryKeyMemberName(model, typeof(TEntity), out var pkMemberName)
-            && TryGetKeyLookupRequest<TEntity>(query, pkMemberName, out var request))
+            && TryGetKeyLookupRequest<TEntity>(pipeline, pkMemberName, out var request))
         {
             IDb2EntityFactory keyLookupEntityFactory = new EfLazyLoadingProxyDb2EntityFactory(_context, new ReflectionDb2EntityFactory());
 
@@ -76,7 +74,7 @@ internal sealed class MimironDb2QueryExecutor(
             var tableName2 = efEntityType2.GetTableName() ?? typeof(TEntity).Name;
 
             using var keyLookupSession = new QuerySession<RowHandle>(_context, _store, model);
-            keyLookupSession.Warm(query, typeof(TEntity));
+            keyLookupSession.Warm(pipeline, typeof(TEntity));
 
             var (rootFile, rootSchema) = keyLookupSession.Resolve(tableName2);
 
@@ -133,7 +131,7 @@ internal sealed class MimironDb2QueryExecutor(
         }
 
         using var session = new QuerySession<TRow>(_context, _store, model);
-        session.Warm(query, typeof(TEntity));
+        session.Warm(pipeline, typeof(TEntity));
 
         var (file, schema) = session.Resolve(tableName);
 
@@ -255,10 +253,8 @@ internal sealed class MimironDb2QueryExecutor(
         return (TResult)(object)array;
     }
 
-    private static bool TryGetKeyLookupRequest<TEntity>(Expression query, string pkMemberName, out KeyLookupRequest request)
+    private static bool TryGetKeyLookupRequest<TEntity>(Db2QueryPipeline pipeline, string pkMemberName, out KeyLookupRequest request)
     {
-        var pipeline = Db2QueryPipeline.Parse(query);
-
         // Skip remains disqualifying for the key lookup path.
         if (pipeline.Operations.Any(op => op is Db2SkipOperation))
         {
@@ -381,7 +377,7 @@ internal sealed class MimironDb2QueryExecutor(
         });
 
         var db2EntityType = model.GetEntityType(typeof(TEntity)).WithSchema(tableName, schema);
-        var materializer = new Db2EntityMaterializer<TEntity, RowHandle>(db2EntityType, entityFactory);
+        var materializer = new Db2EntityMaterializer<TEntity>(model, db2EntityType, entityFactory);
 
         var results = new List<TEntity>(handles.Count);
         for (var i = 0; i < handles.Count; i++)

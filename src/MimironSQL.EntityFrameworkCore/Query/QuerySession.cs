@@ -38,6 +38,13 @@ internal sealed class QuerySession<TRow>
         ArgumentNullException.ThrowIfNull(rootEntityClrType);
 
         var pipeline = Db2QueryPipeline.Parse(query);
+        Warm(pipeline, rootEntityClrType);
+    }
+
+    public void Warm(Db2QueryPipeline pipeline, Type rootEntityClrType)
+    {
+        ArgumentNullException.ThrowIfNull(pipeline);
+        ArgumentNullException.ThrowIfNull(rootEntityClrType);
 
         var includeChains = pipeline.Operations
             .OfType<Db2IncludeOperation>()

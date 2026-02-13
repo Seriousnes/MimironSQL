@@ -581,7 +581,7 @@ internal static class Db2NavigationQueryCompiler
         }
 
         var dependentEntityPredicate = typedPredicate.Compile();
-        var materializer = new Db2EntityMaterializer<TDependent, TRow>(dependentEntityType);
+        var materializer = new Db2EntityMaterializer<TDependent>(model, dependentEntityType);
 
         foreach (var row in dependentFile.EnumerateRows())
         {

@@ -145,7 +145,7 @@ public sealed class Db2ModelBindingTests
     }
 
     [Fact]
-    public void GetEntityType_when_primary_key_has_column_attribute_throws()
+    public void GetEntityType_supports_primary_key_column_mapping_via_column_attribute()
     {
         var model = TestModelBindingFactory.CreateBinding(
             static modelBuilder =>
@@ -154,9 +154,8 @@ public sealed class Db2ModelBindingTests
             },
             ColumnMappedPrimaryKeySchemaResolver);
 
-        var ex = Should.Throw<NotSupportedException>(() => model.GetEntityType(typeof(ColumnMappedPrimaryKey)));
-        ex.Message.ShouldContain("Primary key member");
-        ex.Message.ShouldContain("cannot configure column mapping");
+        var entityType = model.GetEntityType(typeof(ColumnMappedPrimaryKey));
+        entityType.PrimaryKeyFieldSchema.Name.ShouldBe("Other");
     }
 
     private static Db2TableSchema NoKeyEntitySchemaResolver(string tableName)
@@ -201,7 +200,7 @@ public sealed class Db2ModelBindingTests
                 physicalColumnCount: 1,
                 fields:
                 [
-                    new Db2FieldSchema("ID", Db2ValueType.Int64, ColumnStartIndex: 0, ElementCount: 1, IsVerified: true, IsVirtual: false, IsId: true, IsRelation: false, ReferencedTableName: null),
+                    new Db2FieldSchema("Other", Db2ValueType.Int64, ColumnStartIndex: 0, ElementCount: 1, IsVerified: true, IsVirtual: false, IsId: true, IsRelation: false, ReferencedTableName: null),
                 ]),
             _ => throw new InvalidOperationException($"Unknown table: {tableName}"),
         };

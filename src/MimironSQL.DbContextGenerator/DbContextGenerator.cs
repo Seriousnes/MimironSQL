@@ -344,14 +344,6 @@ public sealed class DbContextGenerator : IIncrementalGenerator
         return sb.ToString();
     }
 
-    private static string? MyField 
-    {
-        get
-        {
-            return field ??= "default";
-        }
-    }
-
     private static string RenderEntity(EntitySpec entity, IReadOnlyDictionary<string, EntitySpec> byTableName)
     {
         var sb = new StringBuilder();
@@ -366,10 +358,6 @@ public sealed class DbContextGenerator : IIncrementalGenerator
 
         sb.AppendLine($"public partial class {entity.ClassName} : Db2Entity<{entity.IdTypeName}>");
         sb.AppendLine("{");
-
-        var idInitializer = TypeMapping.GetInitializer(entity.IdTypeName);
-        sb.AppendLine($"    public override {entity.IdTypeName} Id {{ get; set; }}{idInitializer}");
-        sb.AppendLine();
 
         var navsByForeignKey = entity.Navigations
             .Where(n => byTableName.ContainsKey(n.TargetTableName))
@@ -450,6 +438,9 @@ public sealed class DbContextGenerator : IIncrementalGenerator
         sb.AppendLine("    {");
         sb.AppendLine($"        builder.ToTable(\"{EscapeString(entity.TableName)}\");");
         sb.AppendLine("        builder.HasKey(x => x.Id);");
+
+        if (!string.Equals(entity.IdColumnName, "ID", StringComparison.Ordinal))
+            sb.AppendLine($"        builder.Property(x => x.Id).HasColumnName(\"{EscapeString(entity.IdColumnName)}\");");
 
         foreach (var p in entity.ScalarProperties)
         {
@@ -628,6 +619,7 @@ public sealed class DbContextGenerator : IIncrementalGenerator
     private sealed class EntitySpec(
         string tableName,
         string className,
+        string idColumnName,
         string idTypeName,
         ImmutableArray<DbContextGenerator.ScalarPropertySpec> scalarProperties,
         ImmutableArray<DbContextGenerator.NavigationSpec> navigations)
@@ -641,6 +633,11 @@ public sealed class DbContextGenerator : IIncrementalGenerator
         /// Gets the generated CLR type name.
         /// </summary>
         public string ClassName { get; } = className;
+
+        /// <summary>
+        /// Gets the DB2 schema column name that backs the <c>Id</c> property.
+        /// </summary>
+        public string IdColumnName { get; } = idColumnName;
 
         /// <summary>
         /// Gets the CLR type name used for the entity key.
@@ -669,14 +666,18 @@ public sealed class DbContextGenerator : IIncrementalGenerator
             var className = $"{NameNormalizer.NormalizeTypeName(tableName)}Entity";
 
             var idEntry = build.Entries.FirstOrDefault(e => e.IsId);
-            var idType = TypeMapping.GetIdClrType(idEntry, dbd.ColumnsByName);
+            var keyEntry = idEntry ?? build.Entries.FirstOrDefault(static e =>
+                e is { ElementCount: 1 } && (e.ValueType == Db2ValueType.Int64 || e.ValueType == Db2ValueType.UInt64 || TypeMapping.TryMapInlineInteger(e.InlineTypeToken, out _)));
+
+            var idColumnName = keyEntry?.Name ?? "ID";
+            var idType = TypeMapping.GetIdClrType(keyEntry, dbd.ColumnsByName);
 
             var scalarProperties = new List<ScalarPropertySpec>();
             var navigations = new List<NavigationSpec>();
             var usedNames = new HashSet<string>(StringComparer.Ordinal);
             var scalarPropertyNameByColumnName = new Dictionary<string, (string EscapedPropertyName, string UnescapedPropertyName)>(StringComparer.Ordinal);
 
-            foreach (var entry in build.Entries.Where(static e => !e.IsId && (e.ElementCount == 1 || (e.ElementCount > 1 && e.ReferencedTableName is { Length: > 0 }))))
+            foreach (var entry in build.Entries.Where(e => !ReferenceEquals(e, keyEntry) && !e.IsId && (e.ElementCount == 1 || (e.ElementCount > 1 && e.ReferencedTableName is { Length: > 0 }))))
             {
                 var columnName = entry.Name;
                 var propertyName = NameNormalizer.NormalizePropertyName(columnName);
@@ -700,7 +701,7 @@ public sealed class DbContextGenerator : IIncrementalGenerator
                 scalarPropertyNameByColumnName[columnName] = (escapedPropertyName, propertyName);
             }
 
-            foreach (var entry in build.Entries.Where(static e => !e.IsId && (e.ElementCount == 1 || (e.ElementCount > 1 && e.ReferencedTableName is { Length: > 0 }))))
+            foreach (var entry in build.Entries.Where(e => !ReferenceEquals(e, keyEntry) && !e.IsId && (e.ElementCount == 1 || (e.ElementCount > 1 && e.ReferencedTableName is { Length: > 0 }))))
             {
                 if (entry.ReferencedTableName is not { Length: > 0 } targetTable)
                     continue;
@@ -731,7 +732,7 @@ public sealed class DbContextGenerator : IIncrementalGenerator
                     isForeignKeyArray: isForeignKeyArray));
             }
 
-            return new EntitySpec(tableName, className, idType, [.. scalarProperties], [.. navigations]);
+            return new EntitySpec(tableName, className, idColumnName, idType, [.. scalarProperties], [.. navigations]);
         }
     }
 
@@ -1042,7 +1043,7 @@ public sealed class DbContextGenerator : IIncrementalGenerator
             };
         }
 
-        private static bool TryMapInlineInteger(string? inlineTypeToken, out string clrType)
+        public static bool TryMapInlineInteger(string? inlineTypeToken, out string clrType)
         {
             clrType = string.Empty;
 

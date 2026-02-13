@@ -3,6 +3,11 @@ using System.ComponentModel.DataAnnotations.Schema;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 
+using MimironSQL.EntityFrameworkCore.Db2.Model;
+using MimironSQL.EntityFrameworkCore.Db2.Query;
+using MimironSQL.EntityFrameworkCore.Storage;
+using MimironSQL.Db2;
+
 namespace MimironSQL.EntityFrameworkCore.Infrastructure;
 
 /// <summary>
@@ -20,6 +25,52 @@ public class MimironDb2ModelCustomizer(ModelCustomizerDependencies dependencies)
         {
             ApplyDb2TableConventions(entityType);
         }
+
+        PrecompileMaterializers(modelBuilder, context);
+    }
+
+    private static void PrecompileMaterializers(ModelBuilder modelBuilder, DbContext context)
+    {
+        var store = context.GetService<IMimironDb2Store>();
+
+        var binding = new Db2ModelBinding(
+            (Microsoft.EntityFrameworkCore.Metadata.IModel)modelBuilder.Model,
+            tableName => store.GetSchema(tableName));
+
+        foreach (var efEntityType in modelBuilder.Model.GetEntityTypes())
+        {
+            var clrType = efEntityType.ClrType;
+
+            if (!IsDb2EntityInt(clrType))
+                continue;
+
+            var tableName = efEntityType.GetTableName() ?? clrType.Name;
+
+            try
+            {
+                var schema = store.GetSchema(tableName);
+                var db2EntityType = binding.GetEntityType(clrType).WithSchema(tableName, schema);
+                Db2EntityMaterializerCache.Precompile((Microsoft.EntityFrameworkCore.Metadata.IModel)modelBuilder.Model, db2EntityType);
+            }
+            catch
+            {
+                // Only precompile materializers for entity types that successfully resolve schema.
+            }
+        }
+    }
+
+    private static bool IsDb2EntityInt(Type clrType)
+    {
+        var current = clrType;
+        while (current is not null)
+        {
+            if (current.IsGenericType && current.GetGenericTypeDefinition() == typeof(Db2Entity<>))
+                return current.GetGenericArguments()[0] == typeof(int);
+
+            current = current.BaseType;
+        }
+
+        return false;
     }
 
     private static void ApplyDb2TableConventions(Microsoft.EntityFrameworkCore.Metadata.IMutableEntityType entityType)

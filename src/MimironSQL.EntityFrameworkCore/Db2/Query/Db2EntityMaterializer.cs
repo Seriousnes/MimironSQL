@@ -1,40 +1,43 @@
-using MimironSQL.EntityFrameworkCore.Db2.Model;
-using MimironSQL.EntityFrameworkCore.Db2.Schema;
-using MimironSQL.Formats;
-
 using System.Collections;
 using System.Linq.Expressions;
 using System.Reflection;
 
+using MimironSQL.EntityFrameworkCore.Db2.Model;
+using MimironSQL.EntityFrameworkCore.Db2.Schema;
+using MimironSQL.Formats;
+
 namespace MimironSQL.EntityFrameworkCore.Db2.Query;
 
-internal sealed class Db2EntityMaterializer<TEntity, TRow>
-    where TRow : struct
+internal sealed class Db2EntityMaterializer<TEntity>
+    where TEntity : class
 {
     private readonly Func<TEntity> _factory;
-    private readonly IReadOnlyList<Binding> _bindings;
+    private readonly Action<TEntity, IDb2File, RowHandle> _apply;
 
-    public Db2EntityMaterializer(Db2EntityType entityType, IDb2EntityFactory? entityFactory = null)
+    public Db2EntityMaterializer(Db2ModelBinding model, Db2EntityType entityType, IDb2EntityFactory? entityFactory = null)
     {
+        ArgumentNullException.ThrowIfNull(model);
         ArgumentNullException.ThrowIfNull(entityType);
 
         entityFactory ??= new ReflectionDb2EntityFactory();
         _factory = entityFactory.Create<TEntity>;
-        _bindings = CreateBindings(entityType);
+        _apply = Db2EntityMaterializerCache.GetOrCompile<TEntity>(model.EfModel, entityType);
     }
 
-    public TEntity Materialize(IDb2File<TRow> file, RowHandle handle)
+    public TEntity Materialize(IDb2File file, RowHandle handle)
     {
         var entity = _factory();
-        foreach (var b in _bindings)
-            b.Apply(entity, file, handle);
-
+        _apply(entity, file, handle);
         return entity;
     }
 
-    private static IReadOnlyList<Binding> CreateBindings(Db2EntityType entityType)
+    internal static Action<TEntity, IDb2File, RowHandle> CompileApply(Db2EntityType entityType)
     {
-        var memberBindings = new List<Binding>();
+        var entity = Expression.Parameter(typeof(TEntity), "entity");
+        var file = Expression.Parameter(typeof(IDb2File), "file");
+        var handle = Expression.Parameter(typeof(RowHandle), "handle");
+
+        var assigns = new List<Expression>();
 
         var properties = typeof(TEntity)
             .GetProperties(BindingFlags.Instance | BindingFlags.Public)
@@ -52,15 +55,15 @@ internal sealed class Db2EntityMaterializer<TEntity, TRow>
                 if (elementType == typeof(string))
                     continue;
 
-                if (TryCreateArrayBinding(property, field, elementType, out var binding))
-                    memberBindings.Add(binding);
+                if (TryCreateArrayAssign(entity, file, handle, property, field, elementType, out var assign))
+                    assigns.Add(assign);
 
                 continue;
             }
 
-            if (TryCreateSchemaArrayCollectionBinding(property, field, memberType, out var collectionBinding))
+            if (TryCreateSchemaArrayCollectionAssign(entity, file, handle, property, field, memberType, out var collectionAssign))
             {
-                memberBindings.Add(collectionBinding);
+                assigns.Add(collectionAssign);
                 continue;
             }
 
@@ -69,58 +72,69 @@ internal sealed class Db2EntityMaterializer<TEntity, TRow>
             if (field.ElementCount > 1 && typeof(IEnumerable).IsAssignableFrom(memberType))
                 continue;
 
-            if (TryCreateScalarBinding(property, field, memberType, out var scalarBinding))
-                memberBindings.Add(scalarBinding);
+            if (TryCreateScalarAssign(entity, file, handle, property, field, memberType, out var scalarAssign))
+                assigns.Add(scalarAssign);
         }
 
-        return [.. memberBindings];
+        Expression body = assigns.Count == 0 ? Expression.Empty() : Expression.Block(assigns);
+        return Expression.Lambda<Action<TEntity, IDb2File, RowHandle>>(body, entity, file, handle).Compile();
     }
 
-    private static bool TryCreateSchemaArrayCollectionBinding(PropertyInfo property, Db2FieldSchema field, Type memberType, out Binding binding)
+    private static bool TryCreateSchemaArrayCollectionAssign(
+        ParameterExpression entity,
+        ParameterExpression file,
+        ParameterExpression handle,
+        PropertyInfo property,
+        Db2FieldSchema field,
+        Type memberType,
+        out Expression assign)
     {
         if (!memberType.IsGenericType)
         {
-            binding = null!;
+            assign = null!;
             return false;
         }
 
         if (field.ElementCount <= 1)
         {
-            binding = null!;
+            assign = null!;
             return false;
         }
 
         var genericDefinition = memberType.GetGenericTypeDefinition();
         if (genericDefinition != typeof(ICollection<>))
         {
-            binding = null!;
+            assign = null!;
             return false;
         }
 
         var elementType = memberType.GetGenericArguments()[0];
         if (elementType == typeof(string))
         {
-            binding = null!;
+            assign = null!;
             return false;
         }
 
         if (!elementType.IsPrimitive && elementType != typeof(float) && elementType != typeof(double))
         {
-            binding = null!;
+            assign = null!;
             return false;
         }
 
         var arrayType = elementType.MakeArrayType();
-        binding = CreateSchemaArrayCollectionBinding(property, memberType, arrayType, field.ColumnStartIndex);
+        assign = CreateSchemaArrayCollectionAssign(entity, file, handle, property, memberType, arrayType, field.ColumnStartIndex);
         return true;
     }
 
-    private static Binding CreateSchemaArrayCollectionBinding(PropertyInfo property, Type memberType, Type arrayType, int fieldIndex)
+    private static Expression CreateSchemaArrayCollectionAssign(
+        ParameterExpression entity,
+        ParameterExpression file,
+        ParameterExpression handle,
+        PropertyInfo property,
+        Type memberType,
+        Type arrayType,
+        int fieldIndex)
     {
-        var entity = Expression.Parameter(typeof(TEntity), "entity");
-        var file = Expression.Parameter(typeof(IDb2File<TRow>), "file");
-        var handle = Expression.Parameter(typeof(RowHandle), "handle");
-
         var readArray = BuildReadExpression(file, handle, fieldIndex, arrayType);
 
         switch (property.SetMethod)
@@ -128,9 +142,7 @@ internal sealed class Db2EntityMaterializer<TEntity, TRow>
             case { IsPublic: true }:
                 {
                     var memberAccess = Expression.Property(entity, property);
-                    var assign = Expression.Assign(memberAccess, Expression.Convert(readArray, memberType));
-                    var apply = Expression.Lambda<Action<TEntity, IDb2File<TRow>, RowHandle>>(assign, entity, file, handle).Compile();
-                    return new Binding(apply);
+                    return Expression.Assign(memberAccess, Expression.Convert(readArray, memberType));
                 }
 
             default:
@@ -138,37 +150,53 @@ internal sealed class Db2EntityMaterializer<TEntity, TRow>
         }
     }
 
-    private static bool TryCreateScalarBinding(PropertyInfo property, Db2FieldSchema field, Type memberType, out Binding binding)
+    private static bool TryCreateScalarAssign(
+        ParameterExpression entity,
+        ParameterExpression file,
+        ParameterExpression handle,
+        PropertyInfo property,
+        Db2FieldSchema field,
+        Type memberType,
+        out Expression assign)
     {
         if (memberType == typeof(string) && field.IsVirtual)
         {
-            binding = null!;
+            assign = null!;
             return false;
         }
 
-        binding = CreateBinding(property, memberType, field.ColumnStartIndex);
+        assign = CreateAssign(entity, file, handle, property, memberType, field.ColumnStartIndex);
         return true;
     }
 
-    private static bool TryCreateArrayBinding(PropertyInfo property, Db2FieldSchema field, Type elementType, out Binding binding)
+    private static bool TryCreateArrayAssign(
+        ParameterExpression entity,
+        ParameterExpression file,
+        ParameterExpression handle,
+        PropertyInfo property,
+        Db2FieldSchema field,
+        Type elementType,
+        out Expression assign)
     {
         if (!elementType.IsPrimitive && elementType != typeof(float) && elementType != typeof(double))
         {
-            binding = null!;
+            assign = null!;
             return false;
         }
 
         var arrayType = elementType.MakeArrayType();
-        binding = CreateBinding(property, arrayType, field.ColumnStartIndex);
+        assign = CreateAssign(entity, file, handle, property, arrayType, field.ColumnStartIndex);
         return true;
     }
 
-    private static Binding CreateBinding(PropertyInfo property, Type memberType, int fieldIndex)
+    private static Expression CreateAssign(
+        ParameterExpression entity,
+        ParameterExpression file,
+        ParameterExpression handle,
+        PropertyInfo property,
+        Type memberType,
+        int fieldIndex)
     {
-        var entity = Expression.Parameter(typeof(TEntity), "entity");
-        var file = Expression.Parameter(typeof(IDb2File<TRow>), "file");
-        var handle = Expression.Parameter(typeof(RowHandle), "handle");
-
         var read = BuildReadExpression(file, handle, fieldIndex, memberType);
 
         switch (property.SetMethod)
@@ -176,9 +204,7 @@ internal sealed class Db2EntityMaterializer<TEntity, TRow>
             case { IsPublic: true }:
                 {
                     var memberAccess = Expression.Property(entity, property);
-                    var assign = Expression.Assign(memberAccess, read);
-                    var apply = Expression.Lambda<Action<TEntity, IDb2File<TRow>, RowHandle>>(assign, entity, file, handle).Compile();
-                    return new Binding(apply);
+                    return Expression.Assign(memberAccess, read);
                 }
 
             default:
@@ -193,11 +219,5 @@ internal sealed class Db2EntityMaterializer<TEntity, TRow>
             .MakeGenericMethod(targetType);
 
         return Expression.Call(fileExpression, readFieldMethod, handleExpression, Expression.Constant(fieldIndex));
-    }
-
-    private sealed record Binding(Action<TEntity, IDb2File<TRow>, RowHandle> ApplyAction)
-    {
-        public void Apply(TEntity entity, IDb2File<TRow> file, RowHandle handle)
-            => ApplyAction(entity, file, handle);
     }
 }

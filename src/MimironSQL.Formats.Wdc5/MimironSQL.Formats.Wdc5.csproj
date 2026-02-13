@@ -20,6 +20,16 @@
 		<PackageTags>warcraft;wow;db2;wdc5;format</PackageTags>
 	</PropertyGroup>
 
+	<PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
+	  <IsTrimmable>True</IsTrimmable>
+	  <IsAotCompatible>True</IsAotCompatible>
+	</PropertyGroup>
+
+	<PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
+	  <IsTrimmable>True</IsTrimmable>
+	  <IsAotCompatible>True</IsAotCompatible>
+	</PropertyGroup>
+
 	<ItemGroup>
 		<ProjectReference Include="..\MimironSQL.Contracts\MimironSQL.Contracts.csproj" />
 		<ProjectReference Include="..\Salsa20\Salsa20.csproj" />

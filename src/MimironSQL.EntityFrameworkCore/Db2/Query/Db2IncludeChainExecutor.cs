@@ -438,7 +438,7 @@ internal static class Db2IncludeChainExecutor
 
         var targetEntityType = model.GetEntityType(navigation.TargetClrType);
         var (relatedFile, _) = tableResolver(targetEntityType.TableName);
-        var materializer = new Db2EntityMaterializer<TTarget, TRow>(targetEntityType, entityFactory);
+        var materializer = new Db2EntityMaterializer<TTarget>(model, targetEntityType, entityFactory);
 
         var entitiesWithKeys = new List<(TEntity Entity, int Key)>(entities.Count);
         HashSet<int> keys = [];
@@ -502,7 +502,7 @@ internal static class Db2IncludeChainExecutor
 
         var targetEntityType = model.GetEntityType(navigation.TargetClrType);
         var (relatedFile, _) = tableResolver(targetEntityType.TableName);
-        var materializer = new Db2EntityMaterializer<TTarget, TRow>(targetEntityType, entityFactory);
+        var materializer = new Db2EntityMaterializer<TTarget>(model, targetEntityType, entityFactory);
 
         var entitiesWithIds = new List<(TEntity Entity, int[] Ids)>(entities.Count);
         HashSet<int> keys = [];
@@ -614,7 +614,7 @@ internal static class Db2IncludeChainExecutor
 
         var targetEntityType = model.GetEntityType(navigation.TargetClrType);
         var (relatedFile, _) = tableResolver(targetEntityType.TableName);
-        var materializer = new Db2EntityMaterializer<TTarget, TRow>(targetEntityType, entityFactory);
+        var materializer = new Db2EntityMaterializer<TTarget>(model, targetEntityType, entityFactory);
 
         Dictionary<int, List<TTarget>> dependentsByKey = [];
         if (keys.Count != 0)

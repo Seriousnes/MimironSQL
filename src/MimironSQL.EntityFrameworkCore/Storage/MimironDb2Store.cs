@@ -128,7 +128,7 @@ internal sealed class MimironDb2Store : IMimironDb2Store, IDisposable
             }
 
             var db2EntityType = model.GetEntityType(typeof(TEntity)).WithSchema(tableName, schema);
-            var materializer = new Db2EntityMaterializer<TEntity, RowHandle>(db2EntityType, entityFactory);
+            var materializer = new Db2EntityMaterializer<TEntity>(model, db2EntityType, entityFactory);
 
             entity = materializer.Materialize(typed, handle);
             return true;
@@ -163,7 +163,7 @@ internal sealed class MimironDb2Store : IMimironDb2Store, IDisposable
                 throw new NotSupportedException($"Key lookups require row type '{typeof(RowHandle).FullName}', but file reports '{file.RowType.FullName}'.");
 
             var db2EntityType = model.GetEntityType(typeof(TEntity)).WithSchema(tableName, schema);
-            var materializer = new Db2EntityMaterializer<TEntity, RowHandle>(db2EntityType, entityFactory);
+            var materializer = new Db2EntityMaterializer<TEntity>(model, db2EntityType, entityFactory);
 
             var handles = new List<RowHandle>(capacity: Math.Min(ids.Count, maxCount));
 

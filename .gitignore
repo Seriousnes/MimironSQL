@@ -433,9 +433,7 @@ FodyWeavers.xsd
 *.msix
 *.msm
 *.msp
-/coverage
-/coverage-ci
-/coverage-ci-details
 
-# Legacy / accidental reportgenerator output folders (prefer writing under /coverage/)
-/coverage-merged-*/
+# Custom ruleset
+/coverage
+**/Generated/**

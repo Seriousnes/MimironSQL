@@ -34,6 +34,7 @@ public sealed class CascDb2ContextIntegrationLocalTests
     
         context = new WoWDb2Context(optionsBuilder.Options);
         _ = context.Model; // Force model creation
+        _ = context.AccountStoreCategory.First();
     }
 
     [LocalCascFact]
@@ -59,14 +60,20 @@ public sealed class CascDb2ContextIntegrationLocalTests
     [LocalCascFact]
     public async Task Can_query_db2context_for_spell()
     {
-        var result = context.Set<SpellEntity>()
-            .SingleOrDefault(x => x.Id == 454009);
+        var result = context.Spell.Find(454009);
         result.ShouldNotBeNull();
         result.Id.ShouldBe(454009);
         result.Description.ShouldBe("""
             $?s137040[Each Maelstrom spent has a ${$s1/100}.2% chance to upgrade][Each Maelstrom Weapon spent has a ${$s2/100}.2% chance to upgrade] your next Lightning Bolt to Tempest.
 
             $@spelltooltip452201
+            """);
+
+        var result2 = context.Spell.Find(188196);
+        result2.ShouldNotBeNull();
+        result2.Id.ShouldBe(188196);
+        result2.Description.ShouldBe("""
+            Hurls a bolt of lightning at the target, dealing $s1 Nature damage.$?a343725[ |cFFFFFFFFGenerates $343725s1 Maelstrom.|r]?a383303[ |cFFFFFFFFConsumes Maelstrom Weapon for increased cast speed and damage.|r]?a187880[ |cFFFFFFFFConsumes Maelstrom Weapon for increased cast speed.|r][]
             """);
     }
 

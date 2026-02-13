@@ -5,6 +5,10 @@
 		<ImplicitUsings>enable</ImplicitUsings>
 		<Nullable>enable</Nullable>
 		<IsPackable>false</IsPackable>
+		<!--
+		<EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
+		<CompilerGeneratedFilesOutputPath>Generated</CompilerGeneratedFilesOutputPath>
+		-->
 	</PropertyGroup>
 
 	<ItemGroup>
@@ -37,6 +41,12 @@
 	<ItemGroup>
 		<AdditionalFiles Include=".env" />
 		<AdditionalFiles Include="..\TestData\**\*.dbd" />
+	</ItemGroup>
+
+	<ItemGroup>
+	  <Compile Remove="Generated\**" />
+	  <EmbeddedResource Remove="Generated\**" />
+	  <None Remove="Generated\**" />
 	</ItemGroup>
 
 </Project>

@@ -1,5 +1,7 @@
 using System.Collections.Concurrent;
 using System.Linq.Expressions;
+using System.Reflection;
+using System.Threading;
 
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
@@ -39,6 +41,10 @@ internal sealed class ReflectionDb2EntityFactory : IDb2EntityFactory
 internal sealed class EfLazyLoadingProxyDb2EntityFactory(DbContext context, IDb2EntityFactory fallback) : IDb2EntityFactory
 {
     private static readonly ConcurrentDictionary<Type, Func<EfLazyLoadingProxyDb2EntityFactory, object>> CreatorCache = new();
+
+    private static Type[] s_proxyFactoryServiceTypes = [];
+
+    private static readonly ConcurrentDictionary<Type, ProxyFactoryInvokers> ProxyInvokersByServiceType = new();
 
     private readonly DbContext _context = context ?? throw new ArgumentNullException(nameof(context));
     private readonly IServiceProvider _services = context.GetInfrastructure();
@@ -84,21 +90,40 @@ internal sealed class EfLazyLoadingProxyDb2EntityFactory(DbContext context, IDb2
         proxy = null!;
 
         // Proxies are only available when Microsoft.EntityFrameworkCore.Proxies is enabled.
-        var proxyFactoryType = ResolveTypeByFullName("Microsoft.EntityFrameworkCore.Proxies.Internal.IProxyFactory");
-        if (proxyFactoryType is null)
+        var serviceTypes = GetProxyFactoryServiceTypes();
+        if (serviceTypes.Count == 0)
             return false;
 
-        var proxyFactory = _services.GetService(proxyFactoryType);
-        if (proxyFactory is null)
+        object? proxyFactory = null;
+        Type? proxyFactoryServiceType = null;
+
+        // The service may be registered under an internal interface or a concrete type; probe candidates.
+        for (var i = 0; i < serviceTypes.Count; i++)
+        {
+            var candidate = serviceTypes[i];
+            var service = _services.GetService(candidate);
+            if (service is null)
+                continue;
+
+            proxyFactory = service;
+            proxyFactoryServiceType = candidate;
+            break;
+        }
+
+        if (proxyFactory is null || proxyFactoryServiceType is null)
             return false;
+
+        var lazyLoader = _services.GetService(typeof(ILazyLoader)) as ILazyLoader;
+
+        var invokers = ProxyInvokersByServiceType.GetOrAdd(proxyFactoryServiceType, static t => ProxyFactoryInvokers.Build(t));
 
         try
         {
             // Prefer CreateLazyLoadingProxy when available.
-            if (TryInvokeProxyFactory(proxyFactory, efEntityType, preferLazyLoading: true, out proxy))
+            if (invokers.TryCreate(proxyFactory, _context, efEntityType, lazyLoader, preferLazyLoading: true, out proxy))
                 return true;
 
-            if (TryInvokeProxyFactory(proxyFactory, efEntityType, preferLazyLoading: false, out proxy))
+            if (invokers.TryCreate(proxyFactory, _context, efEntityType, lazyLoader, preferLazyLoading: false, out proxy))
                 return true;
 
             return false;
@@ -108,73 +133,6 @@ internal sealed class EfLazyLoadingProxyDb2EntityFactory(DbContext context, IDb2
             proxy = null!;
             return false;
         }
-    }
-
-    private bool TryInvokeProxyFactory(object proxyFactory, IEntityType efEntityType, bool preferLazyLoading, out object proxy)
-    {
-        proxy = null!;
-
-        string[] names = preferLazyLoading
-            ? ["CreateLazyLoadingProxy", "CreateProxy"]
-            : ["CreateProxy", "CreateLazyLoadingProxy"];
-
-        var methods = proxyFactory.GetType().GetMethods();
-
-        var lazyLoader = _services.GetService(typeof(ILazyLoader));
-
-        for (var nameIndex = 0; nameIndex < names.Length; nameIndex++)
-        {
-            var methodName = names[nameIndex];
-
-            for (var i = 0; i < methods.Length; i++)
-            {
-                var m = methods[i];
-                if (!string.Equals(m.Name, methodName, StringComparison.Ordinal))
-                    continue;
-
-                var parameters = m.GetParameters();
-                if (parameters.Length < 2)
-                    continue;
-
-                var args = new object?[parameters.Length];
-
-                for (var pIndex = 0; pIndex < parameters.Length; pIndex++)
-                {
-                    var pType = parameters[pIndex].ParameterType;
-
-                    if (pType == typeof(DbContext))
-                    {
-                        args[pIndex] = _context;
-                        continue;
-                    }
-
-                    if (typeof(IEntityType).IsAssignableFrom(pType))
-                    {
-                        args[pIndex] = efEntityType;
-                        continue;
-                    }
-
-                    if (pType == typeof(ILazyLoader))
-                    {
-                        args[pIndex] = lazyLoader;
-                        continue;
-                    }
-
-                    if (pType == typeof(object[]))
-                    {
-                        args[pIndex] = Array.Empty<object>();
-                        continue;
-                    }
-
-                    args[pIndex] = pType.IsValueType ? Activator.CreateInstance(pType) : null;
-                }
-
-                proxy = m.Invoke(proxyFactory, args)!;
-                return proxy is not null;
-            }
-        }
-
-        return false;
     }
 
     private static Type? ResolveTypeByFullName(string fullName)
@@ -187,5 +145,209 @@ internal sealed class EfLazyLoadingProxyDb2EntityFactory(DbContext context, IDb2
         }
 
         return null;
+    }
+
+    private static IReadOnlyList<Type> ResolveProxyFactoryServiceTypes()
+    {
+        // Prefer the historical internal full name (fast path).
+        var byFullName = ResolveTypeByFullName("Microsoft.EntityFrameworkCore.Proxies.Internal.IProxyFactory");
+        if (byFullName is not null)
+            return [byFullName];
+
+        // Fall back to a name+shape search to tolerate internal namespace moves across EF Core versions.
+        // Return all plausible candidates; we will probe IServiceProvider at runtime.
+        List<Type>? candidates = null;
+
+        foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+        {
+            Type[] types;
+            try
+            {
+                types = assembly.GetTypes();
+            }
+            catch (ReflectionTypeLoadException ex)
+            {
+                types = ex.Types.Where(static t => t is not null).Select(static t => t!).ToArray();
+            }
+            catch
+            {
+                continue;
+            }
+
+            for (var i = 0; i < types.Length; i++)
+            {
+                var t = types[i];
+                // EF Proxies typically registers an internal interface service; some versions may use different internals.
+                if (!string.Equals(t.Name, "IProxyFactory", StringComparison.Ordinal)
+                    && !string.Equals(t.Name, "ProxyFactory", StringComparison.Ordinal))
+                    continue;
+
+                // Ensure it looks like EF Proxies' proxy factory.
+                if (t.GetMethods().Any(static m =>
+                        string.Equals(m.Name, "CreateLazyLoadingProxy", StringComparison.Ordinal)
+                        || string.Equals(m.Name, "CreateProxy", StringComparison.Ordinal)))
+                {
+                    candidates ??= [];
+                    candidates.Add(t);
+                }
+            }
+        }
+
+        return candidates ?? (IReadOnlyList<Type>)Array.Empty<Type>();
+    }
+
+    private static IReadOnlyList<Type> GetProxyFactoryServiceTypes()
+    {
+        var cached = Volatile.Read(ref s_proxyFactoryServiceTypes);
+        if (cached.Length != 0)
+            return cached;
+
+        var resolved = ResolveProxyFactoryServiceTypes();
+
+        // Important: do NOT permanently cache an empty result.
+        // Test runners can load assemblies lazily; proxy types may appear later.
+        if (resolved.Count == 0)
+            return resolved;
+
+        var resolvedArray = resolved as Type[] ?? resolved.ToArray();
+        Interlocked.CompareExchange(ref s_proxyFactoryServiceTypes, resolvedArray, cached);
+        return Volatile.Read(ref s_proxyFactoryServiceTypes);
+    }
+
+    private sealed class ProxyFactoryInvokers(
+        IReadOnlyList<Func<object, DbContext, IEntityType, ILazyLoader?, object?>> lazyLoading,
+        IReadOnlyList<Func<object, DbContext, IEntityType, ILazyLoader?, object?>> nonLazyLoading)
+    {
+        private readonly IReadOnlyList<Func<object, DbContext, IEntityType, ILazyLoader?, object?>> _lazyLoading = lazyLoading;
+        private readonly IReadOnlyList<Func<object, DbContext, IEntityType, ILazyLoader?, object?>> _nonLazyLoading = nonLazyLoading;
+
+        public static ProxyFactoryInvokers Build(Type? proxyFactoryType)
+        {
+            if (proxyFactoryType is null)
+                return new ProxyFactoryInvokers([], []);
+
+            var lazy = BuildInvokers(proxyFactoryType, methodName: "CreateLazyLoadingProxy");
+            var create = BuildInvokers(proxyFactoryType, methodName: "CreateProxy");
+
+            return new ProxyFactoryInvokers(lazyLoading: lazy, nonLazyLoading: create);
+        }
+
+        public bool TryCreate(
+            object proxyFactory,
+            DbContext context,
+            IEntityType entityType,
+            ILazyLoader? lazyLoader,
+            bool preferLazyLoading,
+            out object proxy)
+        {
+            proxy = null!;
+
+            var first = preferLazyLoading ? _lazyLoading : _nonLazyLoading;
+            var second = preferLazyLoading ? _nonLazyLoading : _lazyLoading;
+
+            if (TryInvokeList(first, proxyFactory, context, entityType, lazyLoader, out proxy))
+                return true;
+
+            if (TryInvokeList(second, proxyFactory, context, entityType, lazyLoader, out proxy))
+                return true;
+
+            return false;
+        }
+
+        private static bool TryInvokeList(
+            IReadOnlyList<Func<object, DbContext, IEntityType, ILazyLoader?, object?>> invokers,
+            object proxyFactory,
+            DbContext context,
+            IEntityType entityType,
+            ILazyLoader? lazyLoader,
+            out object proxy)
+        {
+            for (var i = 0; i < invokers.Count; i++)
+            {
+                var created = invokers[i](proxyFactory, context, entityType, lazyLoader);
+                if (created is null)
+                    continue;
+
+                proxy = created;
+                return true;
+            }
+
+            proxy = null!;
+            return false;
+        }
+
+        private static IReadOnlyList<Func<object, DbContext, IEntityType, ILazyLoader?, object?>> BuildInvokers(Type proxyFactoryType, string methodName)
+        {
+            var methods = proxyFactoryType.GetMethods()
+                .Where(m => string.Equals(m.Name, methodName, StringComparison.Ordinal))
+                .ToArray();
+
+            if (methods.Length == 0)
+                return [];
+
+            var result = new List<Func<object, DbContext, IEntityType, ILazyLoader?, object?>>(methods.Length);
+
+            for (var i = 0; i < methods.Length; i++)
+            {
+                var method = methods[i];
+                if (method.ReturnType == typeof(void))
+                    continue;
+
+                var parameters = method.GetParameters();
+                if (parameters.Length < 2)
+                    continue;
+
+                var proxyFactoryParam = Expression.Parameter(typeof(object), "proxyFactory");
+                var contextParam = Expression.Parameter(typeof(DbContext), "context");
+                var entityTypeParam = Expression.Parameter(typeof(IEntityType), "entityType");
+                var lazyLoaderParam = Expression.Parameter(typeof(ILazyLoader), "lazyLoader");
+
+                var args = new Expression[parameters.Length];
+                for (var p = 0; p < parameters.Length; p++)
+                {
+                    var pType = parameters[p].ParameterType;
+
+                    if (pType == typeof(DbContext))
+                    {
+                        args[p] = contextParam;
+                        continue;
+                    }
+
+                    if (typeof(IEntityType).IsAssignableFrom(pType))
+                    {
+                        args[p] = Expression.Convert(entityTypeParam, pType);
+                        continue;
+                    }
+
+                    if (pType == typeof(ILazyLoader))
+                    {
+                        args[p] = lazyLoaderParam;
+                        continue;
+                    }
+
+                    if (pType == typeof(object[]))
+                    {
+                        args[p] = Expression.Constant(Array.Empty<object>(), typeof(object[]));
+                        continue;
+                    }
+
+                    args[p] = Expression.Default(pType);
+                }
+
+                var call = Expression.Call(Expression.Convert(proxyFactoryParam, proxyFactoryType), method, args);
+                var box = Expression.Convert(call, typeof(object));
+
+                var lambda = Expression.Lambda<Func<object, DbContext, IEntityType, ILazyLoader?, object?>>(
+                    box,
+                    proxyFactoryParam,
+                    contextParam,
+                    entityTypeParam,
+                    lazyLoaderParam);
+
+                result.Add(lambda.Compile());
+            }
+
+            return result;
+        }
     }
 }

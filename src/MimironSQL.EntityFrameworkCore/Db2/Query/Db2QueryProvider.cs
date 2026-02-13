@@ -33,7 +33,7 @@ internal sealed class Db2QueryProvider<TEntity, TRow>(
 
     private readonly Db2EntityType _rootEntityType = model.GetEntityType(typeof(TEntity));
     private readonly IDb2EntityFactory _entityFactory = entityFactory ?? throw new ArgumentNullException(nameof(entityFactory));
-    private readonly Db2EntityMaterializer<TEntity, TRow> _materializer = new(model.GetEntityType(typeof(TEntity)), entityFactory);
+    private readonly Db2EntityMaterializer<TEntity> _materializer = new(model, model.GetEntityType(typeof(TEntity)), entityFactory);
     private readonly Db2ModelBinding _model = model;
     private readonly Func<string, (IDb2File<TRow> File, Db2TableSchema Schema)> _tableResolver = tableResolver;
 
@@ -572,10 +572,10 @@ internal sealed class Db2QueryProvider<TEntity, TRow>(
 
             for (var i = 0; i < ids.Length; i++)
             {
-                if (!file.TryGetRowById(ids[i], out var row))
+                if (!((IDb2File)file).TryGetRowHandle(ids[i], out var handle))
                     continue;
 
-                handles.Add(Db2RowHandleAccess.AsHandle(row));
+                handles.Add(handle);
             }
 
             if (handles.Count == 0)

@@ -71,7 +71,7 @@ public static class MimironDb2CascOptionsBuilderExtensions
 
         var wowInstallRoot = ReadString(casc, configuration, "WowInstallRoot") ?? string.Empty;
         var dbdDefsDir = ReadString(casc, configuration, "DbdDefinitionsDirectory");
-        var cacheDir = ReadString(casc, configuration, "ManifestDirectory");
+        var cacheDir = ReadString(casc, configuration, "ManifestDirectory") ?? string.Empty;
 
         var assetName = casc["ManifestAssetName"]?.Trim() ?? 
                         configuration["ManifestAssetName"]?.Trim() ?? 
@@ -235,7 +235,7 @@ public static class MimironDb2CascOptionsBuilderExtensions
             {
                 WowInstallRoot = WowInstallRoot,
                 DbdDefinitionsDirectory = DbdDefinitionsDirectory,
-                ManifestDirectory = ManifestDirectory,
+                ManifestDirectory = ManifestDirectory ?? string.Empty,
                 ManifestAssetName = ManifestAssetName,
             };
 

@@ -23,6 +23,8 @@ internal sealed class Db2ModelBinding(IModel efModel, Func<string, Db2TableSchem
     private readonly ConcurrentDictionary<(Type SourceClrType, MemberInfo NavigationMember), Lazy<Db2CollectionNavigation>> _collectionNavigations = new();
     private readonly ConcurrentDictionary<Type, IReadOnlyList<MemberInfo>> _autoIncludeNavigations = new();
 
+    internal IModel EfModel => _efModel;
+
     public Db2EntityType GetEntityType(Type clrType)
     {
         ArgumentNullException.ThrowIfNull(clrType);
@@ -119,13 +121,6 @@ internal sealed class Db2ModelBinding(IModel efModel, Func<string, Db2TableSchem
                     $"Entity type '{clrType.FullName}' primary key must be a public property. Configure a key in OnModelCreating (e.g., modelBuilder.Entity<{clrType.Name}>().HasKey(x => x.Id)).");
             }
 
-            var pkColumnName = pkProperty.GetColumnName() ?? pkProperty.Name;
-            if (HasColumnAttribute(pkMember) || !string.Equals(pkColumnName, pkMember.Name, StringComparison.Ordinal))
-            {
-                throw new NotSupportedException(
-                    $"Primary key member '{clrType.FullName}.{pkMember.Name}' cannot configure column mapping via [Column] or HasColumnName().");
-            }
-
             var columnNameMappings = new Dictionary<string, string>(StringComparer.Ordinal);
 
             foreach (var property in efEntityType.GetProperties())
@@ -134,9 +129,6 @@ internal sealed class Db2ModelBinding(IModel efModel, Func<string, Db2TableSchem
                     continue;
 
                 if (property.IsShadowProperty())
-                    continue;
-
-                if (property.Name.Equals("Id", StringComparison.OrdinalIgnoreCase))
                     continue;
 
                 if (HasColumnAttribute(propInfo))

@@ -174,7 +174,44 @@ Foo<32>
 
         var entity = results.Single(s => s.HintName.EndsWith("NoIdTableEntity.g.cs", StringComparison.Ordinal));
         entity.SourceText.ShouldContain("public partial class NoIdTableEntity : Db2Entity<int>");
-        entity.SourceText.ShouldContain("public override int Id { get; set; }");
+        entity.SourceText.ShouldNotContain(" Id { get; set; }");
+
+        // When no $id$ entry exists, the first integer column is treated as the key and mapped onto Id.
+        entity.SourceText.ShouldNotContain("public int Foo { get; set; }");
+
+        var config = results.Single(s => s.HintName.EndsWith("NoIdTableEntityConfiguration.g.cs", StringComparison.Ordinal));
+        config.SourceText.ShouldContain("builder.Property(x => x.Id).HasColumnName(\"Foo\");");
+    }
+
+    [Fact]
+    public void Generator_maps_Id_to_first_integer_key_column_when_no_id_marker_exists()
+    {
+        var env = "WOW_VERSION=1.0.0.1\n";
+
+        var sourceDbd = """
+COLUMNS
+int AnimID
+string AnimName
+
+BUILD 1.0.0.1
+AnimID<32>
+AnimName
+""";
+
+        var results = RunGenerator(
+            additionalFiles:
+            [
+                (".env", env),
+                ("AttackAnimTypes.dbd", sourceDbd),
+            ]);
+
+        var entity = results.Single(s => s.HintName.EndsWith("AttackAnimTypesEntity.g.cs", StringComparison.Ordinal));
+        entity.SourceText.ShouldNotContain(" Id { get; set; }");
+        entity.SourceText.ShouldNotContain("public int AnimID { get; set; }");
+        entity.SourceText.ShouldContain("public string AnimName { get; set; } = string.Empty;");
+
+        var config = results.Single(s => s.HintName.EndsWith("AttackAnimTypesEntityConfiguration.g.cs", StringComparison.Ordinal));
+        config.SourceText.ShouldContain("builder.Property(x => x.Id).HasColumnName(\"AnimID\");");
     }
 
     [Fact]

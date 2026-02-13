@@ -13,9 +13,9 @@ public sealed class Db2EntityMaterializerTests
     [Fact]
     public void Materialize_sets_scalar_arrays_and_schema_array_collections()
     {
-        var (entityType, file) = CreateEntityTypeAndFile();
+        var (model, entityType, file) = CreateEntityTypeAndFile();
 
-        var materializer = new Db2EntityMaterializer<MaterializeEntity, RowHandle>(entityType, new ReflectionDb2EntityFactory());
+        var materializer = new Db2EntityMaterializer<MaterializeEntity>(model, entityType, new ReflectionDb2EntityFactory());
 
         var entity = materializer.Materialize(file, new RowHandle(0, 0, rowId: 1));
 
@@ -27,9 +27,9 @@ public sealed class Db2EntityMaterializerTests
     [Fact]
     public void Materialize_skips_virtual_strings_and_string_arrays()
     {
-        var (entityType, file) = CreateEntityTypeAndFile();
+        var (model, entityType, file) = CreateEntityTypeAndFile();
 
-        var materializer = new Db2EntityMaterializer<MaterializeEntity, RowHandle>(entityType, new ReflectionDb2EntityFactory());
+        var materializer = new Db2EntityMaterializer<MaterializeEntity>(model, entityType, new ReflectionDb2EntityFactory());
 
         var entity = materializer.Materialize(file, new RowHandle(0, 0, rowId: 1));
 
@@ -66,12 +66,12 @@ public sealed class Db2EntityMaterializerTests
         var entityType = model.GetEntityType(typeof(NonWritableEntity));
 
         var ex = Should.Throw<NotSupportedException>(() =>
-            _ = new Db2EntityMaterializer<NonWritableEntity, RowHandle>(entityType, new ReflectionDb2EntityFactory()));
+            _ = new Db2EntityMaterializer<NonWritableEntity>(model, entityType, new ReflectionDb2EntityFactory()));
 
         ex.Message.ShouldContain("must be writable");
     }
 
-    private static (Db2EntityType EntityType, IDb2File<RowHandle> File) CreateEntityTypeAndFile()
+    private static (Db2ModelBinding Model, Db2EntityType EntityType, IDb2File<RowHandle> File) CreateEntityTypeAndFile()
     {
         var model = TestModelBindingFactory.CreateBinding(
             static modelBuilder =>
@@ -111,7 +111,7 @@ public sealed class Db2EntityMaterializerTests
                 new[] { 1, 2 }, // NotPrimitiveNumbers (skipped due to element type)
             ]);
 
-        return (entityType, file);
+        return (model, entityType, file);
     }
 
     private sealed class MaterializeEntity : Db2Entity<int>

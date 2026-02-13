@@ -146,7 +146,7 @@ internal sealed class MimironDb2Store : IMimironDb2Store, IDisposable
         ArgumentNullException.ThrowIfNull(entityFactory);
 
         if (takeCount is 0 || ids.Count == 0)
-            return Array.Empty<TEntity>();
+            return [];
 
         if (takeCount is < 0)
             throw new ArgumentOutOfRangeException(nameof(takeCount), "Take count cannot be negative.");
@@ -176,7 +176,7 @@ internal sealed class MimironDb2Store : IMimironDb2Store, IDisposable
         }
 
         if (handles.Count == 0)
-            return Array.Empty<TEntity>();
+            return [];
 
         handles.Sort(static (a, b) =>
         {

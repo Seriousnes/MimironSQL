@@ -136,7 +136,7 @@ internal sealed class MimironDb2LazyLoader(
 
         var typedEntity = (TEntity)entity;
 
-        _ = Db2IncludeChainExecutor.Apply<TEntity, TRow>(
+        _ = Db2IncludeChainExecutor.Apply(
             source: [typedEntity],
             model: model,
             tableResolver: TableResolver,

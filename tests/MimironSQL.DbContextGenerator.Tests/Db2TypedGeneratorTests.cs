@@ -16,7 +16,7 @@ public sealed class DbContextGeneratorSmokeTests
     [Fact]
     public void Generator_can_be_constructed()
     {
-        var generator = new MimironSQL.DbContextGenerator.DbContextGenerator();
+        var generator = new DbContextGenerator();
         generator.ShouldNotBeNull();
     }
 
@@ -129,7 +129,7 @@ Map<32>
             references: GetReferences(),
             options: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
 
-        var generator = new MimironSQL.DbContextGenerator.DbContextGenerator();
+        var generator = new DbContextGenerator();
         GeneratorDriver driver = CSharpGeneratorDriver.Create(
             generators: [generator.AsSourceGenerator()],
             additionalTexts: [],
@@ -288,7 +288,7 @@ Foo<32>
                 text: SourceText.From(f.Content, Encoding.UTF8)))
         ];
 
-        var generator = new MimironSQL.DbContextGenerator.DbContextGenerator();
+        var generator = new DbContextGenerator();
         GeneratorDriver driver = CSharpGeneratorDriver.Create(
             generators: [generator.AsSourceGenerator()],
             additionalTexts: additionalTexts,

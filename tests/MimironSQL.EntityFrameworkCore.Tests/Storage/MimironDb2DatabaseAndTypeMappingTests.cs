@@ -21,7 +21,7 @@ public sealed class MimironDb2DatabaseAndTypeMappingTests
         var dependencies = new DatabaseDependencies(
             Substitute.For<IQueryCompilationContextFactory>(),
             Substitute.For<IUpdateAdapterFactory>(),
-            Substitute.For<IDiagnosticsLogger<Microsoft.EntityFrameworkCore.DbLoggerCategory.Update>>());
+            Substitute.For<IDiagnosticsLogger<DbLoggerCategory.Update>>());
         var db = new MimironDb2Database(dependencies);
 
         Should.Throw<NotSupportedException>(() => db.SaveChanges([]))

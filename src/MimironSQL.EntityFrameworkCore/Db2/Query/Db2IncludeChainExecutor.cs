@@ -52,7 +52,7 @@ internal static class Db2IncludeChainExecutor
             if (!IsWritable(navMember))
                 throw new NotSupportedException($"Navigation member '{navMember.Name}' must be writable.");
 
-            if (model.TryGetReferenceNavigation(currentType, navMember, out var referenceNav))
+            if (model.TryGetReferenceNavigation(currentType, navMember, out var referenceNav) && referenceNav is not null)
             {
                 current = ReferenceIncludeDispatcher<TRow>.Invoke(
                     currentType,
@@ -116,7 +116,7 @@ internal static class Db2IncludeChainExecutor
         private static readonly ConcurrentDictionary<(Type EntityType, Type TargetType), Func<
             IIncludeEntityList,
             MemberInfo,
-            Db2ReferenceNavigation,
+            Db2ReferenceNavigation?,
             Db2ModelBinding,
             Func<string, (IDb2File<TRow> File, Db2TableSchema Schema)>,
             IDb2EntityFactory,
@@ -127,7 +127,7 @@ internal static class Db2IncludeChainExecutor
             Type targetType,
             IIncludeEntityList current,
             MemberInfo navMember,
-            Db2ReferenceNavigation navigation,
+            Db2ReferenceNavigation? navigation,
             Db2ModelBinding model,
             Func<string, (IDb2File<TRow> File, Db2TableSchema Schema)> tableResolver,
             IDb2EntityFactory entityFactory)
@@ -139,7 +139,7 @@ internal static class Db2IncludeChainExecutor
         private static Func<
             IIncludeEntityList,
             MemberInfo,
-            Db2ReferenceNavigation,
+            Db2ReferenceNavigation?,
             Db2ModelBinding,
             Func<string, (IDb2File<TRow> File, Db2TableSchema Schema)>,
             IDb2EntityFactory,
@@ -149,21 +149,7 @@ internal static class Db2IncludeChainExecutor
                 .GetMethod(nameof(ApplyReferenceIncludeAndCollectNext), BindingFlags.Static | BindingFlags.NonPublic)!
                 .MakeGenericMethod(key.EntityType, key.TargetType, typeof(TRow));
 
-            return (Func<
-                IIncludeEntityList,
-                MemberInfo,
-                Db2ReferenceNavigation,
-                Db2ModelBinding,
-                Func<string, (IDb2File<TRow> File, Db2TableSchema Schema)>,
-                IDb2EntityFactory,
-                IIncludeEntityList>)method.CreateDelegate(typeof(Func<
-                    IIncludeEntityList,
-                    MemberInfo,
-                    Db2ReferenceNavigation,
-                    Db2ModelBinding,
-                    Func<string, (IDb2File<TRow> File, Db2TableSchema Schema)>,
-                    IDb2EntityFactory,
-                    IIncludeEntityList>));
+            return method.CreateDelegate<Func<IIncludeEntityList, MemberInfo, Db2ReferenceNavigation?, Db2ModelBinding, Func<string, (IDb2File<TRow> File, Db2TableSchema Schema)>, IDb2EntityFactory, IIncludeEntityList>>();
         }
     }
 
@@ -223,21 +209,7 @@ internal static class Db2IncludeChainExecutor
                 .GetMethod(nameof(ApplyForeignKeyArrayIncludeAndCollectNext), BindingFlags.Static | BindingFlags.NonPublic)!
                 .MakeGenericMethod(key.EntityType, key.TargetType, typeof(TRow));
 
-            return (Func<
-                IIncludeEntityList,
-                MemberInfo,
-                Db2CollectionNavigation,
-                Db2ModelBinding,
-                Func<string, (IDb2File<TRow> File, Db2TableSchema Schema)>,
-                IDb2EntityFactory,
-                IIncludeEntityList>)method.CreateDelegate(typeof(Func<
-                    IIncludeEntityList,
-                    MemberInfo,
-                    Db2CollectionNavigation,
-                    Db2ModelBinding,
-                    Func<string, (IDb2File<TRow> File, Db2TableSchema Schema)>,
-                    IDb2EntityFactory,
-                    IIncludeEntityList>));
+            return method.CreateDelegate<Func<IIncludeEntityList, MemberInfo, Db2CollectionNavigation, Db2ModelBinding, Func<string, (IDb2File<TRow> File, Db2TableSchema Schema)>, IDb2EntityFactory, IIncludeEntityList>>();
         }
 
         private static Func<
@@ -253,21 +225,7 @@ internal static class Db2IncludeChainExecutor
                 .GetMethod(nameof(ApplyDependentForeignKeyIncludeAndCollectNext), BindingFlags.Static | BindingFlags.NonPublic)!
                 .MakeGenericMethod(key.EntityType, key.TargetType, typeof(TRow));
 
-            return (Func<
-                IIncludeEntityList,
-                MemberInfo,
-                Db2CollectionNavigation,
-                Db2ModelBinding,
-                Func<string, (IDb2File<TRow> File, Db2TableSchema Schema)>,
-                IDb2EntityFactory,
-                IIncludeEntityList>)method.CreateDelegate(typeof(Func<
-                    IIncludeEntityList,
-                    MemberInfo,
-                    Db2CollectionNavigation,
-                    Db2ModelBinding,
-                    Func<string, (IDb2File<TRow> File, Db2TableSchema Schema)>,
-                    IDb2EntityFactory,
-                    IIncludeEntityList>));
+            return method.CreateDelegate<Func<IIncludeEntityList, MemberInfo, Db2CollectionNavigation, Db2ModelBinding, Func<string, (IDb2File<TRow> File, Db2TableSchema Schema)>, IDb2EntityFactory, IIncludeEntityList>>();
         }
     }
 
@@ -451,17 +409,16 @@ internal static class Db2IncludeChainExecutor
                 keys.Add(key);
         }
 
+        // IMPORTANT: do not enumerate rows to resolve include targets.
+        // EnumerateRows/EnumerateRowHandles only returns physical records; copy-table IDs are resolved
+        // through TryGetRowHandle. Includes must honor copy IDs since entity keys can be copy IDs.
         Dictionary<int, TTarget> relatedByKey = new(capacity: Math.Min(keys.Count, relatedFile.RecordsCount));
-        if (keys.Count != 0)
+        foreach (var key in keys)
         {
-            foreach (var row in relatedFile.EnumerateRows())
-            {
-                var rowId = Db2RowHandleAccess.AsHandle(row).RowId;
-                if (!keys.Contains(rowId))
-                    continue;
+            if (!relatedFile.TryGetRowHandle(key, out var handle))
+                continue;
 
-                relatedByKey[rowId] = materializer.Materialize(relatedFile, Db2RowHandleAccess.AsHandle(row));
-            }
+            relatedByKey[key] = materializer.Materialize(relatedFile, handle);
         }
 
         for (var i = 0; i < entitiesWithKeys.Count; i++)

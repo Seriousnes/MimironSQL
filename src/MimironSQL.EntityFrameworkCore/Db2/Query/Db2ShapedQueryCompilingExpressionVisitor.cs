@@ -370,7 +370,7 @@ internal sealed class Db2ShapedQueryCompilingExpressionVisitor(
         {
             // Check if the member access is on a StructuralTypeShaperExpression (entity access)
             // and if that member is a navigation property
-            if (node.Expression is StructuralTypeShaperExpression && node.Member is System.Reflection.PropertyInfo property)
+            if (node.Expression is StructuralTypeShaperExpression && node.Member is PropertyInfo property)
             {
                 var navigation = entityType.FindNavigation(property.Name);
                 if (navigation is not null)
@@ -430,7 +430,7 @@ internal sealed class Db2ShapedQueryCompilingExpressionVisitor(
         var baseEnumerable = new Db2QueryingEnumerable<T>(queryContext, plan, shaper);
 
         // Apply includes using the batched executor
-        return ApplyIncludes<T>(baseEnumerable, db2Context, includeChains, ignoreAutoIncludes);
+        return ApplyIncludes(baseEnumerable, db2Context, includeChains, ignoreAutoIncludes);
     }
 
     /// <summary>
@@ -467,7 +467,7 @@ internal sealed class Db2ShapedQueryCompilingExpressionVisitor(
         IEnumerable<T> current = source;
         for (var i = 0; i < includeChains.Count; i++)
         {
-            current = Db2IncludeChainExecutor.Apply<T, RowHandle>(
+            current = Db2IncludeChainExecutor.Apply(
                 current,
                 modelBinding,
                 TableResolver,

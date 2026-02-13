@@ -18,11 +18,11 @@ internal abstract class Db2FilterExpression : Expression
 /// </summary>
 internal sealed class Db2ComparisonFilterExpression(
     Db2FieldAccessExpression field,
-    Db2ComparisonKind comparisonKind,
+    ExpressionType comparisonKind,
     object? value) : Db2FilterExpression
 {
     public new Db2FieldAccessExpression Field { get; } = field;
-    public Db2ComparisonKind ComparisonKind { get; } = comparisonKind;
+    public ExpressionType ComparisonKind { get; } = comparisonKind;
     public object? Value { get; } = value;
 
     protected override Expression VisitChildren(ExpressionVisitor visitor) => this;
@@ -163,11 +163,11 @@ internal sealed class Db2NullCheckFilterExpression(
 /// </summary>
 internal sealed class Db2StringLengthFilterExpression(
     Db2FieldAccessExpression field,
-    Db2ComparisonKind comparisonKind,
+    ExpressionType comparisonKind,
     int value) : Db2FilterExpression
 {
     public new Db2FieldAccessExpression Field { get; } = field;
-    public Db2ComparisonKind ComparisonKind { get; } = comparisonKind;
+    public ExpressionType ComparisonKind { get; } = comparisonKind;
     public int Value { get; } = value;
 
     protected override Expression VisitChildren(ExpressionVisitor visitor) => this;
@@ -181,11 +181,11 @@ internal sealed class Db2StringLengthFilterExpression(
 /// </summary>
 internal sealed class Db2JoinedComparisonFilterExpression(
     Db2JoinedFieldAccessExpression field,
-    Db2ComparisonKind comparisonKind,
+    ExpressionType comparisonKind,
     object? value) : Db2FilterExpression
 {
     public new Db2JoinedFieldAccessExpression Field { get; } = field;
-    public Db2ComparisonKind ComparisonKind { get; } = comparisonKind;
+    public ExpressionType ComparisonKind { get; } = comparisonKind;
     public object? Value { get; } = value;
 
     protected override Expression VisitChildren(ExpressionVisitor visitor) => this;
@@ -241,14 +241,4 @@ internal sealed class Db2JoinedNullCheckFilterExpression(
     protected override Expression VisitChildren(ExpressionVisitor visitor) => this;
 
     public override string ToString() => IsNotNull ? $"{Field} IS NOT NULL" : $"{Field} IS NULL";
-}
-
-internal enum Db2ComparisonKind
-{
-    Equal,
-    NotEqual,
-    GreaterThan,
-    GreaterThanOrEqual,
-    LessThan,
-    LessThanOrEqual,
 }

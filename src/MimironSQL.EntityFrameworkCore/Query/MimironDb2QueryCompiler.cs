@@ -109,7 +109,7 @@ internal sealed class MimironDb2QueryExecutor(
             IEnumerable<TEntity> current = rootEntities;
             for (var i = 0; i < preprocessed.IncludeChains.Count; i++)
             {
-                current = Db2IncludeChainExecutor.Apply<TEntity, RowHandle>(
+                current = Db2IncludeChainExecutor.Apply(
                     current,
                     model,
                     name => _store.OpenTableWithSchema<RowHandle>(name),
@@ -120,7 +120,7 @@ internal sealed class MimironDb2QueryExecutor(
             // Materialize the included entities, substitute the root in the residual
             // expression, and let LINQ-to-Objects handle Select + terminal operators.
             var entities = current.ToList();
-            var residual = SubstituteRoot<TEntity>(keyLookup.ResidualExpression, entities);
+            var residual = SubstituteRoot(keyLookup.ResidualExpression, entities);
             return CompileAndExecute<TResult>(residual);
         }
 
@@ -154,7 +154,7 @@ internal sealed class MimironDb2QueryExecutor(
                 IEnumerable<TEntity> current = entities;
                 for (var i = 0; i < preprocessed.IncludeChains.Count; i++)
                 {
-                    current = Db2IncludeChainExecutor.Apply<TEntity, RowHandle>(
+                    current = Db2IncludeChainExecutor.Apply(
                         current,
                         model,
                         name => _store.OpenTableWithSchema<RowHandle>(name),
@@ -225,7 +225,7 @@ internal sealed class MimironDb2QueryExecutor(
                             {
                                 rootEntityWhereCount++;
 
-                                if (TryExtractPkIds<TEntity>((Expression<Func<TEntity, bool>>)predicate, pkMemberName, out _))
+                                if (TryExtractPkIds((Expression<Func<TEntity, bool>>)predicate, pkMemberName, out _))
                                     pkWhereNode = m;
                             }
 
@@ -290,7 +290,7 @@ internal sealed class MimironDb2QueryExecutor(
 
         // Extract the IDs from the PK Where predicate.
         var pkPredicate = (Expression<Func<TEntity, bool>>)Db2ExpressionPreprocessor.UnquoteLambda(pkWhereNode.Arguments[1]);
-        if (!TryExtractPkIds<TEntity>(pkPredicate, pkMemberName, out var ids))
+        if (!TryExtractPkIds(pkPredicate, pkMemberName, out var ids))
         {
             keyLookup = default;
             return false;
@@ -322,7 +322,7 @@ internal sealed class MimironDb2QueryExecutor(
         where TEntity : class
     {
         if (takeCount is 0 || ids.Count == 0)
-            return Array.Empty<TEntity>();
+            return [];
 
         if (takeCount is < 0)
             throw new ArgumentOutOfRangeException(nameof(takeCount), "Take count cannot be negative.");
@@ -342,7 +342,7 @@ internal sealed class MimironDb2QueryExecutor(
         }
 
         if (handles.Count == 0)
-            return Array.Empty<TEntity>();
+            return [];
 
         handles.Sort(static (a, b) =>
         {
@@ -636,7 +636,7 @@ internal sealed class MimironDb2QueryExecutor(
 
     private static bool IsKeyAccess(Expression expr, ParameterExpression param, string pkMemberName)
     {
-        if (expr is MemberExpression { Member: { Name: var name }, Expression: var instance } && instance == param && name == pkMemberName)
+        if (expr is MemberExpression { Member.Name: var name, Expression: var instance } && instance == param && name == pkMemberName)
             return true;
 
         // EF.Property<T>(entity, "Id")

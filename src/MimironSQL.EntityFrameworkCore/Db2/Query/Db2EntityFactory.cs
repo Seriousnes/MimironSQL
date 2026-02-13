@@ -193,7 +193,7 @@ internal sealed class EfLazyLoadingProxyDb2EntityFactory(DbContext context, IDb2
             }
         }
 
-        return candidates ?? (IReadOnlyList<Type>)Array.Empty<Type>();
+        return candidates ?? (IReadOnlyList<Type>)[];
     }
 
     private static IReadOnlyList<Type> GetProxyFactoryServiceTypes()
@@ -239,8 +239,6 @@ internal sealed class EfLazyLoadingProxyDb2EntityFactory(DbContext context, IDb2
             bool preferLazyLoading,
             out object proxy)
         {
-            proxy = null!;
-
             var first = preferLazyLoading ? _lazyLoading : _nonLazyLoading;
             var second = preferLazyLoading ? _nonLazyLoading : _lazyLoading;
 

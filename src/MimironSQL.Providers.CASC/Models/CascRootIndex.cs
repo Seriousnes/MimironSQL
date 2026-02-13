@@ -200,7 +200,7 @@ internal sealed class CascRootIndex
         int capacityHint = totalFilesHint is { } hint && hint <= int.MaxValue ? (int)hint : 0;
         var best = capacityHint > 0
             ? new Dictionary<int, (CascKey contentKey, byte rank)>(capacityHint)
-            : new Dictionary<int, (CascKey contentKey, byte rank)>();
+            : [];
 
         while (offset < mfst.Length)
         {

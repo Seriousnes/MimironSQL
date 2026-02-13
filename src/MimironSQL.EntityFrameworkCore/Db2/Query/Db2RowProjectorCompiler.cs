@@ -11,7 +11,7 @@ internal static class Db2RowProjectorCompiler
 {
     public static bool TryCompile<TEntity, TResult, TRow>(Db2EntityType entityType, Expression<Func<TEntity, TResult>> selector, out Func<TRow, TResult> projector)
         where TRow : struct, IRowHandle
-        => TryCompile<TEntity, TResult, TRow>(file: null, entityType, selector, out projector, out _);
+        => TryCompile(file: null, entityType, selector, out projector, out _);
 
     public static bool TryCompile<TEntity, TResult, TRow>(
         IDb2File? file,

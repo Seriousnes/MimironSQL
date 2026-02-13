@@ -205,7 +205,7 @@ public sealed class CascDb2StreamProvider(IManifestProvider manifestProvider, Ca
     {
         private readonly System.Collections.Concurrent.ConcurrentDictionary<CascInstallCacheKey, Lazy<Task<CascInstallState>>> _cache = new();
 
-        public Task<CascInstallState> GetOrCreateAsync(string dataDataDirectory, CascBuildConfig buildConfig, CancellationToken cancellationToken)
+        public Task<CascInstallState> GetOrCreateAsync(string dataDataDirectory, CascBuildConfig buildConfig, CancellationToken _)
         {
             ArgumentNullException.ThrowIfNull(dataDataDirectory);
             ArgumentNullException.ThrowIfNull(buildConfig);

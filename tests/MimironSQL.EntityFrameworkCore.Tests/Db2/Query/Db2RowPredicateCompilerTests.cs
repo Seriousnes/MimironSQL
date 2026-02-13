@@ -20,7 +20,7 @@ public sealed class Db2RowPredicateCompilerTests
 
         Expression<Func<Entity, bool>> predicate = e => e != null;
 
-        Db2RowPredicateCompiler.TryCompile<Entity, RowHandle>(file, entityType, predicate, out _)
+        Db2RowPredicateCompiler.TryCompile(file, entityType, predicate, out _)
             .ShouldBeFalse();
     }
 
@@ -31,7 +31,7 @@ public sealed class Db2RowPredicateCompilerTests
 
         Expression<Func<Entity, bool>> predicate = e => e.LevelField > 0;
 
-        Db2RowPredicateCompiler.TryCompile<Entity, RowHandle>(file, entityType, predicate, out _)
+        Db2RowPredicateCompiler.TryCompile(file, entityType, predicate, out _)
             .ShouldBeFalse();
     }
 
@@ -42,7 +42,7 @@ public sealed class Db2RowPredicateCompilerTests
 
         Expression<Func<Entity, bool>> predicate = e => e.Missing > 0;
 
-        Db2RowPredicateCompiler.TryCompile<Entity, RowHandle>(file, entityType, predicate, out _)
+        Db2RowPredicateCompiler.TryCompile(file, entityType, predicate, out _)
             .ShouldBeFalse();
     }
 
@@ -53,7 +53,7 @@ public sealed class Db2RowPredicateCompilerTests
 
         Expression<Func<Entity, bool>> predicate = e => e.Level > 0;
 
-        Db2RowPredicateCompiler.TryCompile<Entity, RowHandle>(file, entityType, predicate, out var rowPredicate, out var requirements)
+        Db2RowPredicateCompiler.TryCompile(file, entityType, predicate, out var rowPredicate, out var requirements)
             .ShouldBeTrue();
 
         file.EnumerateRows().Where(rowPredicate).Select(r => r.RowId).ToArray()
@@ -69,7 +69,7 @@ public sealed class Db2RowPredicateCompilerTests
 
         Expression<Func<Entity, bool>> predicate = e => (long)e.Level > 0;
 
-        Db2RowPredicateCompiler.TryCompile<Entity, RowHandle>(file, entityType, predicate, out var rowPredicate, out var requirements)
+        Db2RowPredicateCompiler.TryCompile(file, entityType, predicate, out var rowPredicate, out var requirements)
             .ShouldBeTrue();
 
         file.EnumerateRows().Where(rowPredicate).Select(r => r.RowId).ToArray()
@@ -85,7 +85,7 @@ public sealed class Db2RowPredicateCompilerTests
 
         Expression<Func<Entity, bool>> predicate = e => e.Name.Contains("ph");
 
-        Db2RowPredicateCompiler.TryCompile<Entity, RowHandle>(file, entityType, predicate, out var rowPredicate, out var requirements)
+        Db2RowPredicateCompiler.TryCompile(file, entityType, predicate, out var rowPredicate, out var requirements)
             .ShouldBeTrue();
 
         file.EnumerateRows().Where(rowPredicate).Select(r => r.RowId).ToArray()
@@ -101,7 +101,7 @@ public sealed class Db2RowPredicateCompilerTests
 
         Expression<Func<Entity, bool>> predicate = e => e.Name.Contains('a');
 
-        Db2RowPredicateCompiler.TryCompile<Entity, RowHandle>(file, entityType, predicate, out var rowPredicate, out _)
+        Db2RowPredicateCompiler.TryCompile(file, entityType, predicate, out var rowPredicate, out _)
             .ShouldBeTrue();
 
         file.EnumerateRows().Where(rowPredicate).Select(r => r.RowId).ToArray()
@@ -129,21 +129,21 @@ public sealed class Db2RowPredicateCompilerTests
             ]);
 
         Expression<Func<Entity, bool>> contains = e => e.Name.Contains("ph");
-        Db2RowPredicateCompiler.TryCompile<Entity, RowHandle>(file, entityType, contains, out var containsPredicate)
+        Db2RowPredicateCompiler.TryCompile(file, entityType, contains, out var containsPredicate)
             .ShouldBeTrue();
 
         file.EnumerateRows().Where(containsPredicate).Select(r => r.RowId).ToArray()
             .ShouldBe([1]);
 
         Expression<Func<Entity, bool>> starts = e => e.Name.StartsWith("ga");
-        Db2RowPredicateCompiler.TryCompile<Entity, RowHandle>(file, entityType, starts, out var startsPredicate)
+        Db2RowPredicateCompiler.TryCompile(file, entityType, starts, out var startsPredicate)
             .ShouldBeTrue();
 
         file.EnumerateRows().Where(startsPredicate).Select(r => r.RowId).ToArray()
             .ShouldBe([3]);
 
         Expression<Func<Entity, bool>> ends = e => e.Name.EndsWith("ta");
-        Db2RowPredicateCompiler.TryCompile<Entity, RowHandle>(file, entityType, ends, out var endsPredicate)
+        Db2RowPredicateCompiler.TryCompile(file, entityType, ends, out var endsPredicate)
             .ShouldBeTrue();
 
         file.EnumerateRows().Where(endsPredicate).Select(r => r.RowId).ToArray()
@@ -157,7 +157,7 @@ public sealed class Db2RowPredicateCompilerTests
 
         Expression<Func<Entity, bool>> predicate = e => e.Name.Contains('a', StringComparison.Ordinal);
 
-        Db2RowPredicateCompiler.TryCompile<Entity, RowHandle>(file, entityType, predicate, out _)
+        Db2RowPredicateCompiler.TryCompile(file, entityType, predicate, out _)
             .ShouldBeFalse();
     }
 
@@ -168,7 +168,7 @@ public sealed class Db2RowPredicateCompilerTests
 
         Expression<Func<Entity, bool>> predicate = e => e.Name.Contains(e.Name);
 
-        Db2RowPredicateCompiler.TryCompile<Entity, RowHandle>(file, entityType, predicate, out _)
+        Db2RowPredicateCompiler.TryCompile(file, entityType, predicate, out _)
             .ShouldBeFalse();
     }
 
@@ -188,15 +188,15 @@ public sealed class Db2RowPredicateCompilerTests
             ]);
 
         Expression<Func<Entity, bool>> direct = e => e.Name == "alpha";
-        Db2RowPredicateCompiler.TryCompile<Entity, RowHandle>(file, entityType, direct, out _)
+        Db2RowPredicateCompiler.TryCompile(file, entityType, direct, out _)
             .ShouldBeFalse();
 
         Expression<Func<Entity, bool>> contains = e => e.Name.Contains('a');
-        Db2RowPredicateCompiler.TryCompile<Entity, RowHandle>(file, entityType, contains, out _)
+        Db2RowPredicateCompiler.TryCompile(file, entityType, contains, out _)
             .ShouldBeFalse();
 
         Expression<Func<Entity, bool>> convert = e => ((object)e.Name) != null;
-        Db2RowPredicateCompiler.TryCompile<Entity, RowHandle>(file, entityType, convert, out _)
+        Db2RowPredicateCompiler.TryCompile(file, entityType, convert, out _)
             .ShouldBeFalse();
     }
 
@@ -207,7 +207,7 @@ public sealed class Db2RowPredicateCompilerTests
 
         Expression<Func<Entity, bool>> predicate = e => e.Ints == null;
 
-        Db2RowPredicateCompiler.TryCompile<Entity, RowHandle>(file, entityType, predicate, out var rowPredicate, out var requirements)
+        Db2RowPredicateCompiler.TryCompile(file, entityType, predicate, out var rowPredicate, out var requirements)
             .ShouldBeTrue();
 
         file.EnumerateRows().Where(rowPredicate).ToArray().ShouldBeEmpty();
@@ -221,31 +221,31 @@ public sealed class Db2RowPredicateCompilerTests
         var (entityType, file) = CreateFixture();
 
         Expression<Func<Entity, bool>> arrayTarget = e => e.IntArray == null;
-        Db2RowPredicateCompiler.TryCompile<Entity, RowHandle>(file, entityType, arrayTarget, out var arrayPredicate)
+        Db2RowPredicateCompiler.TryCompile(file, entityType, arrayTarget, out var arrayPredicate)
             .ShouldBeTrue();
 
         file.EnumerateRows().Where(arrayPredicate).ToArray().ShouldBeEmpty();
 
         Expression<Func<Entity, bool>> setTarget = e => e.IntSet == null;
-        Db2RowPredicateCompiler.TryCompile<Entity, RowHandle>(file, entityType, setTarget, out var setPredicate)
+        Db2RowPredicateCompiler.TryCompile(file, entityType, setTarget, out var setPredicate)
             .ShouldBeTrue();
 
         file.EnumerateRows().Where(setPredicate).ToArray().ShouldBeEmpty();
 
         Expression<Func<Entity, bool>> strings = e => e.Strings == null;
-        Db2RowPredicateCompiler.TryCompile<Entity, RowHandle>(file, entityType, strings, out var stringsPredicate)
+        Db2RowPredicateCompiler.TryCompile(file, entityType, strings, out var stringsPredicate)
             .ShouldBeTrue();
 
         file.EnumerateRows().Where(stringsPredicate).ToArray().ShouldBeEmpty();
 
         Expression<Func<Entity, bool>> dates = e => e.Dates == null;
-        Db2RowPredicateCompiler.TryCompile<Entity, RowHandle>(file, entityType, dates, out var datesPredicate)
+        Db2RowPredicateCompiler.TryCompile(file, entityType, dates, out var datesPredicate)
             .ShouldBeTrue();
 
         file.EnumerateRows().Where(datesPredicate).ToArray().ShouldBeEmpty();
 
         Expression<Func<Entity, bool>> one = e => e.OneIntList == null;
-        Db2RowPredicateCompiler.TryCompile<Entity, RowHandle>(file, entityType, one, out var onePredicate)
+        Db2RowPredicateCompiler.TryCompile(file, entityType, one, out var onePredicate)
             .ShouldBeTrue();
 
         file.EnumerateRows().Where(onePredicate).ToArray().ShouldBeEmpty();

@@ -1,3 +1,5 @@
+using System.Linq.Expressions;
+
 using Microsoft.EntityFrameworkCore.Metadata;
 
 using MimironSQL.EntityFrameworkCore.Db2.Query.Expressions;
@@ -120,7 +122,7 @@ internal sealed class Db2QueryExecutionPlan
     {
         id = 0;
 
-        if (filter is Db2ComparisonFilterExpression { ComparisonKind: Db2ComparisonKind.Equal } comparison
+        if (filter is Db2ComparisonFilterExpression { ComparisonKind: ExpressionType.Equal } comparison
             && comparison.Field.Field.IsId
             && comparison.Value is int intValue)
         {
@@ -135,7 +137,7 @@ internal sealed class Db2QueryExecutionPlan
     {
         parameterName = null!;
 
-        if (filter is Db2ComparisonFilterExpression { ComparisonKind: Db2ComparisonKind.Equal } comparison
+        if (filter is Db2ComparisonFilterExpression { ComparisonKind: ExpressionType.Equal } comparison
             && comparison.Field.Field.IsId
             && comparison.Value is Db2RuntimeParameter param)
         {

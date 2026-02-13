@@ -2,5 +2,5 @@
 
 public partial class MapEntity
 {
-    public ICollection<MapChallengeModeEntity> MapChallengeModes { get; set; } = [];
+    public virtual ICollection<MapChallengeModeEntity> MapChallengeModes { get; set; } = [];
 }

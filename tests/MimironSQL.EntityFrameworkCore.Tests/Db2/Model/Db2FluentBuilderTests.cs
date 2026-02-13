@@ -29,6 +29,7 @@ public sealed class Db2FluentBuilderTests
         var navMember = typeof(Child).GetProperty(nameof(Child.Parent))!;
         model.TryGetReferenceNavigation(typeof(Child), navMember, out var nav).ShouldBeTrue();
 
+        nav.ShouldNotBeNull();
         nav.Kind.ShouldBe(Db2ReferenceNavigationKind.ForeignKeyToPrimaryKey);
         nav.SourceKeyMember.Name.ShouldBe(nameof(Child.ParentId));
         nav.TargetKeyMember.Name.ShouldBe(nameof(Parent.Id));
@@ -51,6 +52,7 @@ public sealed class Db2FluentBuilderTests
         var navMember = typeof(Parent).GetProperty(nameof(Parent.Child))!;
         model.TryGetReferenceNavigation(typeof(Parent), navMember, out var nav).ShouldBeTrue();
 
+        nav.ShouldNotBeNull();
         nav.Kind.ShouldBe(Db2ReferenceNavigationKind.SharedPrimaryKeyOneToOne);
         nav.SourceKeyMember.Name.ShouldBe(nameof(Parent.Id));
         nav.TargetKeyMember.Name.ShouldBe(nameof(Child.Id));

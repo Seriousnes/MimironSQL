@@ -485,7 +485,7 @@ public sealed class DbContextGenerator : IIncrementalGenerator
         InvalidWowVersion,
     }
 
-    private readonly struct EnvResult(DbContextGenerator.EnvResultKind kind, DbContextGenerator.WowVersion? version, string? rawValue)
+    private readonly struct EnvResult(EnvResultKind kind, WowVersion? version, string? rawValue)
     {
         /// <summary>
         /// Gets the kind of environment read result.
@@ -619,8 +619,8 @@ public sealed class DbContextGenerator : IIncrementalGenerator
         string className,
         string idColumnName,
         string idTypeName,
-        ImmutableArray<DbContextGenerator.ScalarPropertySpec> scalarProperties,
-        ImmutableArray<DbContextGenerator.NavigationSpec> navigations)
+        ImmutableArray<ScalarPropertySpec> scalarProperties,
+        ImmutableArray<NavigationSpec> navigations)
     {
         /// <summary>
         /// Gets the source table name.

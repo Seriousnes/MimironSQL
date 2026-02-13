@@ -18,7 +18,7 @@ internal static class Db2EntityMaterializerCache
 
     private readonly record struct CacheKey(Type EntityClrType, int SchemaSignature);
 
-    private static readonly ConditionalWeakTable<IModel, ModelCache> Caches = new();
+    private static readonly ConditionalWeakTable<IModel, ModelCache> Caches = [];
 
     public static void Precompile(IModel efModel, Db2EntityType entityType)
     {

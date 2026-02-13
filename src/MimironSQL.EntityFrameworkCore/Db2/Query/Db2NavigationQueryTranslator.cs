@@ -85,7 +85,7 @@ internal static class Db2NavigationQueryTranslator
         if (!TryParseNavigationStringPredicate(body, rootParam, out var navMember, out var targetMember, out var matchKind, out var needle))
             return false;
 
-        if (!model.TryGetReferenceNavigation(typeof(TEntity), navMember, out var navigation))
+        if (!model.TryGetReferenceNavigation(typeof(TEntity), navMember, out var navigation) || navigation is null)
             return false;
 
         var root = model.GetEntityType(typeof(TEntity));
@@ -135,7 +135,7 @@ internal static class Db2NavigationQueryTranslator
         if (!TryParseNavigationScalarPredicate(body, rootParam, out var navMember, out var targetMember, out var comparisonKind, out var comparisonValueExpression, out var scalarType))
             return false;
 
-        if (!model.TryGetReferenceNavigation(typeof(TEntity), navMember, out var navigation))
+        if (!model.TryGetReferenceNavigation(typeof(TEntity), navMember, out var navigation) || navigation is null)
             return false;
 
         var root = model.GetEntityType(typeof(TEntity));
@@ -318,7 +318,7 @@ internal static class Db2NavigationQueryTranslator
         if (!TryParseNavigationNullCheck(body, rootParam, out var navMember, out var isNotNull))
             return false;
 
-        if (!model.TryGetReferenceNavigation(typeof(TEntity), navMember, out var navigation))
+        if (!model.TryGetReferenceNavigation(typeof(TEntity), navMember, out var navigation) || navigation is null)
             return false;
 
         var root = model.GetEntityType(typeof(TEntity));

@@ -49,8 +49,8 @@ internal sealed class CascEncodingIndex
         if (ckeySize != CascKey.Length || ekeySize != CascKey.Length)
             throw new InvalidDataException($"Unsupported key sizes (ckey={ckeySize}, ekey={ekeySize})");
 
-        int cPageSize = checked(BinaryPrimitives.ReadUInt16BigEndian(decodedEncodingFile[5..7]) * 1024);
-        int cPageCount = checked((int)BinaryPrimitives.ReadUInt32BigEndian(decodedEncodingFile[9..13]));
+        int cPageSize = checked(BinaryPrimitives.ReadUInt16BigEndian(decodedEncodingFile.AsSpan(5, 2)) * 1024);
+        int cPageCount = checked((int)BinaryPrimitives.ReadUInt32BigEndian(decodedEncodingFile.AsSpan(9, 4)));
 
         byte flags = decodedEncodingFile[17];
         if (flags != 0)
@@ -58,7 +58,7 @@ internal sealed class CascEncodingIndex
             // Not expected as of 2025-02, but tolerate unknown flags for now.
         }
 
-        int eSpecSize = checked((int)BinaryPrimitives.ReadUInt32BigEndian(decodedEncodingFile[18..22]));
+        int eSpecSize = checked((int)BinaryPrimitives.ReadUInt32BigEndian(decodedEncodingFile.AsSpan(18, 4)));
 
         int offset = 0x16;
         if (offset + eSpecSize > decodedEncodingFile.Length)

@@ -17,7 +17,7 @@ internal sealed class Db2ModelBinding(IModel efModel, Func<string, Db2TableSchem
     private readonly Func<string, Db2TableSchema> _schemaResolver = schemaResolver ?? throw new ArgumentNullException(nameof(schemaResolver));
 
     private readonly ConcurrentDictionary<Type, Lazy<Db2EntityType>> _entityTypes = new();
-    private readonly ConcurrentDictionary<(Type SourceClrType, MemberInfo NavigationMember), Lazy<Db2ReferenceNavigation>> _referenceNavigations = new();
+    private readonly ConcurrentDictionary<(Type SourceClrType, MemberInfo NavigationMember), Lazy<Db2ReferenceNavigation?>> _referenceNavigations = new();
     private readonly ConcurrentDictionary<(Type SourceClrType, MemberInfo NavigationMember), Lazy<Db2CollectionNavigation>> _collectionNavigations = new();
     private readonly ConcurrentDictionary<Type, IReadOnlyList<MemberInfo>> _autoIncludeNavigations = new();
 
@@ -35,7 +35,7 @@ internal sealed class Db2ModelBinding(IModel efModel, Func<string, Db2TableSchem
         return lazy.Value;
     }
 
-    public bool TryGetReferenceNavigation(Type sourceClrType, MemberInfo navigationMember, out Db2ReferenceNavigation navigation)
+    public bool TryGetReferenceNavigation(Type sourceClrType, MemberInfo navigationMember, out Db2ReferenceNavigation? navigation)
     {
         ArgumentNullException.ThrowIfNull(sourceClrType);
         ArgumentNullException.ThrowIfNull(navigationMember);
@@ -45,17 +45,17 @@ internal sealed class Db2ModelBinding(IModel efModel, Func<string, Db2TableSchem
 
         var lazy = _referenceNavigations.GetOrAdd(
             key,
-            static (k, self) => new Lazy<Db2ReferenceNavigation>(() => self.BuildReferenceNavigation(k.SourceClrType, k.NavigationMember), LazyThreadSafetyMode.ExecutionAndPublication),
+            static (k, self) => new Lazy<Db2ReferenceNavigation?>(() => self.BuildReferenceNavigation(k.SourceClrType, k.NavigationMember), LazyThreadSafetyMode.ExecutionAndPublication),
             this);
 
         try
         {
             navigation = lazy.Value;
-            return true;
+            return navigation is not null;
         }
         catch (KeyNotFoundException)
         {
-            navigation = null!;
+            navigation = null;
             return false;
         }
     }
@@ -165,23 +165,23 @@ internal sealed class Db2ModelBinding(IModel efModel, Func<string, Db2TableSchem
         }
     }
 
-    private Db2ReferenceNavigation BuildReferenceNavigation(Type sourceClrType, MemberInfo navigationMember)
+    private Db2ReferenceNavigation? BuildReferenceNavigation(Type sourceClrType, MemberInfo navigationMember)
     {
         var sourceEntityEf = _efModel.FindEntityType(sourceClrType);
         if (sourceEntityEf is null)
-            throw new KeyNotFoundException();
+            return null;
 
         var nav = sourceEntityEf.FindNavigation(navigationMember.Name);
         if (nav is null || nav.PropertyInfo is null)
-            throw new KeyNotFoundException();
+            return null;
 
         if (nav.IsCollection)
-            throw new KeyNotFoundException();
+            return null;
 
         var fk = nav.ForeignKey;
 
         if (fk.Properties.Count != 1 || fk.PrincipalKey.Properties.Count != 1)
-            throw new KeyNotFoundException();
+            return null;
 
         var sourceClr = sourceClrType;
         var targetClr = nav.TargetEntityType.ClrType;
@@ -192,10 +192,10 @@ internal sealed class Db2ModelBinding(IModel efModel, Func<string, Db2TableSchem
             if (fk.DeclaringEntityType.ClrType == sourceClr)
             {
                 if (fk.Properties[0].PropertyInfo is not { } sourceFkProp)
-                    throw new KeyNotFoundException();
+                    return null;
 
                 if (fk.PrincipalKey.Properties[0].PropertyInfo is not { } principalKey)
-                    throw new KeyNotFoundException();
+                    return null;
 
                 var sourceEntity = GetEntityType(sourceClr);
                 var targetEntity = GetEntityType(targetClr);
@@ -252,10 +252,7 @@ internal sealed class Db2ModelBinding(IModel efModel, Func<string, Db2TableSchem
 
     private Db2CollectionNavigation BuildCollectionNavigation(Type sourceClrType, MemberInfo navigationMember)
     {
-        var sourceEntityEf = _efModel.FindEntityType(sourceClrType);
-        if (sourceEntityEf is null)
-            throw new KeyNotFoundException();
-
+        var sourceEntityEf = _efModel.FindEntityType(sourceClrType) ?? throw new KeyNotFoundException();
         var nav = sourceEntityEf.FindNavigation(navigationMember.Name);
         if (nav is null || nav.PropertyInfo is null)
             throw new KeyNotFoundException();
@@ -305,10 +302,7 @@ internal sealed class Db2ModelBinding(IModel efModel, Func<string, Db2TableSchem
             if (fk.Properties[0].PropertyInfo is not { } dependentFkMember)
                 throw new KeyNotFoundException();
 
-            var principalKeyMember = fk.PrincipalKey.Properties[0].PropertyInfo;
-            if (principalKeyMember is null)
-                throw new KeyNotFoundException();
-
+            var principalKeyMember = fk.PrincipalKey.Properties[0].PropertyInfo ?? throw new KeyNotFoundException();
             var principalKeyType = principalKeyMember.GetMemberType();
             if (!principalKeyType.IsScalarType())
                 throw new NotSupportedException($"Principal key member '{sourceClrType.FullName}.{principalKeyMember.Name}' must be a scalar type.");

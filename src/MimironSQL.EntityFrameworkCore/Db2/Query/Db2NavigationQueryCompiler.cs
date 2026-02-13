@@ -39,7 +39,7 @@ internal static class Db2NavigationQueryCompiler
             if (Db2NavigationQueryTranslator.TryTranslateCollectionAnyPredicate(model, left, out var leftAnyPlan) &&
                 Db2RowPredicateCompiler.TryCompile(rootFile, rootEntityType, right, out var rightRowPredicateAny))
             {
-                var ids = FindMatchingRootIdsForCollectionAny<TRow>(model, tableResolver, leftAnyPlan.Navigation, leftAnyPlan.DependentPredicate);
+                var ids = FindMatchingRootIdsForCollectionAny(model, tableResolver, leftAnyPlan.Navigation, leftAnyPlan.DependentPredicate);
                 var nav = CompileSharedPrimaryKeySemiJoin<TRow>(ids);
                 rowPredicate = row => nav(row) && rightRowPredicateAny(row);
                 return true;
@@ -48,7 +48,7 @@ internal static class Db2NavigationQueryCompiler
             if (Db2NavigationQueryTranslator.TryTranslateCollectionAnyPredicate(model, right, out var rightAnyPlan) &&
                 Db2RowPredicateCompiler.TryCompile(rootFile, rootEntityType, left, out var leftRowPredicateAny))
             {
-                var ids = FindMatchingRootIdsForCollectionAny<TRow>(model, tableResolver, rightAnyPlan.Navigation, rightAnyPlan.DependentPredicate);
+                var ids = FindMatchingRootIdsForCollectionAny(model, tableResolver, rightAnyPlan.Navigation, rightAnyPlan.DependentPredicate);
                 var nav = CompileSharedPrimaryKeySemiJoin<TRow>(ids);
                 rowPredicate = row => leftRowPredicateAny(row) && nav(row);
                 return true;
@@ -58,8 +58,8 @@ internal static class Db2NavigationQueryCompiler
                 Db2NavigationQueryTranslator.TryTranslateCollectionAnyPredicate(model, right, out var rightAny) &&
                 leftAny.Navigation.NavigationMember != rightAny.Navigation.NavigationMember)
             {
-                var leftIds = FindMatchingRootIdsForCollectionAny<TRow>(model, tableResolver, leftAny.Navigation, leftAny.DependentPredicate);
-                var rightIds = FindMatchingRootIdsForCollectionAny<TRow>(model, tableResolver, rightAny.Navigation, rightAny.DependentPredicate);
+                var leftIds = FindMatchingRootIdsForCollectionAny(model, tableResolver, leftAny.Navigation, leftAny.DependentPredicate);
+                var rightIds = FindMatchingRootIdsForCollectionAny(model, tableResolver, rightAny.Navigation, rightAny.DependentPredicate);
 
                 var leftNav = CompileSharedPrimaryKeySemiJoin<TRow>(leftIds);
                 var rightNav = CompileSharedPrimaryKeySemiJoin<TRow>(rightIds);
@@ -71,8 +71,8 @@ internal static class Db2NavigationQueryCompiler
                 Db2NavigationQueryTranslator.TryTranslateCollectionAnyPredicate(model, right, out var rightAnySame) &&
                 leftAnySame.Navigation.NavigationMember == rightAnySame.Navigation.NavigationMember)
             {
-                var leftIds = FindMatchingRootIdsForCollectionAny<TRow>(model, tableResolver, leftAnySame.Navigation, leftAnySame.DependentPredicate);
-                var rightIds = FindMatchingRootIdsForCollectionAny<TRow>(model, tableResolver, rightAnySame.Navigation, rightAnySame.DependentPredicate);
+                var leftIds = FindMatchingRootIdsForCollectionAny(model, tableResolver, leftAnySame.Navigation, leftAnySame.DependentPredicate);
+                var rightIds = FindMatchingRootIdsForCollectionAny(model, tableResolver, rightAnySame.Navigation, rightAnySame.DependentPredicate);
                 leftIds.IntersectWith(rightIds);
 
                 rowPredicate = CompileSharedPrimaryKeySemiJoin<TRow>(leftIds);
@@ -84,8 +84,8 @@ internal static class Db2NavigationQueryCompiler
                 Db2NavigationQueryTranslator.TryTranslateScalarPredicate(model, right, out var scalarRight) &&
                 nullCheckLeft.Join.Navigation.NavigationMember == scalarRight.Join.Navigation.NavigationMember)
             {
-                var existingIds = FindExistingTargetIds<TRow>(tableResolver, nullCheckLeft);
-                var scalarIds = FindMatchingIdsScalar<TRow>(tableResolver, scalarRight);
+                var existingIds = FindExistingTargetIds(tableResolver, nullCheckLeft);
+                var scalarIds = FindMatchingIdsScalar(tableResolver, scalarRight);
                 existingIds.IntersectWith(scalarIds);
 
                 rowPredicate = nullCheckLeft.Join.Kind switch
@@ -103,8 +103,8 @@ internal static class Db2NavigationQueryCompiler
                 Db2NavigationQueryTranslator.TryTranslateNullCheck(model, right, out var nullCheckRight) && nullCheckRight.IsNotNull &&
                 scalarLeft.Join.Navigation.NavigationMember == nullCheckRight.Join.Navigation.NavigationMember)
             {
-                var scalarIds = FindMatchingIdsScalar<TRow>(tableResolver, scalarLeft);
-                var existingIds = FindExistingTargetIds<TRow>(tableResolver, nullCheckRight);
+                var scalarIds = FindMatchingIdsScalar(tableResolver, scalarLeft);
+                var existingIds = FindExistingTargetIds(tableResolver, nullCheckRight);
                 scalarIds.IntersectWith(existingIds);
 
                 rowPredicate = scalarLeft.Join.Kind switch
@@ -122,8 +122,8 @@ internal static class Db2NavigationQueryCompiler
                 Db2NavigationQueryTranslator.TryTranslateScalarPredicate(model, right, out var rightScalarString) &&
                 leftStringScalar.Join.Navigation.NavigationMember == rightScalarString.Join.Navigation.NavigationMember)
             {
-                var leftIds = FindMatchingIds<TRow>(tableResolver, leftStringScalar);
-                var rightIds = FindMatchingIdsScalar<TRow>(tableResolver, rightScalarString);
+                var leftIds = FindMatchingIds(tableResolver, leftStringScalar);
+                var rightIds = FindMatchingIdsScalar(tableResolver, rightScalarString);
                 leftIds.IntersectWith(rightIds);
 
                 rowPredicate = leftStringScalar.Join.Kind switch
@@ -141,8 +141,8 @@ internal static class Db2NavigationQueryCompiler
                 Db2NavigationQueryTranslator.TryTranslateStringPredicate(model, right, out var rightStringScalar2) &&
                 leftScalarString2.Join.Navigation.NavigationMember == rightStringScalar2.Join.Navigation.NavigationMember)
             {
-                var leftIds = FindMatchingIdsScalar<TRow>(tableResolver, leftScalarString2);
-                var rightIds = FindMatchingIds<TRow>(tableResolver, rightStringScalar2);
+                var leftIds = FindMatchingIdsScalar(tableResolver, leftScalarString2);
+                var rightIds = FindMatchingIds(tableResolver, rightStringScalar2);
                 leftIds.IntersectWith(rightIds);
 
                 rowPredicate = leftScalarString2.Join.Kind switch
@@ -160,8 +160,8 @@ internal static class Db2NavigationQueryCompiler
                 Db2NavigationQueryTranslator.TryTranslateScalarPredicate(model, right, out var rightScalarPlan) &&
                 leftScalarPlan.Join.Navigation.NavigationMember == rightScalarPlan.Join.Navigation.NavigationMember)
             {
-                var leftIds = FindMatchingIdsScalar<TRow>(tableResolver, leftScalarPlan);
-                var rightIds = FindMatchingIdsScalar<TRow>(tableResolver, rightScalarPlan);
+                var leftIds = FindMatchingIdsScalar(tableResolver, leftScalarPlan);
+                var rightIds = FindMatchingIdsScalar(tableResolver, rightScalarPlan);
                 leftIds.IntersectWith(rightIds);
 
                 rowPredicate = leftScalarPlan.Join.Kind switch
@@ -179,8 +179,8 @@ internal static class Db2NavigationQueryCompiler
                 Db2NavigationQueryTranslator.TryTranslateScalarPredicate(model, right, out var rightScalarCross) &&
                 leftScalarCross.Join.Navigation.NavigationMember != rightScalarCross.Join.Navigation.NavigationMember)
             {
-                var leftIds = FindMatchingIdsScalar<TRow>(tableResolver, leftScalarCross);
-                var rightIds = FindMatchingIdsScalar<TRow>(tableResolver, rightScalarCross);
+                var leftIds = FindMatchingIdsScalar(tableResolver, leftScalarCross);
+                var rightIds = FindMatchingIdsScalar(tableResolver, rightScalarCross);
 
                 var leftNav = CompileNavigationSemiJoin<TRow>(rootFile, leftScalarCross.Join, leftIds);
                 var rightNav = CompileNavigationSemiJoin<TRow>(rootFile, rightScalarCross.Join, rightIds);
@@ -194,8 +194,8 @@ internal static class Db2NavigationQueryCompiler
                 Db2NavigationQueryTranslator.TryTranslateScalarPredicate(model, right, out var rightScalarCross2) &&
                 leftStringCross.Join.Navigation.NavigationMember != rightScalarCross2.Join.Navigation.NavigationMember)
             {
-                var leftIds = FindMatchingIds<TRow>(tableResolver, leftStringCross);
-                var rightIds = FindMatchingIdsScalar<TRow>(tableResolver, rightScalarCross2);
+                var leftIds = FindMatchingIds(tableResolver, leftStringCross);
+                var rightIds = FindMatchingIdsScalar(tableResolver, rightScalarCross2);
 
                 var leftNav = CompileNavigationSemiJoin<TRow>(rootFile, leftStringCross.Join, leftIds);
                 var rightNav = CompileNavigationSemiJoin<TRow>(rootFile, rightScalarCross2.Join, rightIds);
@@ -209,8 +209,8 @@ internal static class Db2NavigationQueryCompiler
                 Db2NavigationQueryTranslator.TryTranslateStringPredicate(model, right, out var rightStringCross) &&
                 leftScalarCross3.Join.Navigation.NavigationMember != rightStringCross.Join.Navigation.NavigationMember)
             {
-                var leftIds = FindMatchingIdsScalar<TRow>(tableResolver, leftScalarCross3);
-                var rightIds = FindMatchingIds<TRow>(tableResolver, rightStringCross);
+                var leftIds = FindMatchingIdsScalar(tableResolver, leftScalarCross3);
+                var rightIds = FindMatchingIds(tableResolver, rightStringCross);
 
                 var leftNav = CompileNavigationSemiJoin<TRow>(rootFile, leftScalarCross3.Join, leftIds);
                 var rightNav = CompileNavigationSemiJoin<TRow>(rootFile, rightStringCross.Join, rightIds);
@@ -223,8 +223,8 @@ internal static class Db2NavigationQueryCompiler
                 Db2NavigationQueryTranslator.TryTranslateStringPredicate(model, right, out var rightPlan) &&
                 leftPlan.Join.Navigation.NavigationMember == rightPlan.Join.Navigation.NavigationMember)
             {
-                var leftIds = FindMatchingIds<TRow>(tableResolver, leftPlan);
-                var rightIds = FindMatchingIds<TRow>(tableResolver, rightPlan);
+                var leftIds = FindMatchingIds(tableResolver, leftPlan);
+                var rightIds = FindMatchingIds(tableResolver, rightPlan);
                 leftIds.IntersectWith(rightIds);
 
                 rowPredicate = leftPlan.Join.Kind switch
@@ -240,7 +240,7 @@ internal static class Db2NavigationQueryCompiler
             if (Db2NavigationQueryTranslator.TryTranslateStringPredicate(model, left, out var navPlanLeft) &&
                 Db2RowPredicateCompiler.TryCompile(rootFile, rootEntityType, right, out var rightRowPredicate))
             {
-                var ids = FindMatchingIds<TRow>(tableResolver, navPlanLeft);
+                var ids = FindMatchingIds(tableResolver, navPlanLeft);
                 var nav = navPlanLeft.Join.Kind switch
                 {
                     Db2ReferenceNavigationKind.ForeignKeyToPrimaryKey => CompileForeignKeySemiJoin<TRow>(rootFile, navPlanLeft.Join.RootKeyFieldSchema, ids),
@@ -255,7 +255,7 @@ internal static class Db2NavigationQueryCompiler
             if (Db2NavigationQueryTranslator.TryTranslateScalarPredicate(model, left, out var scalarPlanLeft) &&
                 Db2RowPredicateCompiler.TryCompile(rootFile, rootEntityType, right, out var rightRowPredicate2))
             {
-                var ids = FindMatchingIdsScalar<TRow>(tableResolver, scalarPlanLeft);
+                var ids = FindMatchingIdsScalar(tableResolver, scalarPlanLeft);
                 var nav = scalarPlanLeft.Join.Kind switch
                 {
                     Db2ReferenceNavigationKind.ForeignKeyToPrimaryKey => CompileForeignKeySemiJoin<TRow>(rootFile, scalarPlanLeft.Join.RootKeyFieldSchema, ids),
@@ -270,7 +270,7 @@ internal static class Db2NavigationQueryCompiler
             if (Db2NavigationQueryTranslator.TryTranslateStringPredicate(model, right, out var navPlanRight) &&
                 Db2RowPredicateCompiler.TryCompile(rootFile, rootEntityType, left, out var leftRowPredicate))
             {
-                var ids = FindMatchingIds<TRow>(tableResolver, navPlanRight);
+                var ids = FindMatchingIds(tableResolver, navPlanRight);
                 var nav = navPlanRight.Join.Kind switch
                 {
                     Db2ReferenceNavigationKind.ForeignKeyToPrimaryKey => CompileForeignKeySemiJoin<TRow>(rootFile, navPlanRight.Join.RootKeyFieldSchema, ids),
@@ -285,7 +285,7 @@ internal static class Db2NavigationQueryCompiler
             if (Db2NavigationQueryTranslator.TryTranslateScalarPredicate(model, right, out var scalarPlanRight) &&
                 Db2RowPredicateCompiler.TryCompile(rootFile, rootEntityType, left, out var leftRowPredicate2))
             {
-                var ids = FindMatchingIdsScalar<TRow>(tableResolver, scalarPlanRight);
+                var ids = FindMatchingIdsScalar(tableResolver, scalarPlanRight);
                 var nav = scalarPlanRight.Join.Kind switch
                 {
                     Db2ReferenceNavigationKind.ForeignKeyToPrimaryKey => CompileForeignKeySemiJoin<TRow>(rootFile, scalarPlanRight.Join.RootKeyFieldSchema, ids),
@@ -300,14 +300,14 @@ internal static class Db2NavigationQueryCompiler
 
         if (Db2NavigationQueryTranslator.TryTranslateCollectionAnyPredicate(model, predicate, out var anyPlan))
         {
-            var ids = FindMatchingRootIdsForCollectionAny<TRow>(model, tableResolver, anyPlan.Navigation, anyPlan.DependentPredicate);
+            var ids = FindMatchingRootIdsForCollectionAny(model, tableResolver, anyPlan.Navigation, anyPlan.DependentPredicate);
             rowPredicate = CompileSharedPrimaryKeySemiJoin<TRow>(ids);
             return true;
         }
 
         if (Db2NavigationQueryTranslator.TryTranslateScalarPredicate(model, predicate, out var scalarPlan))
         {
-            var scalarMatchingIds = FindMatchingIdsScalar<TRow>(tableResolver, scalarPlan);
+            var scalarMatchingIds = FindMatchingIdsScalar(tableResolver, scalarPlan);
 
             rowPredicate = scalarPlan.Join.Kind switch
             {
@@ -321,7 +321,7 @@ internal static class Db2NavigationQueryCompiler
 
         if (Db2NavigationQueryTranslator.TryTranslateNullCheck(model, predicate, out var nullCheckPlan))
         {
-            var existingIds = FindExistingTargetIds<TRow>(tableResolver, nullCheckPlan);
+            var existingIds = FindExistingTargetIds(tableResolver, nullCheckPlan);
 
             rowPredicate = nullCheckPlan.Join.Kind switch
             {
@@ -336,7 +336,7 @@ internal static class Db2NavigationQueryCompiler
         if (!Db2NavigationQueryTranslator.TryTranslateStringPredicate(model, predicate, out var plan))
             return false;
 
-        var stringMatchingIds = FindMatchingIds<TRow>(tableResolver, plan);
+        var stringMatchingIds = FindMatchingIds(tableResolver, plan);
 
         rowPredicate = plan.Join.Kind switch
         {
@@ -517,17 +517,7 @@ internal static class Db2NavigationQueryCompiler
                 .GetMethod(nameof(FindMatchingRootIdsForCollectionAnyTyped), BindingFlags.Static | BindingFlags.NonPublic)!
                 .MakeGenericMethod(dependentEntityClrType, typeof(TRow));
 
-            return (Func<
-                Db2ModelBinding,
-                Func<string, (IDb2File<TRow> File, Db2TableSchema Schema)>,
-                Db2CollectionNavigation,
-                LambdaExpression?,
-                HashSet<int>>)method.CreateDelegate(typeof(Func<
-                    Db2ModelBinding,
-                    Func<string, (IDb2File<TRow> File, Db2TableSchema Schema)>,
-                    Db2CollectionNavigation,
-                    LambdaExpression?,
-                    HashSet<int>>));
+            return method.CreateDelegate<Func<Db2ModelBinding, Func<string, (IDb2File<TRow> File, Db2TableSchema Schema)>, Db2CollectionNavigation, LambdaExpression?, HashSet<int>>>();
         }
     }
 
@@ -677,17 +667,17 @@ internal static class Db2NavigationQueryCompiler
     {
         return plan switch
         {
-            Db2NavigationScalarPredicatePlan<bool> p => FindMatchingIdsScalar<TRow, bool>(tableResolver, p),
-            Db2NavigationScalarPredicatePlan<byte> p => FindMatchingIdsScalar<TRow, byte>(tableResolver, p),
-            Db2NavigationScalarPredicatePlan<sbyte> p => FindMatchingIdsScalar<TRow, sbyte>(tableResolver, p),
-            Db2NavigationScalarPredicatePlan<short> p => FindMatchingIdsScalar<TRow, short>(tableResolver, p),
-            Db2NavigationScalarPredicatePlan<ushort> p => FindMatchingIdsScalar<TRow, ushort>(tableResolver, p),
-            Db2NavigationScalarPredicatePlan<int> p => FindMatchingIdsScalar<TRow, int>(tableResolver, p),
-            Db2NavigationScalarPredicatePlan<uint> p => FindMatchingIdsScalar<TRow, uint>(tableResolver, p),
-            Db2NavigationScalarPredicatePlan<long> p => FindMatchingIdsScalar<TRow, long>(tableResolver, p),
-            Db2NavigationScalarPredicatePlan<ulong> p => FindMatchingIdsScalar<TRow, ulong>(tableResolver, p),
-            Db2NavigationScalarPredicatePlan<float> p => FindMatchingIdsScalar<TRow, float>(tableResolver, p),
-            Db2NavigationScalarPredicatePlan<double> p => FindMatchingIdsScalar<TRow, double>(tableResolver, p),
+            Db2NavigationScalarPredicatePlan<bool> p => FindMatchingIdsScalar(tableResolver, p),
+            Db2NavigationScalarPredicatePlan<byte> p => FindMatchingIdsScalar(tableResolver, p),
+            Db2NavigationScalarPredicatePlan<sbyte> p => FindMatchingIdsScalar(tableResolver, p),
+            Db2NavigationScalarPredicatePlan<short> p => FindMatchingIdsScalar(tableResolver, p),
+            Db2NavigationScalarPredicatePlan<ushort> p => FindMatchingIdsScalar(tableResolver, p),
+            Db2NavigationScalarPredicatePlan<int> p => FindMatchingIdsScalar(tableResolver, p),
+            Db2NavigationScalarPredicatePlan<uint> p => FindMatchingIdsScalar(tableResolver, p),
+            Db2NavigationScalarPredicatePlan<long> p => FindMatchingIdsScalar(tableResolver, p),
+            Db2NavigationScalarPredicatePlan<ulong> p => FindMatchingIdsScalar(tableResolver, p),
+            Db2NavigationScalarPredicatePlan<float> p => FindMatchingIdsScalar(tableResolver, p),
+            Db2NavigationScalarPredicatePlan<double> p => FindMatchingIdsScalar(tableResolver, p),
             _ => [],
         };
     }

@@ -10,55 +10,45 @@ namespace MimironSQL.EntityFrameworkCore.Db2.Query.Expressions;
 /// Represents a query that joins two DB2 tables.
 /// Used for navigation property access patterns like <c>.Include(x => x.Map).Where(x => x.Map.Directory == "foo")</c>.
 /// </summary>
-internal sealed class Db2JoinedQueryExpression : Expression
+internal sealed class Db2JoinedQueryExpression(
+    Db2QueryExpression outer,
+    IEntityType innerEntityType,
+    string innerTableName,
+    string outerKeyColumn,
+    string innerKeyColumn,
+    bool isLeftJoin) : Expression
 {
     private readonly List<Db2OrderingExpression> _orderings = [];
-
-    public Db2JoinedQueryExpression(
-        Db2QueryExpression outer,
-        IEntityType innerEntityType,
-        string innerTableName,
-        string outerKeyColumn,
-        string innerKeyColumn,
-        bool isLeftJoin)
-    {
-        Outer = outer;
-        InnerEntityType = innerEntityType;
-        InnerTableName = innerTableName;
-        OuterKeyColumn = outerKeyColumn;
-        InnerKeyColumn = innerKeyColumn;
-        IsLeftJoin = isLeftJoin;
-    }
 
     /// <summary>
     /// The outer (principal) query expression.
     /// </summary>
-    public Db2QueryExpression Outer { get; }
+    public Db2QueryExpression Outer { get; } = outer;
 
     /// <summary>
     /// The entity type of the inner (related) table.
     /// </summary>
-    public IEntityType InnerEntityType { get; }
+    public IEntityType InnerEntityType { get; } = innerEntityType;
 
     /// <summary>
     /// The table name of the inner (related) table.
     /// </summary>
-    public string InnerTableName { get; }
+    public string InnerTableName { get; } = innerTableName;
 
     /// <summary>
     /// The column name in the outer table used for the join (typically the FK).
     /// </summary>
-    public string OuterKeyColumn { get; }
+    public string OuterKeyColumn { get; } = outerKeyColumn;
 
     /// <summary>
     /// The column name in the inner table used for the join (typically the PK).
     /// </summary>
-    public string InnerKeyColumn { get; }
+    public string InnerKeyColumn { get; } = innerKeyColumn;
 
     /// <summary>
     /// Whether this is a LEFT JOIN (nullable relationship) or INNER JOIN.
     /// </summary>
-    public bool IsLeftJoin { get; }
+    public bool IsLeftJoin { get; } = isLeftJoin;
 
     // ── Filter ──
     public Db2FilterExpression? JoinedFilter { get; private set; }

@@ -45,7 +45,7 @@ public sealed class Db2IncludeChainExecutorTests
                 _ => (new EmptyDb2File(), SchemaResolverFkArray(tableName)),
             };
 
-        Db2IncludeChainExecutor.Apply<ParentFkArray, RowHandle>(
+        Db2IncludeChainExecutor.Apply(
             source: [parent],
             model: model,
             tableResolver: TableResolver,
@@ -111,7 +111,7 @@ public sealed class Db2IncludeChainExecutorTests
                 _ => (new EmptyDb2File(), SchemaResolverDependent(tableName)),
             };
 
-        Db2IncludeChainExecutor.Apply<ParentDependent, RowHandle>(
+        Db2IncludeChainExecutor.Apply(
             source: parents,
             model: model,
             tableResolver: TableResolver,

@@ -67,11 +67,11 @@ internal sealed class SchemaMapper(IDbdProvider dbdProvider, string wowVersionRa
         return new Db2TableSchema(tableName, physicalIndex, fields, allowedLayoutHashes);
     }
 
-    private (MimironSQL.Dbd.IDbdBuildBlock Build, IReadOnlyList<uint>? AllowedLayoutHashes, bool IsGlobalBuild) SelectBuildBlock(
+    private (Dbd.IDbdBuildBlock Build, IReadOnlyList<uint>? AllowedLayoutHashes, bool IsGlobalBuild) SelectBuildBlock(
         string tableName,
-        MimironSQL.Dbd.IDbdFile dbd)
+        Dbd.IDbdFile dbd)
     {
-        MimironSQL.Dbd.IDbdBuildBlock? bestBuild = null;
+        Dbd.IDbdBuildBlock? bestBuild = null;
         IReadOnlyList<uint>? bestAllowedHashes = null;
         bool bestIsGlobal = false;
         WowVersion? bestCandidate = null;
@@ -141,7 +141,7 @@ internal sealed class SchemaMapper(IDbdProvider dbdProvider, string wowVersionRa
 
         var text = buildLine.Trim();
         if (text.StartsWith("BUILD ", StringComparison.Ordinal))
-            text = text.Substring("BUILD ".Length).Trim();
+            text = text["BUILD ".Length..].Trim();
 
         if (text.Length == 0)
             return false;
@@ -154,8 +154,8 @@ internal sealed class SchemaMapper(IDbdProvider dbdProvider, string wowVersionRa
             var dash = token.IndexOf('-');
             if (dash > 0)
             {
-                var startText = token.Substring(0, dash).Trim();
-                var endText = token.Substring(dash + 1).Trim();
+                var startText = token[..dash].Trim();
+                var endText = token[(dash + 1)..].Trim();
 
                 if (!WowVersion.TryParse(startText, out var start))
                     continue;

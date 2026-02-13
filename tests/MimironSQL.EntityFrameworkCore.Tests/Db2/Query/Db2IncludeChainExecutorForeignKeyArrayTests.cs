@@ -31,7 +31,7 @@ public sealed class Db2IncludeChainExecutorForeignKeyArrayTests
             Children = [],
         };
 
-        var result = Db2IncludeChainExecutor.Apply<Parent, RowHandle>(
+        var result = Db2IncludeChainExecutor.Apply(
             source: [parent],
             model: model,
             tableResolver: TableResolver,

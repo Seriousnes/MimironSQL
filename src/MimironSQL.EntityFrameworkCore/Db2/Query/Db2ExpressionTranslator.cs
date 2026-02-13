@@ -84,23 +84,10 @@ internal sealed class Db2ExpressionTranslator
         }
 
         // Comparison operators
-        var comparisonKind = binary.NodeType switch
-        {
-            ExpressionType.Equal => Db2ComparisonKind.Equal,
-            ExpressionType.NotEqual => Db2ComparisonKind.NotEqual,
-            ExpressionType.GreaterThan => Db2ComparisonKind.GreaterThan,
-            ExpressionType.GreaterThanOrEqual => Db2ComparisonKind.GreaterThanOrEqual,
-            ExpressionType.LessThan => Db2ComparisonKind.LessThan,
-            ExpressionType.LessThanOrEqual => Db2ComparisonKind.LessThanOrEqual,
-            _ => (Db2ComparisonKind?)null,
-        };
+        var comparisonKind = binary.NodeType;
 
-        if (comparisonKind is null) return null;
-
-        // Special case: entity null check (e.g., m.Inner != null or m.Outer != null)
-        // This is used by EF Core to filter based on whether a join found a match
-        if (TryExtractJoinedEntityNullCheck(binary.Left, binary.Right, context, comparisonKind.Value, out var entityNullCheckFilter)
-            || TryExtractJoinedEntityNullCheck(binary.Right, binary.Left, context, comparisonKind.Value, out entityNullCheckFilter))
+        if (TryExtractJoinedEntityNullCheck(binary.Left, binary.Right, context, comparisonKind, out var entityNullCheckFilter)
+            || TryExtractJoinedEntityNullCheck(binary.Right, binary.Left, context, comparisonKind, out entityNullCheckFilter))
         {
             return entityNullCheckFilter;
         }
@@ -112,20 +99,20 @@ internal sealed class Db2ExpressionTranslator
             // Check for null comparison
             if (joinedField is not null)
             {
-                if (value is null && comparisonKind is Db2ComparisonKind.Equal)
+                if (value is null && comparisonKind is ExpressionType.Equal)
                     return new Db2JoinedNullCheckFilterExpression(joinedField, isNotNull: false);
-                if (value is null && comparisonKind is Db2ComparisonKind.NotEqual)
+                if (value is null && comparisonKind is ExpressionType.NotEqual)
                     return new Db2JoinedNullCheckFilterExpression(joinedField, isNotNull: true);
-                return new Db2JoinedComparisonFilterExpression(joinedField, comparisonKind.Value, value);
+                return new Db2JoinedComparisonFilterExpression(joinedField, comparisonKind, value);
             }
 
             if (field is not null)
             {
-                if (value is null && comparisonKind is Db2ComparisonKind.Equal)
+                if (value is null && comparisonKind is ExpressionType.Equal)
                     return new Db2NullCheckFilterExpression(field, isNotNull: false);
-                if (value is null && comparisonKind is Db2ComparisonKind.NotEqual)
+                if (value is null && comparisonKind is ExpressionType.NotEqual)
                     return new Db2NullCheckFilterExpression(field, isNotNull: true);
-                return new Db2ComparisonFilterExpression(field, comparisonKind.Value, value);
+                return new Db2ComparisonFilterExpression(field, comparisonKind, value);
             }
         }
 
@@ -237,7 +224,7 @@ internal sealed class Db2ExpressionTranslator
         if (innerField is not null)
         {
             var isNull = new Db2JoinedNullCheckFilterExpression(innerField, isNotNull: false);
-            var isEmpty = new Db2JoinedComparisonFilterExpression(innerField, Db2ComparisonKind.Equal, "");
+            var isEmpty = new Db2JoinedComparisonFilterExpression(innerField, ExpressionType.Equal, "");
             filter = new Db2OrFilterExpression(isNull, isEmpty);
             return true;
         }
@@ -245,7 +232,7 @@ internal sealed class Db2ExpressionTranslator
         if (outerField is not null)
         {
             var isNull = new Db2NullCheckFilterExpression(outerField, isNotNull: false);
-            var isEmpty = new Db2ComparisonFilterExpression(outerField, Db2ComparisonKind.Equal, "");
+            var isEmpty = new Db2ComparisonFilterExpression(outerField, ExpressionType.Equal, "");
             filter = new Db2OrFilterExpression(isNull, isEmpty);
             return true;
         }
@@ -261,13 +248,13 @@ internal sealed class Db2ExpressionTranslator
         Expression candidateEntity,
         Expression candidateNull,
         JoinedTranslationContext context,
-        Db2ComparisonKind comparisonKind,
+        ExpressionType comparisonKind,
         [NotNullWhen(true)] out Db2FilterExpression? filter)
     {
         filter = null;
 
         // Only handle equality/inequality comparisons
-        if (comparisonKind is not (Db2ComparisonKind.Equal or Db2ComparisonKind.NotEqual))
+        if (comparisonKind is not (ExpressionType.Equal or ExpressionType.NotEqual))
         {
             return false;
         }
@@ -296,7 +283,7 @@ internal sealed class Db2ExpressionTranslator
         {
             // Create a joined null check on the primary key of the inner entity
             // This effectively checks if the join found a match
-            var pkProperty = context.InnerEntityType.FindPrimaryKey()?.Properties.FirstOrDefault();
+            var pkProperty = context.InnerEntityType.FindPrimaryKey() is { Properties.Count: > 0 } innerPk ? innerPk.Properties[0] : null;
             if (pkProperty is not null)
             {
                 var columnName = pkProperty.GetColumnName() ?? pkProperty.Name;
@@ -319,7 +306,7 @@ internal sealed class Db2ExpressionTranslator
 
                 // innerId != null means the join found a match
                 // innerId == null means no match was found
-                var isNotNull = comparisonKind == Db2ComparisonKind.NotEqual;
+                var isNotNull = comparisonKind == ExpressionType.NotEqual;
                 filter = new Db2JoinedNullCheckFilterExpression(joinedField, isNotNull);
                 return true;
             }
@@ -328,7 +315,7 @@ internal sealed class Db2ExpressionTranslator
         // Check for Outer entity null check (less common, but handle it)
         if (memberName == "Outer")
         {
-            var pkProperty = context.OuterEntityType.FindPrimaryKey()?.Properties.FirstOrDefault();
+            var pkProperty = context.OuterEntityType.FindPrimaryKey() is { Properties.Count: > 0 } outerPk ? outerPk.Properties[0] : null;        
             if (pkProperty is not null)
             {
                 var columnName = pkProperty.GetColumnName() ?? pkProperty.Name;
@@ -344,7 +331,7 @@ internal sealed class Db2ExpressionTranslator
                     ReferencedTableName: null);
 
                 var outerField = new Db2FieldAccessExpression(field, fieldIndex: -1, pkProperty.ClrType);
-                var isNotNull = comparisonKind == Db2ComparisonKind.NotEqual;
+                var isNotNull = comparisonKind == ExpressionType.NotEqual;
                 filter = new Db2NullCheckFilterExpression(outerField, isNotNull);
                 return true;
             }
@@ -361,10 +348,6 @@ internal sealed class Db2ExpressionTranslator
         out Db2JoinedFieldAccessExpression? innerField,
         out object? value)
     {
-        outerField = null;
-        innerField = null;
-        value = null;
-
         if (TryResolveJoinedFieldAccess(candidateField, context, out outerField, out innerField)
             && TryEvaluateConstant(candidateValue, out value))
         {
@@ -625,18 +608,7 @@ internal sealed class Db2ExpressionTranslator
         }
 
         // Comparison operators
-        var comparisonKind = binary.NodeType switch
-        {
-            ExpressionType.Equal => Db2ComparisonKind.Equal,
-            ExpressionType.NotEqual => Db2ComparisonKind.NotEqual,
-            ExpressionType.GreaterThan => Db2ComparisonKind.GreaterThan,
-            ExpressionType.GreaterThanOrEqual => Db2ComparisonKind.GreaterThanOrEqual,
-            ExpressionType.LessThan => Db2ComparisonKind.LessThan,
-            ExpressionType.LessThanOrEqual => Db2ComparisonKind.LessThanOrEqual,
-            _ => (Db2ComparisonKind?)null,
-        };
-
-        if (comparisonKind is null) return null;
+        var comparisonKind = binary.NodeType;
 
         // Try collection.Count comparison: collection.Count op constant (rewriting to Any)
         if (TryTranslateCollectionCountComparison(binary.Left, binary.Right, binary.NodeType, entityType, parameter, out var countFilter)
@@ -646,8 +618,8 @@ internal sealed class Db2ExpressionTranslator
         }
 
         // Try string.Length comparison: field.Length op constant or constant op field.Length
-        if (TryTranslateStringLengthComparison(binary.Left, binary.Right, comparisonKind.Value, entityType, parameter, out var lengthFilter)
-            || TryTranslateStringLengthComparison(binary.Right, binary.Left, FlipComparison(comparisonKind.Value), entityType, parameter, out lengthFilter))
+        if (TryTranslateStringLengthComparison(binary.Left, binary.Right, comparisonKind, entityType, parameter, out var lengthFilter)
+            || TryTranslateStringLengthComparison(binary.Right, binary.Left, FlipComparison(comparisonKind), entityType, parameter, out lengthFilter))
         {
             return lengthFilter;
         }
@@ -657,12 +629,12 @@ internal sealed class Db2ExpressionTranslator
             || TryExtractFieldAndValue(binary.Right, binary.Left, entityType, parameter, out field, out value))
         {
             // Check for null comparison
-            if (value is null && comparisonKind is Db2ComparisonKind.Equal)
+            if (value is null && comparisonKind is ExpressionType.Equal)
                 return new Db2NullCheckFilterExpression(field, isNotNull: false);
-            if (value is null && comparisonKind is Db2ComparisonKind.NotEqual)
+            if (value is null && comparisonKind is ExpressionType.NotEqual)
                 return new Db2NullCheckFilterExpression(field, isNotNull: true);
 
-            return new Db2ComparisonFilterExpression(field, comparisonKind.Value, value);
+            return new Db2ComparisonFilterExpression(field, comparisonKind, value);
         }
 
         return null;
@@ -719,7 +691,7 @@ internal sealed class Db2ExpressionTranslator
             return false;
 
         var isNull = new Db2NullCheckFilterExpression(field, isNotNull: false);
-        var isEmpty = new Db2ComparisonFilterExpression(field, Db2ComparisonKind.Equal, "");
+        var isEmpty = new Db2ComparisonFilterExpression(field, ExpressionType.Equal, "");
         filter = new Db2OrFilterExpression(isNull, isEmpty);
         return true;
     }
@@ -748,7 +720,7 @@ internal sealed class Db2ExpressionTranslator
         }
 
         // Instance List<T>.Contains(item) or ICollection<T>.Contains(item)
-        if (methodCall.Method.Name == nameof(List<int>.Contains)
+        if (methodCall.Method.Name == nameof(List<>.Contains)
             && methodCall.Arguments.Count == 1
             && methodCall.Object is not null
             && TryResolveFieldAccess(methodCall.Arguments[0], entityType, parameter, out field))
@@ -902,14 +874,14 @@ internal sealed class Db2ExpressionTranslator
 
         // Get the FK column on the dependent (related) entity
         // For a collection navigation, the FK is on the target (dependent) entity
-        var fkProperty = foreignKey.Properties.FirstOrDefault();
+        var fkProperty = foreignKey.Properties is { Count: > 0 } fkProps ? fkProps[0] : null;
         if (fkProperty is null)
             return false;
 
         var fkColumnName = fkProperty.GetColumnName() ?? fkProperty.Name;
 
         // Get the principal key (usually the Id) from the principal entity
-        var principalKeyProperty = foreignKey.PrincipalKey.Properties.FirstOrDefault();
+        var principalKeyProperty = foreignKey.PrincipalKey is { Properties.Count: > 0 } principalKey ? principalKey.Properties[0] : null;
         if (principalKeyProperty is null)
             return false;
 
@@ -1019,14 +991,9 @@ internal sealed class Db2ExpressionTranslator
             return false;
 
         // Resolve the principal key property
-        var principalKeyProperty = principalEntityType.FindProperty(pkColumnName);
-        if (principalKeyProperty is null)
-        {
-            // Try case-insensitive search
-            principalKeyProperty = principalEntityType.GetProperties()
-                .FirstOrDefault(p => string.Equals(p.GetColumnName() ?? p.Name, pkColumnName, StringComparison.OrdinalIgnoreCase));
-        }
-
+        // Try case-insensitive search
+        var principalKeyProperty = principalEntityType.FindProperty(pkColumnName) ?? principalEntityType.GetProperties()
+            .FirstOrDefault(p => string.Equals(p.GetColumnName() ?? p.Name, pkColumnName, StringComparison.OrdinalIgnoreCase));
         if (principalKeyProperty is null)
             return false;
 
@@ -1064,8 +1031,6 @@ internal sealed class Db2ExpressionTranslator
         out string fkColumnName,
         out string pkColumnName)
     {
-        fkColumnName = null!;
-        pkColumnName = null!;
 
         // Handle AndAlso: nullCheck && equals
         if (predicate is BinaryExpression { NodeType: ExpressionType.AndAlso } andAlso)
@@ -1225,7 +1190,7 @@ internal sealed class Db2ExpressionTranslator
     private bool TryTranslateStringLengthComparison(
         Expression candidateLength,
         Expression candidateValue,
-        Db2ComparisonKind comparisonKind,
+        ExpressionType comparisonKind,
         IEntityType entityType,
         ParameterExpression parameter,
         out Db2FilterExpression? filter)
@@ -1258,12 +1223,12 @@ internal sealed class Db2ExpressionTranslator
     /// <summary>
     /// Flips a comparison operator for when operands are swapped (e.g., 5 &lt; x.Length becomes x.Length &gt; 5).
     /// </summary>
-    private static Db2ComparisonKind FlipComparison(Db2ComparisonKind kind) => kind switch
+    private static ExpressionType FlipComparison(ExpressionType kind) => kind switch
     {
-        Db2ComparisonKind.GreaterThan => Db2ComparisonKind.LessThan,
-        Db2ComparisonKind.GreaterThanOrEqual => Db2ComparisonKind.LessThanOrEqual,
-        Db2ComparisonKind.LessThan => Db2ComparisonKind.GreaterThan,
-        Db2ComparisonKind.LessThanOrEqual => Db2ComparisonKind.GreaterThanOrEqual,
+        ExpressionType.GreaterThan => ExpressionType.LessThan,
+        ExpressionType.GreaterThanOrEqual => ExpressionType.LessThanOrEqual,
+        ExpressionType.LessThan => ExpressionType.GreaterThan,
+        ExpressionType.LessThanOrEqual => ExpressionType.GreaterThanOrEqual,
         _ => kind, // Equal and NotEqual are symmetric
     };
 
@@ -1324,7 +1289,7 @@ internal sealed class Db2ExpressionTranslator
         if (candidateCount is not MemberExpression { Member: PropertyInfo countProp } countMember)
             return false;
 
-        if (countProp.Name != nameof(ICollection<object>.Count))
+        if (countProp.Name != nameof(ICollection<>.Count))
             return false;
 
         // The Count access should be on a collection navigation
@@ -1350,14 +1315,14 @@ internal sealed class Db2ExpressionTranslator
         var targetTableName = targetEntityType.GetTableName() ?? targetEntityType.ClrType.Name;
 
         // Get the FK column on the dependent (related) entity
-        var fkProperty = foreignKey.Properties.FirstOrDefault();
+        var fkProperty = foreignKey.Properties is { Count: > 0 } fkProps ? fkProps[0] : null;
         if (fkProperty is null)
             return false;
 
         var fkColumnName = fkProperty.GetColumnName() ?? fkProperty.Name;
 
         // Get the principal key (usually the Id) from the principal entity
-        var principalKeyProperty = foreignKey.PrincipalKey.Properties.FirstOrDefault();
+        var principalKeyProperty = foreignKey.PrincipalKey is { Properties.Count: > 0 } principalKey ? principalKey.Properties[0] : null;
         if (principalKeyProperty is null)
             return false;
 
@@ -1437,9 +1402,6 @@ internal sealed class Db2ExpressionTranslator
         out Db2FieldAccessExpression field,
         out object? value)
     {
-        field = null!;
-        value = null;
-
         if (TryResolveFieldAccess(candidateField, entityType, parameter, out field!)
             && TryEvaluateConstant(candidateValue, out value))
         {

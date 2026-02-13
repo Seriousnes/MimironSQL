@@ -1744,7 +1744,7 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
         }
     }
 
-    private DecryptedRowLease DecryptRowBytes(Wdc5Section section, int rowStartByte, int rowSizeBytes, int nonceId)
+    private static DecryptedRowLease DecryptRowBytes(Wdc5Section section, int rowStartByte, int rowSizeBytes, int nonceId)
     {
         if (!section.IsDecryptable)
             throw new InvalidOperationException("Section is not decryptable.");

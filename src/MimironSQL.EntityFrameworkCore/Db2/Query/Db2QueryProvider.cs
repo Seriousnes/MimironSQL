@@ -166,7 +166,7 @@ internal sealed class Db2QueryProvider<TEntity, TRow>(
         // Step 8: Build residual expression and execute via LINQ-to-Objects.
         // The residual expression has pre-entity Where/Take/Skip stripped
         // (they were applied during enumeration).
-        var materialized = current is List<TEntity> list ? list : current.ToList();
+        var materialized = current is List<TEntity> list ? list : [.. current];
         var residual = BuildResidualExpression(preprocessed.CleanedExpression, analysis, materialized);
         return MimironDb2QueryExecutor.CompileAndExecute<IEnumerable<TElement>>(residual);
     }
@@ -224,7 +224,7 @@ internal sealed class Db2QueryProvider<TEntity, TRow>(
             current = Db2IncludeChainExecutor.Apply(current, _model, _tableResolver, includeChains[i], _entityFactory);
 
         // Step 7: Build residual expression with terminal operator and execute.
-        var materialized = current is List<TEntity> list ? list : current.ToList();
+        var materialized = current is List<TEntity> list ? list : [.. current];
         var residual = BuildResidualExpression(cleanedExpr, analysis, materialized);
         return MimironDb2QueryExecutor.CompileAndExecute<TResult>(residual);
     }
@@ -731,7 +731,7 @@ internal sealed class Db2QueryProvider<TEntity, TRow>(
         {
             var member = chain[i];
 
-            if (_model.TryGetReferenceNavigation(leafType, member, out var referenceNav))
+            if (_model.TryGetReferenceNavigation(leafType, member, out var referenceNav) && referenceNav is not null)
             {
                 leafType = referenceNav.TargetClrType;
                 continue;
@@ -870,7 +870,7 @@ internal sealed class Db2QueryProvider<TEntity, TRow>(
 
         static bool IsKeyAccess(Expression expr, ParameterExpression param, string pkMemberName)
         {
-            if (expr is MemberExpression { Member: { Name: var name }, Expression: var instance } && instance == param && name == pkMemberName)
+            if (expr is MemberExpression { Member.Name: var name, Expression: var instance } && instance == param && name == pkMemberName)
                 return true;
 
             if (expr is MethodCallExpression { Method: { Name: "Property", DeclaringType: { Name: "EF", Namespace: "Microsoft.EntityFrameworkCore" } }, Arguments: [var entityExpr, var nameExpr] })
@@ -917,7 +917,7 @@ internal sealed class Db2QueryProvider<TEntity, TRow>(
                 var obj = fn();
                 if (obj is IEnumerable<int> ints)
                 {
-                    values = ints as IReadOnlyList<int> ?? ints.ToArray();
+                    values = ints as IReadOnlyList<int> ?? [.. ints];
                     return true;
                 }
             }

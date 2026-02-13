@@ -11,7 +11,7 @@ internal sealed class Db2ModelBindingProvider(
     ICurrentDbContext currentDbContext,
     IMimironDb2Store store) : IDb2ModelBinding
 {
-    private static readonly ConditionalWeakTable<IModel, Db2ModelBinding> Cache = new();
+    private static readonly ConditionalWeakTable<IModel, Db2ModelBinding> Cache = [];
 
     public Db2ModelBinding GetBinding()
         => Cache.GetValue(

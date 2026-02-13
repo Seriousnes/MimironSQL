@@ -11,7 +11,7 @@ internal sealed class LocalCascFactAttribute : FactAttribute
             return;
         }
 
-        var shmemPath = System.IO.Path.Combine(wowInstallRoot, "Data", "data", "shmem");
+        var shmemPath = Path.Combine(wowInstallRoot, "Data", "data", "shmem");
         if (!File.Exists(shmemPath))
         {
             return;

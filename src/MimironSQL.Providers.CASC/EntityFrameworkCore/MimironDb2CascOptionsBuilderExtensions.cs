@@ -270,13 +270,13 @@ public static class MimironDb2CascOptionsBuilderExtensions
 
             if (DbdProvider is not null)
             {
-                services.AddSingleton<IDbdProvider>(DbdProvider);
+                services.AddSingleton(DbdProvider);
                 return;
             }
 
             if (DbdProviderFactory is not null)
             {
-                services.AddSingleton<IDbdProvider>(sp => DbdProviderFactory(sp));
+                services.AddSingleton(sp => DbdProviderFactory(sp));
                 return;
             }
 
@@ -300,13 +300,13 @@ public static class MimironDb2CascOptionsBuilderExtensions
 
             if (ManifestProvider is not null)
             {
-                services.AddSingleton<IManifestProvider>(ManifestProvider);
+                services.AddSingleton(ManifestProvider);
                 return;
             }
 
             if (ManifestProviderFactory is not null)
             {
-                services.AddSingleton<IManifestProvider>(sp => ManifestProviderFactory(sp));
+                services.AddSingleton(sp => ManifestProviderFactory(sp));
             }
         }
     }

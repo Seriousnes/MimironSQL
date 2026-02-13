@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Linq.Expressions;
 
 using Microsoft.EntityFrameworkCore.Query;
 
@@ -19,9 +20,13 @@ internal sealed class Db2JoinedQueryingEnumerable<TOuter, TInner, TResult>(
     IDb2File outerFile,
     Db2TableSchema outerSchema,
     IDb2File innerFile,
-    Db2TableSchema _, // innerSchema - kept for future use
+#pragma warning disable CS9113 // Parameter is unread.
+    Db2TableSchema innerSchema, // TODO: implement support for using inner schema in joined filters
+#pragma warning restore CS9113 // Parameter is unread.
     Func<QueryContext, IDb2File, RowHandle, TOuter> outerShaper,
-    Func<QueryContext, IDb2File, RowHandle, TInner> __, // innerShaper - already applied in innerLookup
+#pragma warning disable CS9113 // Parameter is unread.
+    Func<QueryContext, IDb2File, RowHandle, TInner> innerShaper, // TODO: determine if needed, remove if not
+#pragma warning restore CS9113 // Parameter is unread.
     Dictionary<int, (TInner Entity, RowHandle Handle)> innerLookup,
     int outerKeyIndex,
     Func<IDb2File, RowHandle, IDb2File, RowHandle?, bool>? joinedFilter,
@@ -52,7 +57,9 @@ internal sealed class Db2JoinedQueryingEnumerable<TOuter, TInner, TResult>(
         QueryContext queryContext,
         Db2JoinedQueryExecutionPlan plan,
         IDb2File outerFile,
-        Db2TableSchema _, // outerSchema - kept for future use
+#pragma warning disable CS9113 // Parameter is unread.
+        Db2TableSchema outerSchema, // TODO: Implement for future use
+#pragma warning restore CS9113 // Parameter is unread.
         IDb2File innerFile,
         Dictionary<int, (TInner Entity, RowHandle Handle)> innerLookup,
         int outerKeyIndex,
@@ -244,17 +251,17 @@ internal static class Db2JoinedQueryingEnumerable
 
         return comparison.ComparisonKind switch
         {
-            Db2ComparisonKind.Equal => (outerFile, outerHandle, innerFile, innerHandle) =>
+            ExpressionType.Equal => (outerFile, outerHandle, innerFile, innerHandle) =>
                 innerHandle.HasValue && Equals(ReadFieldBoxed(innerFile, innerHandle.Value, fieldIndex, fieldClrType), value),
-            Db2ComparisonKind.NotEqual => (outerFile, outerHandle, innerFile, innerHandle) =>
+            ExpressionType.NotEqual => (outerFile, outerHandle, innerFile, innerHandle) =>
                 innerHandle.HasValue && !Equals(ReadFieldBoxed(innerFile, innerHandle.Value, fieldIndex, fieldClrType), value),
-            Db2ComparisonKind.GreaterThan => (outerFile, outerHandle, innerFile, innerHandle) =>
+            ExpressionType.GreaterThan => (outerFile, outerHandle, innerFile, innerHandle) =>
                 innerHandle.HasValue && CompareValues(ReadFieldBoxed(innerFile, innerHandle.Value, fieldIndex, fieldClrType), value) > 0,
-            Db2ComparisonKind.GreaterThanOrEqual => (outerFile, outerHandle, innerFile, innerHandle) =>
+            ExpressionType.GreaterThanOrEqual => (outerFile, outerHandle, innerFile, innerHandle) =>
                 innerHandle.HasValue && CompareValues(ReadFieldBoxed(innerFile, innerHandle.Value, fieldIndex, fieldClrType), value) >= 0,
-            Db2ComparisonKind.LessThan => (outerFile, outerHandle, innerFile, innerHandle) =>
+            ExpressionType.LessThan => (outerFile, outerHandle, innerFile, innerHandle) =>
                 innerHandle.HasValue && CompareValues(ReadFieldBoxed(innerFile, innerHandle.Value, fieldIndex, fieldClrType), value) < 0,
-            Db2ComparisonKind.LessThanOrEqual => (outerFile, outerHandle, innerFile, innerHandle) =>
+            ExpressionType.LessThanOrEqual => (outerFile, outerHandle, innerFile, innerHandle) =>
                 innerHandle.HasValue && CompareValues(ReadFieldBoxed(innerFile, innerHandle.Value, fieldIndex, fieldClrType), value) <= 0,
             _ => throw new NotSupportedException($"Unsupported comparison kind: {comparison.ComparisonKind}"),
         };
@@ -327,9 +334,9 @@ internal static class Db2JoinedQueryingEnumerable
 
         return comparison.ComparisonKind switch
         {
-            Db2ComparisonKind.Equal => (outerFile, outerHandle, innerFile, innerHandle) =>
+            ExpressionType.Equal => (outerFile, outerHandle, innerFile, innerHandle) =>
                 Equals(ReadFieldBoxed(outerFile, outerHandle, fieldIndex, fieldClrType), value),
-            Db2ComparisonKind.NotEqual => (outerFile, outerHandle, innerFile, innerHandle) =>
+            ExpressionType.NotEqual => (outerFile, outerHandle, innerFile, innerHandle) =>
                 !Equals(ReadFieldBoxed(outerFile, outerHandle, fieldIndex, fieldClrType), value),
             _ => throw new NotSupportedException($"Unsupported comparison kind for outer: {comparison.ComparisonKind}"),
         };

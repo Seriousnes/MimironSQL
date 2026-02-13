@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Linq.Expressions;
 
 using Microsoft.EntityFrameworkCore.Query;
 using Microsoft.EntityFrameworkCore.Storage;
@@ -148,7 +149,7 @@ internal sealed class Db2QueryingEnumerable<T>(
     private static IEnumerable<RowHandle> EnumerateRuntimePkMultiLookup(IDb2File file, QueryContext queryContext, string parameterName)
     {
         var paramValue = queryContext.Parameters[parameterName];
-        if (paramValue is System.Collections.IEnumerable enumerable)
+        if (paramValue is IEnumerable enumerable)
         {
             foreach (var item in enumerable)
             {
@@ -210,12 +211,12 @@ internal sealed class Db2QueryingEnumerable<T>(
 
         return comparison.ComparisonKind switch
         {
-            Db2ComparisonKind.Equal => (file, handle) => Equals(ReadFieldBoxed(file, handle, fieldIndex, fieldClrType), value),
-            Db2ComparisonKind.NotEqual => (file, handle) => !Equals(ReadFieldBoxed(file, handle, fieldIndex, fieldClrType), value),
-            Db2ComparisonKind.GreaterThan => (file, handle) => CompareValues(ReadFieldBoxed(file, handle, fieldIndex, fieldClrType), value) > 0,
-            Db2ComparisonKind.GreaterThanOrEqual => (file, handle) => CompareValues(ReadFieldBoxed(file, handle, fieldIndex, fieldClrType), value) >= 0,
-            Db2ComparisonKind.LessThan => (file, handle) => CompareValues(ReadFieldBoxed(file, handle, fieldIndex, fieldClrType), value) < 0,
-            Db2ComparisonKind.LessThanOrEqual => (file, handle) => CompareValues(ReadFieldBoxed(file, handle, fieldIndex, fieldClrType), value) <= 0,
+            ExpressionType.Equal => (file, handle) => Equals(ReadFieldBoxed(file, handle, fieldIndex, fieldClrType), value),
+            ExpressionType.NotEqual => (file, handle) => !Equals(ReadFieldBoxed(file, handle, fieldIndex, fieldClrType), value),
+            ExpressionType.GreaterThan => (file, handle) => CompareValues(ReadFieldBoxed(file, handle, fieldIndex, fieldClrType), value) > 0,
+            ExpressionType.GreaterThanOrEqual => (file, handle) => CompareValues(ReadFieldBoxed(file, handle, fieldIndex, fieldClrType), value) >= 0,
+            ExpressionType.LessThan => (file, handle) => CompareValues(ReadFieldBoxed(file, handle, fieldIndex, fieldClrType), value) < 0,
+            ExpressionType.LessThanOrEqual => (file, handle) => CompareValues(ReadFieldBoxed(file, handle, fieldIndex, fieldClrType), value) <= 0,
             _ => throw new NotSupportedException($"Unsupported comparison kind: {comparison.ComparisonKind}"),
         };
     }
@@ -231,7 +232,7 @@ internal sealed class Db2QueryingEnumerable<T>(
         {
             var paramValue = queryContext.Parameters[contains.ValuesParameterName];
             values = [];
-            if (paramValue is System.Collections.IEnumerable enumerable)
+            if (paramValue is IEnumerable enumerable)
             {
                 foreach (var item in enumerable)
                     values.Add(item);
@@ -239,7 +240,7 @@ internal sealed class Db2QueryingEnumerable<T>(
         }
         else
         {
-            values = new HashSet<object>(contains.Values!);
+            values = new(contains.Values!);
         }
 
         return (file, handle) =>
@@ -348,32 +349,32 @@ internal sealed class Db2QueryingEnumerable<T>(
 
         return stringLength.ComparisonKind switch
         {
-            Db2ComparisonKind.Equal => (file, handle) =>
+            ExpressionType.Equal => (file, handle) =>
             {
                 var str = file.ReadField<string>(handle, fieldIndex);
                 return (str?.Length ?? 0) == value;
             },
-            Db2ComparisonKind.NotEqual => (file, handle) =>
+            ExpressionType.NotEqual => (file, handle) =>
             {
                 var str = file.ReadField<string>(handle, fieldIndex);
                 return (str?.Length ?? 0) != value;
             },
-            Db2ComparisonKind.GreaterThan => (file, handle) =>
+            ExpressionType.GreaterThan => (file, handle) =>
             {
                 var str = file.ReadField<string>(handle, fieldIndex);
                 return (str?.Length ?? 0) > value;
             },
-            Db2ComparisonKind.GreaterThanOrEqual => (file, handle) =>
+            ExpressionType.GreaterThanOrEqual => (file, handle) =>
             {
                 var str = file.ReadField<string>(handle, fieldIndex);
                 return (str?.Length ?? 0) >= value;
             },
-            Db2ComparisonKind.LessThan => (file, handle) =>
+            ExpressionType.LessThan => (file, handle) =>
             {
                 var str = file.ReadField<string>(handle, fieldIndex);
                 return (str?.Length ?? 0) < value;
             },
-            Db2ComparisonKind.LessThanOrEqual => (file, handle) =>
+            ExpressionType.LessThanOrEqual => (file, handle) =>
             {
                 var str = file.ReadField<string>(handle, fieldIndex);
                 return (str?.Length ?? 0) <= value;

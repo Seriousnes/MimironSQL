@@ -78,7 +78,7 @@ public static class MimironDb2ForeignKeyArrayExtensions
                     if (iface.GetGenericTypeDefinition() != typeof(IInfrastructure<>))
                         continue;
 
-                    var instance = iface.GetProperty(nameof(IInfrastructure<object>.Instance))?.GetValue(builder);
+                    var instance = iface.GetProperty(nameof(IInfrastructure<>.Instance))?.GetValue(builder);
                     if (instance is null)
                         continue;
 
@@ -147,7 +147,7 @@ public static class MimironDb2ForeignKeyArrayExtensions
                 if (iface.GetGenericTypeDefinition() != typeof(IInfrastructure<>))
                     continue;
 
-                var instance = iface.GetProperty(nameof(IInfrastructure<object>.Instance))?.GetValue(navigationBuilder);
+                var instance = iface.GetProperty(nameof(IInfrastructure<>.Instance))?.GetValue(navigationBuilder);
                 if (instance is null)
                     continue;
 

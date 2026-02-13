@@ -35,19 +35,19 @@ public struct ColumnMetaData
     public CompressionType CompressionType;
 
     /// <summary>
-    /// Compression parameters for <see cref="Db2.CompressionType.Immediate"/> and related modes.
+    /// Compression parameters for <see cref="CompressionType.Immediate"/> and related modes.
     /// </summary>
     [FieldOffset(12)]
     public ColumnCompressionDataImmediate Immediate;
 
     /// <summary>
-    /// Compression parameters for <see cref="Db2.CompressionType.Pallet"/> and <see cref="Db2.CompressionType.PalletArray"/>.
+    /// Compression parameters for <see cref="CompressionType.Pallet"/> and <see cref="CompressionType.PalletArray"/>.
     /// </summary>
     [FieldOffset(12)]
     public ColumnCompressionDataPallet Pallet;
 
     /// <summary>
-    /// Compression parameters for <see cref="Db2.CompressionType.Common"/>.
+    /// Compression parameters for <see cref="CompressionType.Common"/>.
     /// </summary>
     [FieldOffset(12)]
     public ColumnCompressionDataCommon Common;

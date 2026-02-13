@@ -141,10 +141,7 @@ internal static class Db2RowPredicateCompiler
                 if (instance == entityParam
                     || instance is UnaryExpression { NodeType: ExpressionType.Convert or ExpressionType.ConvertChecked, Operand: var operand } && operand == entityParam)
                 {
-                    var property = entityType.ClrType.GetProperty(propertyName, BindingFlags.Instance | BindingFlags.Public);
-                    if (property is null)
-                        throw new NotSupportedException($"EF.Property refers to '{entityType.ClrType.FullName}.{propertyName}', but that property does not exist on the CLR type.");
-
+                    var property = entityType.ClrType.GetProperty(propertyName, BindingFlags.Instance | BindingFlags.Public) ?? throw new NotSupportedException($"EF.Property refers to '{entityType.ClrType.FullName}.{propertyName}', but that property does not exist on the CLR type.");
                     var memberAccess = Expression.Property(entityParam, property);
                     var visited = VisitMember(memberAccess);
                     return visited.Type == node.Type ? visited : Expression.Convert(visited, node.Type);

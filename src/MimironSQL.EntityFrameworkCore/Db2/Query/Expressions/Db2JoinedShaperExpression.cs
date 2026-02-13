@@ -6,35 +6,28 @@ namespace MimironSQL.EntityFrameworkCore.Db2.Query.Expressions;
 /// Represents a shaper expression for a joined query result.
 /// Tracks both the outer and inner shapers for materialization.
 /// </summary>
-internal sealed class Db2JoinedShaperExpression : Expression
+internal sealed class Db2JoinedShaperExpression(
+    Expression outerShaper,
+    Expression innerShaper,
+    LambdaExpression resultSelector) : Expression
 {
-    public Db2JoinedShaperExpression(
-        Expression outerShaper,
-        Expression innerShaper,
-        LambdaExpression resultSelector)
-    {
-        OuterShaper = outerShaper;
-        InnerShaper = innerShaper;
-        ResultSelector = resultSelector;
-        Type = resultSelector.ReturnType;
-    }
 
     /// <summary>
     /// Shaper expression for the outer (principal) entity.
     /// </summary>
-    public Expression OuterShaper { get; }
+    public Expression OuterShaper { get; } = outerShaper;
 
     /// <summary>
     /// Shaper expression for the inner (related) entity.
     /// </summary>
-    public Expression InnerShaper { get; }
+    public Expression InnerShaper { get; } = innerShaper;
 
     /// <summary>
     /// The result selector that combines outer and inner.
     /// </summary>
-    public LambdaExpression ResultSelector { get; }
+    public LambdaExpression ResultSelector { get; } = resultSelector;
 
-    public override Type Type { get; }
+    public override Type Type { get; } = resultSelector.ReturnType;
     public override ExpressionType NodeType => ExpressionType.Extension;
 
     protected override Expression VisitChildren(ExpressionVisitor visitor)

@@ -13,10 +13,10 @@ internal enum Db2StringMatchKind
 internal static class Db2DenseStringScanner
 {
     private const int DefaultCacheCapacity = 256;
-    private static ConditionalWeakTable<object, PerFileCache> Cache = new();
+    private static ConditionalWeakTable<object, PerFileCache> Cache = [];
 
     internal static void ClearCacheForTesting()
-        => Cache = new ConditionalWeakTable<object, PerFileCache>();
+        => Cache = [];
 
     public static HashSet<int> FindStartOffsetsCached(object fileKey, ReadOnlySpan<byte> bytes, string needle, Db2StringMatchKind kind)
     {
@@ -75,7 +75,7 @@ internal static class Db2DenseStringScanner
 
     private sealed class PerFileCache(int capacity)
     {
-        private readonly object _gate = new();
+        private readonly Lock _gate = new();
         private readonly int _capacity = capacity;
         private readonly LinkedList<CacheKey> _lru = new();
         private readonly Dictionary<CacheKey, (LinkedListNode<CacheKey> Node, HashSet<int> Value)> _entries = new(CacheKeyComparer.Instance);

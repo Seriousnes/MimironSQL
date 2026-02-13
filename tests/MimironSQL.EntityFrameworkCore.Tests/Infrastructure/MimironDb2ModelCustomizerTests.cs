@@ -25,8 +25,8 @@ public sealed class MimironDb2ModelCustomizerTests
                 providerConfigHash: 1,
                 applyProviderServices: services =>
                 {
-                    services.AddSingleton<IDb2StreamProvider>(db2Provider);
-                    services.AddSingleton<IDbdProvider>(dbdProvider);
+                    services.AddSingleton(db2Provider);
+                    services.AddSingleton(dbdProvider);
                 }))
             .Options;
 

@@ -13,7 +13,7 @@ namespace MimironSQL.EntityFrameworkCore.Db2.Query.Expressions;
 /// </summary>
 internal sealed class Db2QueryExpression : Expression
 {
-    private readonly Dictionary<ProjectionMember, Expression> _projectionMapping = new();
+    private readonly Dictionary<ProjectionMember, Expression> _projectionMapping = [];
     private List<Db2ProjectionExpression>? _clientProjections;
     private readonly List<Db2OrderingExpression> _orderings = [];
 

@@ -369,7 +369,7 @@ public sealed class Db2QueryProviderTests
                 new InMemoryDb2File.Row(11, [11]),
             ]);
 
-        Db2IncludeChainExecutor.Apply<ParentWithNullableEnumChildIds, RowHandle>(
+        Db2IncludeChainExecutor.Apply(
             source: [parent],
             model: model,
             tableResolver: name => name == nameof(Child)

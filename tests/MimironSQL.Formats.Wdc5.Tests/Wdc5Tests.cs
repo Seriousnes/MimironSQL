@@ -930,7 +930,7 @@ public sealed class Wdc5Tests(Wdc5TestFixture fixture) : IClassFixture<Wdc5TestF
     [Fact]
     public void Wdc5File_DecryptRowBytes_Guards_Throw()
     {
-        var method = typeof(Wdc5File).GetMethod("DecryptRowBytes", BindingFlags.Instance | BindingFlags.NonPublic);
+        var method = typeof(Wdc5File).GetMethod("DecryptRowBytes", BindingFlags.Static | BindingFlags.NonPublic, null, [typeof(Wdc5Section), typeof(int), typeof(int), typeof(int)], null);
         method.ShouldNotBeNull();
 
         using var stream = CreateSingleSectionDenseScalarFile(flags: 0, idFieldIndex: 0, recordValue: 555);

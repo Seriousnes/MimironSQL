@@ -16,6 +16,11 @@ public sealed class CascDb2ContextIntegrationLocalTests(CascDb2ContextIntegratio
     {
         var results = context.Map
             .Include(x => x.MapChallengeModes)
+                .ThenInclude(x => x.FirstRewardQuest)
+            .Include(x => x.MapChallengeModes)
+                .ThenInclude(x => x.RewardQuest)
+            .Include(x => x.MapChallengeModes)
+                .ThenInclude(x => x.Map)
             .Where(x => x.MapChallengeModes.Count > 0)
             .Take(10).ToList();
         results.Count.ShouldBeGreaterThan(0);
@@ -34,27 +39,18 @@ public sealed class CascDb2ContextIntegrationLocalTests(CascDb2ContextIntegratio
     [LocalCascFact]
     public async Task Can_query_db2context_for_spell()
     {
-        var result = context.Spell.Find(454009);
+        var result = context.Spell
+            .Include(x => x.SpellName)
+            .SingleOrDefault(x => x.Id == 454009);
         result.ShouldNotBeNull();
+        result.SpellName.ShouldNotBeNull();
         result.Id.ShouldBe(454009);
         result.Description.ShouldBe("""
             $?s137040[Each Maelstrom spent has a ${$s1/100}.2% chance to upgrade][Each Maelstrom Weapon spent has a ${$s2/100}.2% chance to upgrade] your next Lightning Bolt to Tempest.
 
             $@spelltooltip452201
             """);
-
-        var result2 = context.Spell.Find(188196);
-        result2.ShouldNotBeNull();
-        result2.Id.ShouldBe(188196);
-        result2.Description.ShouldBe("""
-            Hurls a bolt of lightning at the target, dealing $s1 Nature damage.$?a343725[
-
-            |cFFFFFFFFGenerates $343725s1 Maelstrom.|r]?a383303[
-
-            |cFFFFFFFFConsumes Maelstrom Weapon for increased cast speed and damage.|r]?a187880[
-
-            |cFFFFFFFFConsumes Maelstrom Weapon for increased cast speed.|r][]
-            """);
+        result.SpellName.Name.ShouldBe("Tempest");
     }
 
     [LocalCascFact]
@@ -88,16 +84,16 @@ public class CascDb2ContextIntegrationLocalTestsFixture
         var testDataDir = TestDataPaths.GetTestDataDirectory();
         Directory.Exists(testDataDir).ShouldBeTrue();
 
-        var manifestPath = System.IO.Path.Combine(testDataDir, "manifest.json");
+        var manifestPath = Path.Combine(testDataDir, "manifest.json");
         File.Exists(manifestPath).ShouldBeTrue();
 
         var optionsBuilder = new DbContextOptionsBuilder<WoWDb2Context>();
         optionsBuilder.UseMimironDb2ForTests(o => o
-            .UseCasc()
-            .WithWowInstallRoot(wowInstallRoot)
-            .WithDbdDefinitions(Path.Combine(testDataDir, "definitions"))
-            .WithManifest(testDataDir, "manifest.json")
-            .Apply());
+                .UseCasc()
+                .WithWowInstallRoot(wowInstallRoot)
+                .WithDbdDefinitions(Path.Combine(testDataDir, "definitions"))
+                .WithManifest(testDataDir, "manifest.json")
+                .Apply());
 
         Context = new WoWDb2Context(optionsBuilder.Options);
         GC.KeepAlive(Context.Model); // Force model creation

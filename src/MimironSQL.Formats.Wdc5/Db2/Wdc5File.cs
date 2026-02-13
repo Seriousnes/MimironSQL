@@ -87,7 +87,8 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
     public int TotalSectionRecordCount => ParsedSections.Sum(s => s.NumRecords);
 
     private Dictionary<int, (int SectionIndex, int RowIndexInSection, int GlobalRecordIndex)>? _idIndex;
-    private Dictionary<int, int>? _copyMap;
+    private int _pkLookupCount;
+    private const int BuildIdIndexAfterPkLookups = 2;
 
     private readonly Stream _stream;
     private readonly BinaryReader _reader;
@@ -463,15 +464,29 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
     /// <inheritdoc />
     public IEnumerable<RowHandle> EnumerateRowHandles()
     {
-        EnsureMaterializedForEnumeration();
-
         for (var sectionIndex = 0; sectionIndex < ParsedSections.Count; sectionIndex++)
         {
             var section = ParsedSections[sectionIndex];
             for (var rowIndex = 0; rowIndex < section.NumRecords; rowIndex++)
             {
-                var reader = CreateReaderAtRowStart(section, rowIndex, out _, out _, out _);
-                var id = GetVirtualId(section, rowIndex, reader);
+                // Prefer IndexData when present; avoids any record reads/materialization.
+                int id;
+                if (section.IndexData is { Length: not 0 })
+                {
+                    id = section.IndexData[rowIndex];
+                }
+                else if (section.RecordsData is not null)
+                {
+                    var reader = CreateReaderAtRowStart(section, rowIndex, out _, out _, out _);
+                    id = GetVirtualId(section, rowIndex, reader);
+                }
+                else
+                {
+                    var rowBytes = GetRowBytesFromStream(sectionIndex, section, rowIndex, out _, out var rowStartBitOffset);
+                    var reader = new Wdc5RowReader(rowBytes, positionBits: rowStartBitOffset);
+                    id = GetVirtualId(section, rowIndex, reader);
+                }
+
                 yield return new RowHandle(sectionIndex, rowIndex, id);
             }
         }
@@ -496,20 +511,46 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
             _ => throw new NotSupportedException($"Unsupported ID type {typeof(TId).FullName}.")
         };
 
-        EnsureIndexesBuilt();
-
         var requestedId = key;
 
-        if (_copyMap!.TryGetValue(key, out var sourceId))
+        // Preserve "copy table wins" behavior without materializing a global copy map.
+        if (TryResolveCopySourceId(key, out var sourceId))
             key = sourceId;
 
-        if (!_idIndex!.TryGetValue(key, out var location))
+        if (_idIndex is not null)
+        {
+            if (!_idIndex.TryGetValue(key, out var location))
+            {
+                handle = default;
+                return false;
+            }
+
+            handle = new RowHandle(location.SectionIndex, location.RowIndexInSection, requestedId);
+            return true;
+        }
+
+        _pkLookupCount++;
+        if (_pkLookupCount >= BuildIdIndexAfterPkLookups)
+        {
+            EnsureIdIndexBuilt();
+
+            if (!_idIndex!.TryGetValue(key, out var location))
+            {
+                handle = default;
+                return false;
+            }
+
+            handle = new RowHandle(location.SectionIndex, location.RowIndexInSection, requestedId);
+            return true;
+        }
+
+        if (!TryFindRowLocationById(key, out var found))
         {
             handle = default;
             return false;
         }
 
-        handle = new RowHandle(location.SectionIndex, location.RowIndexInSection, requestedId);
+        handle = new RowHandle(found.SectionIndex, found.RowIndexInSection, requestedId);
         return true;
     }
 
@@ -681,26 +722,74 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
         _denseStringTableBytes = new ReadOnlyMemory<byte>(denseStringTableBytes);
     }
 
-    private void EnsureIndexesBuilt()
+    private bool TryResolveCopySourceId(int destinationId, out int sourceId)
+    {
+        for (var sectionIndex = 0; sectionIndex < ParsedSections.Count; sectionIndex++)
+        {
+            var section = ParsedSections[sectionIndex];
+            if (section.CopyData.TryGetValue(destinationId, out sourceId))
+                return true;
+        }
+
+        sourceId = 0;
+        return false;
+    }
+
+    private bool TryFindRowLocationById(int id, out (int SectionIndex, int RowIndexInSection, int GlobalRecordIndex) location)
+    {
+        for (var sectionIndex = 0; sectionIndex < ParsedSections.Count; sectionIndex++)
+        {
+            var section = ParsedSections[sectionIndex];
+
+            // Prefer IndexData when present; this avoids reading record bytes.
+            if (section.IndexData is { Length: not 0 })
+            {
+                var indexData = section.IndexData;
+                for (var rowIndex = 0; rowIndex < section.NumRecords; rowIndex++)
+                {
+                    if (indexData[rowIndex] != id)
+                        continue;
+
+                    location = (sectionIndex, rowIndex, section.FirstGlobalRecordIndex + rowIndex);
+                    return true;
+                }
+
+                continue;
+            }
+
+            // Fallback: decode physical ID field from record bits (may require reading row bytes lazily).
+            for (var rowIndex = 0; rowIndex < section.NumRecords; rowIndex++)
+            {
+                if (GetVirtualIdForIndexing(sectionIndex, section, rowIndex) != id)
+                    continue;
+
+                location = (sectionIndex, rowIndex, section.FirstGlobalRecordIndex + rowIndex);
+                return true;
+            }
+        }
+
+        location = default;
+        return false;
+    }
+
+    private void EnsureIdIndexBuilt()
     {
         if (_idIndex is not null)
             return;
 
         var idIndex = new Dictionary<int, (int SectionIndex, int RowIndexInSection, int GlobalRecordIndex)>(capacity: Header.RecordsCount);
-        var copyMap = new Dictionary<int, int>();
 
         for (var sectionIndex = 0; sectionIndex < ParsedSections.Count; sectionIndex++)
         {
             var section = ParsedSections[sectionIndex];
-            foreach (var kvp in section.CopyData)
-                copyMap[kvp.Key] = kvp.Value;
 
             // Prefer IndexData when present; this avoids reading record bytes.
             if (section.IndexData is { Length: not 0 })
             {
+                var indexData = section.IndexData;
                 for (var rowIndex = 0; rowIndex < section.NumRecords; rowIndex++)
                 {
-                    var id = section.IndexData[rowIndex];
+                    var id = indexData[rowIndex];
                     if (id != -1)
                         idIndex.TryAdd(id, (sectionIndex, rowIndex, section.FirstGlobalRecordIndex + rowIndex));
                 }
@@ -718,7 +807,6 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
         }
 
         _idIndex = idIndex;
-        _copyMap = copyMap;
     }
 
     private int GetVirtualIdForIndexing(int sectionIndex, Wdc5Section section, int rowIndex)

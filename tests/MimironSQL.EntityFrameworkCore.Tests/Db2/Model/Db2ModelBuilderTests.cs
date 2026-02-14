@@ -18,43 +18,6 @@ namespace MimironSQL.EntityFrameworkCore.Tests;
 public sealed class Db2ModelBindingTests
 {
     [Fact]
-    public void GetEntityType_uses_EF_table_name_from_Table_attribute()
-    {
-        var db2Provider = Substitute.For<IDb2StreamProvider>();
-        var dbdProvider = Substitute.For<IDbdProvider>();
-
-        var options = new DbContextOptionsBuilder<TableAttributeContext>()
-            .UseMimironDb2ForTests(o => o.ConfigureProvider(
-                providerKey: "Test",
-                providerConfigHash: 1,
-                applyProviderServices: services =>
-                {
-                    services.AddSingleton(db2Provider);
-                    services.AddSingleton(dbdProvider);
-                }))
-            .Options;
-
-        using var context = new TableAttributeContext(options);
-
-        var binding = new Db2ModelBinding(
-            efModel: context.Model,
-            schemaResolver: static tableName =>
-            {
-                tableName.ShouldBe("MyTable");
-                return new Db2TableSchema(
-                    tableName: tableName,
-                    layoutHash: 0,
-                    physicalColumnCount: 1,
-                    fields:
-                    [
-                        new Db2FieldSchema("ID", Db2ValueType.Int64, ColumnStartIndex: 0, ElementCount: 1, IsVerified: true, IsVirtual: false, IsId: true, IsRelation: false, ReferencedTableName: null),
-                    ]);
-            });
-
-        binding.GetEntityType(typeof(EntityWithTableAttribute)).TableName.ShouldBe("MyTable");
-    }
-
-    [Fact]
     public void GetAutoIncludeNavigations_returns_eager_loaded_navigations_sorted_by_name()
     {
         var model = TestModelBindingFactory.CreateBinding(

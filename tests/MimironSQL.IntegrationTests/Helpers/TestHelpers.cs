@@ -16,6 +16,12 @@ internal static class TestHelpers
         ArgumentNullException.ThrowIfNull(optionsBuilder);
         ArgumentNullException.ThrowIfNull(configure);        
 
+        optionsBuilder.UseMimironDb2(o =>
+        {
+            o.WithWowVersion(WowVersion);
+            configure(o);
+        });
+
         return optionsBuilder;
     }
 }

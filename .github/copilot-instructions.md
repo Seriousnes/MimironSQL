@@ -14,6 +14,9 @@ This project is a SQL engine for reading and querying World of Warcraft DB2 file
 ## Performance 
 - Follow the performance guidelines in [performance.md](./instructions/performance.md)
 
+## Design Principles
+- Follow the iterative bootstrap plan in [wip-iterative-bootstrap.md](./instructions/wip-iterative-bootstrap.md) for the EF Core provider development.
+
 ### Attributes
 - Do NOT add `[MethodImpl(...)]` attributes (including `MethodImplOptions.AggressiveInlining`).
 - Remove any `[MethodImpl(...)]` attributes you encounter.

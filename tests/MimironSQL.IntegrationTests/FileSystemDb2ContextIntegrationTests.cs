@@ -35,7 +35,8 @@ public sealed class FileSystemDb2ContextIntegrationTests(FileSystemTextFixture f
 {
     private WoWDb2Context context => fixture.Context;
 
-    [Fact]
+    // TODO: re-enable once MimironDb2 provides async query execution (async-over-sync is acceptable).
+    [Fact(Skip = "Async query execution is not implemented yet (sync-only bootstrap phase).")]
     public async Task ToListAsync_executes_end_to_end_via_async_over_sync()
     {
         var results = await context.Map

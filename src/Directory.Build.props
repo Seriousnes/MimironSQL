@@ -1,5 +1,5 @@
 <Project>
     <PropertyGroup>
-        <NoWarn>$(NoWarn);NETSDK1206</NoWarn>
+        <WarningsAsErrors>CS1591</WarningsAsErrors>
     </PropertyGroup>
 </Project>

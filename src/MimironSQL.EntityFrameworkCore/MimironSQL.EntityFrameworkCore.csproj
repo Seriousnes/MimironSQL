@@ -35,6 +35,14 @@
 	</ItemGroup>
 
 	<ItemGroup>
+	  <None Remove="G:\source\MimironSQL\src\MimironSQL.EntityFrameworkCore\bin\Debug\net10.0\MimironSQL.Dbd.dll" />
+	</ItemGroup>
+
+	<ItemGroup>
+	  <None Remove="G:\source\MimironSQL\src\MimironSQL.EntityFrameworkCore\bin\Debug\net10.0\MimironSQL.Dbd.dll" />
+	</ItemGroup>
+
+	<ItemGroup>
 		<None Include="$(TargetDir)MimironSQL.Dbd.dll" Pack="true" PackagePath="lib/net10.0/" />
 	</ItemGroup>
 

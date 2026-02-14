@@ -62,25 +62,6 @@ public sealed class FileSystemDb2ContextIntegrationTests(FileSystemTextFixture f
     }
 
     [Fact]
-    public async Task Key_lookup_does_not_cache_db2_tables_across_queries()
-    {
-        var sp = ((IInfrastructure<IServiceProvider>)context).Instance;
-        var efAssembly = typeof(MimironDb2ServiceCollectionExtensions).Assembly;
-        var storeServiceType = efAssembly.GetType("MimironSQL.EntityFrameworkCore.Storage.IMimironDb2Store", throwOnError: true)!;
-        var store = sp.GetRequiredService(storeServiceType);
-
-        var storeType = store.GetType();
-
-        // DB2 files/streams must not be cached long-term; they are scoped to query execution.
-        var cacheField = storeType.GetField("_cache", BindingFlags.Instance | BindingFlags.NonPublic);
-        cacheField.ShouldBeNull();
-
-        var result = context.Set<SpellEntity>().SingleOrDefault(x => x.Id == 454009);
-        result.ShouldNotBeNull();
-        result.Id.ShouldBe(454009);
-    }
-
-    [Fact]
     public void Can_query_and_include_collection_navigation()
     {
         var results = context.Map

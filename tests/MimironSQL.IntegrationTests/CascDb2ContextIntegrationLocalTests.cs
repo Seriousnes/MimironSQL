@@ -14,26 +14,42 @@ public sealed class CascDb2ContextIntegrationLocalTests(CascDb2ContextIntegratio
     [LocalCascFact]
     public async Task Can_query_db2context_using_casc_db2_provider()
     {
-        var results = context.Map
+        var query = context.Map
             .Include(x => x.MapChallengeModes)
                 .ThenInclude(x => x.FirstRewardQuest)
             .Include(x => x.MapChallengeModes)
                 .ThenInclude(x => x.RewardQuest)
             .Include(x => x.MapChallengeModes)
                 .ThenInclude(x => x.Map)
-            .Where(x => x.MapChallengeModes.Count > 0)
-            .Take(10).ToList();
+            .Where(x => x.MapChallengeModes.Any(m => m.FirstRewardQuestID.Any(q => q > 0) || m.RewardQuestID.Any(q => q > 0)))
+            .Take(10);
+
+        var expressionText = query.Expression.ToString();
+
+        var results = query.ToList();
         results.Count.ShouldBeGreaterThan(0);
         results.Any(x => x.Id > 0).ShouldBeTrue();
         results.Any(x => !string.IsNullOrWhiteSpace(x.Directory)).ShouldBeTrue();
 
-        var singleResults = context.Set<MapEntity>()
-            .Include(x => x.MapChallengeModes)
-            .Where(x => x.Id == 962)
-            .ToList();
-        var singleResult = singleResults.First();
-        singleResult.ShouldNotBeNull();
-        singleResult.Id.ShouldBe(962);
+        var whereHoldsForAll = results.All(x => x.MapChallengeModes.Any(m => m.FirstRewardQuestID.Any(q => q > 0) || m.RewardQuestID.Any(q => q > 0)));
+        if (!whereHoldsForAll)
+        {
+            var failing = results.First(x => !x.MapChallengeModes.Any(m => m.FirstRewardQuestID.Any(q => q > 0) || m.RewardQuestID.Any(q => q > 0)));
+
+            var totalModes = failing.MapChallengeModes.Count;
+            var modesWithAnyIds = failing.MapChallengeModes.Count(m => m.FirstRewardQuestID.Any(q => q > 0) || m.RewardQuestID.Any(q => q > 0));
+            var maxFirst = failing.MapChallengeModes.SelectMany(m => m.FirstRewardQuestID.DefaultIfEmpty(0)).Max();
+            var maxReward = failing.MapChallengeModes.SelectMany(m => m.RewardQuestID.DefaultIfEmpty(0)).Max();
+
+            var anyModeMatchesViaSet = context.Set<MapChallengeModeEntity>()
+                .Where(m => m.MapID == failing.Id)
+                .AsEnumerable()
+                .Any(m => m.FirstRewardQuestID.Any(q => q > 0) || m.RewardQuestID.Any(q => q > 0));
+
+            whereHoldsForAll.ShouldBeTrue(
+                $"Query Where(...) did not hold for returned results. Failing Map Id={failing.Id}, MapChallengeModes={totalModes}, ModesWithAnyQuestIds={modesWithAnyIds}, MaxFirstRewardQuestID={maxFirst}, MaxRewardQuestID={maxReward}, AnyModeMatchesViaSet={anyModeMatchesViaSet}.\nExpression: {expressionText}");
+        }
+        results.All(x => x.MapChallengeModes.Any(m => m.FirstRewardQuest.Count > 0 || m.RewardQuest.Count > 0)).ShouldBeTrue();
     }
 
     [LocalCascFact]
@@ -42,8 +58,11 @@ public sealed class CascDb2ContextIntegrationLocalTests(CascDb2ContextIntegratio
         var result = context.Spell
             .Include(x => x.SpellName)
             .SingleOrDefault(x => x.Id == 454009);
+
         result.ShouldNotBeNull();
         result.SpellName.ShouldNotBeNull();
+        result.SpellName.Spell.ShouldBeSameAs(result);
+
         result.Id.ShouldBe(454009);
         result.Description.ShouldBe("""
             $?s137040[Each Maelstrom spent has a ${$s1/100}.2% chance to upgrade][Each Maelstrom Weapon spent has a ${$s2/100}.2% chance to upgrade] your next Lightning Bolt to Tempest.

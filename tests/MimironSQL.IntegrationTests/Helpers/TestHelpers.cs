@@ -14,13 +14,7 @@ internal static class TestHelpers
         where TContext : DbContext
     {
         ArgumentNullException.ThrowIfNull(optionsBuilder);
-        ArgumentNullException.ThrowIfNull(configure);
-
-        optionsBuilder.UseMimironDb2(o =>
-        {
-            o.WithWowVersion(WowVersion);
-            configure(o);
-        });
+        ArgumentNullException.ThrowIfNull(configure);        
 
         return optionsBuilder;
     }

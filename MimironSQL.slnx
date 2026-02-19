@@ -12,6 +12,7 @@
     <Project Path="tests/MimironSQL.IntegrationTests/MimironSQL.IntegrationTests.csproj" />
     <Project Path="tests/MimironSQL.Providers.CASC.Tests/MimironSQL.Providers.CASC.Tests.csproj" />
     <Project Path="tests/MimironSQL.Providers.FileSystem.Tests/MimironSQL.Providers.FileSystem.Tests.csproj" />
+    <Project Path="tests/Salsa20.Tests/Salsa20.Tests.csproj" />
   </Folder>
   <Project Path="src/MimironSQL.Contracts/MimironSQL.Contracts.csproj" />
   <Project Path="src/MimironSQL.DbContextGenerator/MimironSQL.DbContextGenerator.csproj" />

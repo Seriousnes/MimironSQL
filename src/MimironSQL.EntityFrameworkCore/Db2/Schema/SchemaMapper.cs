@@ -81,7 +81,9 @@ internal sealed class SchemaMapper(IDbdProvider dbdProvider, string wowVersionRa
             if (!TryGetBestEligibleBuildVersion(build.BuildLine, _wowVersion, out var candidate))
                 continue;
 
-            if (bestCandidate is null || candidate.CompareTo(bestCandidate.Value) > 0)
+            // Select the closest compatible BUILD that is >= the requested WOW_VERSION.
+            // That means we prefer the smallest eligible candidate.
+            if (bestCandidate is null || candidate.CompareTo(bestCandidate.Value) < 0)
             {
                 bestBuild = build;
                 bestAllowedHashes = null;
@@ -101,7 +103,7 @@ internal sealed class SchemaMapper(IDbdProvider dbdProvider, string wowVersionRa
                 if (!TryGetBestEligibleBuildVersion(build.BuildLine, _wowVersion, out var candidate))
                     continue;
 
-                if (bestCandidate is null || candidate.CompareTo(bestCandidate.Value) > 0)
+                if (bestCandidate is null || candidate.CompareTo(bestCandidate.Value) < 0)
                 {
                     bestBuild = build;
                     bestAllowedHashes = layout.Hashes;
@@ -162,14 +164,21 @@ internal sealed class SchemaMapper(IDbdProvider dbdProvider, string wowVersionRa
                 if (!WowVersion.TryParse(endText, out var end))
                     continue;
 
-                if (requestedEffective.CompareTo(start.GetEffectiveUpperBound()) < 0)
+                var startEffective = start.GetEffectiveUpperBound();
+                var endEffective = end.GetEffectiveUpperBound();
+
+                // We only support selecting builds that are >= the requested WOW_VERSION.
+                // For range blocks, if requested is below the range, choose the range start.
+                // If requested is within the range, choose requested.
+                // If requested is above the range, it's not eligible.
+                if (requestedEffective.CompareTo(endEffective) > 0)
                     continue;
 
-                var candidate = requestedEffective.CompareTo(end.GetEffectiveUpperBound()) >= 0
-                    ? end.GetEffectiveUpperBound()
+                var candidate = requestedEffective.CompareTo(startEffective) <= 0
+                    ? startEffective
                     : requestedEffective;
 
-                if (currentBest is null || candidate.CompareTo(currentBest.Value) > 0)
+                if (currentBest is null || candidate.CompareTo(currentBest.Value) < 0)
                     currentBest = candidate;
 
                 continue;
@@ -179,10 +188,10 @@ internal sealed class SchemaMapper(IDbdProvider dbdProvider, string wowVersionRa
                 continue;
 
             var candidateV = v.GetEffectiveUpperBound();
-            if (candidateV.CompareTo(requestedEffective) > 0)
+            if (candidateV.CompareTo(requestedEffective) < 0)
                 continue;
 
-            if (currentBest is null || candidateV.CompareTo(currentBest.Value) > 0)
+            if (currentBest is null || candidateV.CompareTo(currentBest.Value) < 0)
                 currentBest = candidateV;
         }
 

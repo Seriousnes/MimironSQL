@@ -42,6 +42,23 @@ WOW_VERSION=12.0.0.65655
 
 The generator uses this version to select the matching DBD build block for each table.
 
+### Optional: add a `.filter` file
+
+You can optionally add a `.filter` (and/or a user-local `.filter.local`) file via `AdditionalFiles` to include/exclude specific tables by DBD filename (without extension).
+
+- Lines starting with `!` are **block** rules.
+- Lines starting with `~` are **allow** rules.
+- Any other lines are ignored.
+- The text after the operator is a **regular expression** (case-insensitive). Invalid expressions are ignored.
+- If a table matches both block and allow, it is **allowed**.
+
+Example:
+
+```text
+!^Experimental.*$
+~^ExperimentalKeepThisOne$
+```
+
 ### 3. Declare the partial context
 
 Add a partial class declaration so the generator can extend it:

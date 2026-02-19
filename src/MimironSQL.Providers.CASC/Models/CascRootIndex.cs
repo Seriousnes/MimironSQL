@@ -211,7 +211,7 @@ internal sealed class CascRootIndex
             offset += 4;
 
             if (numberOfFiles == 0)
-                break;
+                continue;
 
             if (numberOfFiles > int.MaxValue)
                 break;
@@ -274,16 +274,22 @@ internal sealed class CascRootIndex
             }
 
             // Reconstruct FileDataIds.
-            uint fileDataId = 0;
+            int fileDataIndex = 0;
             for (int i = 0; i < recordCount; i++)
             {
-                uint delta = BinaryPrimitives.ReadUInt32LittleEndian(deltas.Slice(i * 4, 4));
-                fileDataId += delta;
-
-                if (fileDataId > int.MaxValue)
+                int delta = BinaryPrimitives.ReadInt32LittleEndian(deltas.Slice(i * 4, 4));
+                int fdid;
+                try
+                {
+                    fdid = checked(fileDataIndex + delta);
+                }
+                catch (OverflowException)
+                {
                     break;
+                }
 
-                int fdid = (int)fileDataId;
+                if (fdid < 0)
+                    break;
 
                 var ckeySpan = contentKeys.Slice(i * CascKey.Length, CascKey.Length);
                 var ckey = new CascKey(ckeySpan);
@@ -293,7 +299,7 @@ internal sealed class CascRootIndex
                     best[fdid] = (ckey, candidateRank);
 
                 // CascLib advances by one after each record.
-                fileDataId++;
+                fileDataIndex = fdid + 1;
             }
 
         }

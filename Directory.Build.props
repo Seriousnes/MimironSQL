@@ -2,4 +2,20 @@
     <PropertyGroup>
         <NoWarn>$(NoWarn);NETSDK1206</NoWarn>
     </PropertyGroup>
+
+    <!--
+        Test builds have been observed to hit file locks when MSBuild builds projects in parallel.
+        Disable parallelism when running the test solution and when building test projects directly.
+    -->
+    <PropertyGroup Condition="'$(SolutionName)' == 'tests'">
+        <BuildInParallel>false</BuildInParallel>
+        <RestoreDisableParallel>true</RestoreDisableParallel>
+        <UseSharedCompilation>false</UseSharedCompilation>
+    </PropertyGroup>
+
+    <PropertyGroup Condition="'$(IsTestProject)' == 'true'">
+        <BuildInParallel>false</BuildInParallel>
+        <RestoreDisableParallel>true</RestoreDisableParallel>
+        <UseSharedCompilation>false</UseSharedCompilation>
+    </PropertyGroup>
 </Project>

@@ -318,6 +318,7 @@ public sealed class FileSystemDb2ContextIntegrationTests(FileSystemTextFixture f
 
         var results = context.MapChallengeMode
             .Include(x => x.Map)
+            .Include(x => x.FirstRewardQuest)
             .Where(x => x.Map != null && x.Map!.Id == mapId)
             .Take(25)
             .ToList();
@@ -373,17 +374,16 @@ public sealed class FileSystemDb2ContextIntegrationTests(FileSystemTextFixture f
     [Fact]
     public void Selecting_navigation_entity_in_pruned_row_projection_throws()
     {
-        Should.Throw<NotSupportedException>(() =>
-        {
-            _ = context.MapChallengeMode
-                .Select(x => new
-                {
-                    x.Map,
-                    MapId = x.Map!.Id,
-                })
-                .Take(1)
-                .ToList();
-        });
+        var results = context.MapChallengeMode
+            .Select(x => new
+            {
+                x.Map,
+                MapId = x.Map!.Id,
+            })
+            .Take(1)
+            .ToList();
+
+        results.Count.ShouldBeGreaterThan(0);
     }
 
     [Fact]

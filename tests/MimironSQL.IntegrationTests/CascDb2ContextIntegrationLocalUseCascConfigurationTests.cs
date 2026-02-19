@@ -54,6 +54,9 @@ public class CascDb2ContextIntegrationLocalUseCascConfigurationTestsFixture
         var manifestPath = Path.Combine(testDataDir, "manifest.json");
         File.Exists(manifestPath).ShouldBeTrue();
 
+        var tactKeyFilePath = Path.Combine(testDataDir, "WoW.txt");
+        File.Exists(tactKeyFilePath).ShouldBeTrue();
+
         var optionsBuilder = new DbContextOptionsBuilder<WoWDb2Context>();
         optionsBuilder.UseMimironDb2ForTests(o => o.UseCasc(casc =>
         {
@@ -65,6 +68,8 @@ public class CascDb2ContextIntegrationLocalUseCascConfigurationTestsFixture
                 new FileSystemDbdProvider(
                     new FileSystemDbdProviderOptions(Path.Combine(testDataDir, "definitions")),
                     sp.GetRequiredService<IDbdParser>());
+
+            casc.TactKeyFilePath = tactKeyFilePath;
         }));
 
         Context = new WoWDb2Context(optionsBuilder.Options);

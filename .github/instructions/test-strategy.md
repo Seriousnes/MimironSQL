@@ -1,6 +1,6 @@
 ## Testing instructions
 - **IMPORTANT** if tests are skipped because the build fails, immediately stop trying to run tests and fix the build errors
-- Use Test Driven Development (TDD)
+- Use Test Driven Development (TDD). Before implementing a new feature, add unit tests to verify the expected outcome.
 - Unit tests must pass locally before committing code.
 - Use xUnit as the test framework.
 - Use NSubstitute for mocking dependencies in unit tests.

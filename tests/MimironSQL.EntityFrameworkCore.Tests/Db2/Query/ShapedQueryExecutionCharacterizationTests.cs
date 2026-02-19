@@ -46,8 +46,8 @@ public sealed class ShapedQueryExecutionCharacterizationTests
         using var built = CreateContext<TrackedContext>(dbdProvider, streamProvider, format);
         var context = built.Context;
 
-        Should.Throw<NullReferenceException>(() =>
-            context.Entities.Take(1).ToList());
+        var results = context.Entities.Take(1).ToList();
+        results.Count.ShouldBe(1);
     }
 
     [Fact]
@@ -100,7 +100,7 @@ public sealed class ShapedQueryExecutionCharacterizationTests
     }
 
     [Fact]
-    public void Unsupported_scalar_type_thrown_from_ReadField_is_wrapped_in_TargetInvocationException()
+    public void Unsupported_scalar_type_thrown_from_ReadField_is_thrown_as_NotSupportedException()
     {
         var dbdProvider = new TestDbdProvider(new Dictionary<string, IDbdFile>(StringComparer.Ordinal)
         {
@@ -132,13 +132,13 @@ public sealed class ShapedQueryExecutionCharacterizationTests
         using var built = CreateContext<BadScalarContext>(dbdProvider, streamProvider, format);
         var context = built.Context;
 
-        var ex = Should.Throw<System.Reflection.TargetInvocationException>(() =>
+        var ex = Should.Throw<NotSupportedException>(() =>
             context.BadScalars
                 .AsNoTracking()
                 .Take(1)
                 .ToList());
 
-        ex.InnerException.ShouldBeOfType<NotSupportedException>();
+        ex.Message.ShouldBe("Unsupported scalar type System.Collections.Generic.ICollection`1[[System.Int32, System.Private.CoreLib, Version=10.0.0.0, Culture=neutral, PublicKeyToken=7cec85d7bea7798e]].");
     }
 
     private static BuiltContext<TContext> CreateContext<TContext>(

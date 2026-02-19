@@ -52,9 +52,41 @@ public static class ServiceCollectionExtensions
 
         services.TryAddSingleton(bound);
 
+        var hasTactKeyProvider = services.Any(x => x.ServiceType == typeof(ITactKeyProvider));
+        if (!hasTactKeyProvider)
+        {
+            if (!string.IsNullOrWhiteSpace(bound.TactKeyFilePath))
+            {
+                if (!File.Exists(bound.TactKeyFilePath))
+                    throw new FileNotFoundException($"TACT key file not found: '{bound.TactKeyFilePath}'.", bound.TactKeyFilePath);
+
+                services.TryAddSingleton<FileSystemTactKeyProvider>(_ => new FileSystemTactKeyProvider(new FileSystemTactKeyProviderOptions(bound.TactKeyFilePath)));
+            }
+
+            services.TryAddSingleton<CascTactKeyDb2TableProvider>(sp => new CascTactKeyDb2TableProvider(
+                sp.GetRequiredService<IManifestProvider>(),
+                sp.GetRequiredService<CascDb2ProviderOptions>(),
+                sp.GetService<FileSystemTactKeyProvider>()));
+
+            services.TryAddSingleton<ITactKeyProvider>(sp =>
+            {
+                var providers = new List<ITactKeyProvider>(capacity: 2);
+
+                if (sp.GetService<FileSystemTactKeyProvider>() is { } file)
+                    providers.Add(file);
+
+                providers.Add(sp.GetRequiredService<CascTactKeyDb2TableProvider>());
+
+                return new CompositeTactKeyProvider(providers);
+            });
+        }
+
         services.TryAddSingleton<IWowBuildIdentityProvider, WowBuildIdentityProvider>();
         services.TryAddSingleton<IManifestProvider, FileSystemManifestProvider>();
-        services.TryAddSingleton<CascDb2StreamProvider>();
+        services.TryAddSingleton<CascDb2StreamProvider>(sp => new CascDb2StreamProvider(
+            sp.GetRequiredService<IManifestProvider>(),
+            sp.GetRequiredService<CascDb2ProviderOptions>(),
+            sp.GetService<ITactKeyProvider>()));
         services.TryAddSingleton<IDb2StreamProvider>(sp => sp.GetRequiredService<CascDb2StreamProvider>());
 
         return services;
@@ -70,6 +102,11 @@ public static class ServiceCollectionExtensions
         var wowInstallRoot = ReadString(casc, configuration, "WowInstallRoot") ?? string.Empty;
         var dbdDefsDir = ReadString(casc, configuration, "DbdDefinitionsDirectory");
         var manifestDir = ReadString(casc, configuration, "ManifestDirectory") ?? string.Empty;
+        var tactKeyFilePath = ReadString(casc, configuration, "TactKeyFilePath");
+
+        var throwOnEncryptedBlockWithoutKey = casc.GetValue<bool?>("ThrowOnEncryptedBlockWithoutKey") ??
+                             configuration.GetValue<bool?>("ThrowOnEncryptedBlockWithoutKey") ??
+                             false;
 
         var assetName = casc["ManifestAssetName"]?.Trim() ?? configuration["ManifestAssetName"]?.Trim() ?? "manifest.json";
 
@@ -79,6 +116,8 @@ public static class ServiceCollectionExtensions
             DbdDefinitionsDirectory = dbdDefsDir,
             ManifestDirectory = manifestDir,
             ManifestAssetName = assetName,
+            TactKeyFilePath = tactKeyFilePath,
+            ThrowOnEncryptedBlockWithoutKey = throwOnEncryptedBlockWithoutKey,
         };
     }
 }

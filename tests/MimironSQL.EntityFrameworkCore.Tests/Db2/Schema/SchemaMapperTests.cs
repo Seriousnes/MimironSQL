@@ -22,7 +22,7 @@ public sealed class SchemaMapperTests
         int ID
 
         LAYOUT 11111111
-        BUILD 12.0.1.65868
+        BUILD 12.0.0.65654
         ID
         """));
 
@@ -43,7 +43,7 @@ public sealed class SchemaMapperTests
         int Foo
 
         LAYOUT CAFEBABE, DEADBEEF
-        BUILD 12.0.1.65867
+        BUILD 12.0.0.65655
         ID
         Foo
         """;
@@ -71,7 +71,7 @@ public sealed class SchemaMapperTests
         int ID
         int Foo
 
-        BUILD 12.0.1.65867
+        BUILD 12.0.0.65655
         ID
         Foo
 
@@ -104,7 +104,7 @@ public sealed class SchemaMapperTests
         int Foo
 
         LAYOUT CAFEBABE
-        BUILD 12.0.1.65867
+        BUILD 12.0.0.65655
         $noninline,id$ ID
         $noninline,relation$ ParentID
         Foo

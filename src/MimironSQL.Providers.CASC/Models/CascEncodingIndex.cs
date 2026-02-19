@@ -15,6 +15,7 @@ internal sealed class CascEncodingIndex
 
     // Cache only keys we've actually resolved in this process.
     private readonly ConcurrentDictionary<CascKey, CascKey> _resolved = new();
+    private readonly ConcurrentDictionary<CascKey, CascKey[]> _resolvedAll = new();
 
     private CascEncodingIndex(byte[] decodedEncodingFile, int cPageSize, int cPageCount, int cPagesOffset)
     {
@@ -34,6 +35,11 @@ internal sealed class CascEncodingIndex
         ArgumentNullException.ThrowIfNull(decodedEncodingFile);
 
         // Format described on wowdev.wiki (TACT: Encoding table).
+        // Header is 0x16 (22) bytes:
+        // EN (2) + version (1) + ckey_size (1) + ekey_size (1)
+        // + c_page_size_kb (2) + e_page_size_kb (2)
+        // + c_page_count (4) + e_page_count (4)
+        // + unk1 (1) + e_spec_block_size (4)
         if (decodedEncodingFile.Length < 0x16)
             throw new InvalidDataException("ENCODING file too small");
 
@@ -50,12 +56,15 @@ internal sealed class CascEncodingIndex
             throw new InvalidDataException($"Unsupported key sizes (ckey={ckeySize}, ekey={ekeySize})");
 
         int cPageSize = checked(BinaryPrimitives.ReadUInt16BigEndian(decodedEncodingFile.AsSpan(5, 2)) * 1024);
-        int cPageCount = checked((int)BinaryPrimitives.ReadUInt32BigEndian(decodedEncodingFile.AsSpan(9, 4)));
+        _ = checked(BinaryPrimitives.ReadUInt16BigEndian(decodedEncodingFile.AsSpan(7, 2)) * 1024); // e_page_size_kb (currently unused)
 
-        byte flags = decodedEncodingFile[17];
-        if (flags != 0)
+        int cPageCount = checked((int)BinaryPrimitives.ReadUInt32BigEndian(decodedEncodingFile.AsSpan(9, 4)));
+        _ = checked((int)BinaryPrimitives.ReadUInt32BigEndian(decodedEncodingFile.AsSpan(13, 4))); // e_page_count (currently unused)
+
+        byte unk1 = decodedEncodingFile[17];
+        if (unk1 != 0)
         {
-            // Not expected as of 2025-02, but tolerate unknown flags for now.
+            // Not expected, but tolerate unknown values for now.
         }
 
         int eSpecSize = checked((int)BinaryPrimitives.ReadUInt32BigEndian(decodedEncodingFile.AsSpan(18, 4)));
@@ -101,13 +110,32 @@ internal sealed class CascEncodingIndex
         if (_resolved.TryGetValue(ckey, out ekey))
             return true;
 
-        if (!TryResolveFromPages(ckey, out ekey))
+        if (!TryGetEKeys(ckey, out var ekeys))
         {
             ekey = default;
             return false;
         }
 
+        ekey = ekeys[0];
         _resolved.TryAdd(ckey, ekey);
+        return true;
+    }
+
+    /// <summary>
+    /// Attempts to resolve all EKeys for the provided CKey.
+    /// </summary>
+    public bool TryGetEKeys(CascKey ckey, out CascKey[] ekeys)
+    {
+        if (_resolvedAll.TryGetValue(ckey, out ekeys!))
+            return true;
+
+        if (!TryResolveAllFromPages(ckey, out ekeys))
+        {
+            ekeys = [];
+            return false;
+        }
+
+        _resolvedAll.TryAdd(ckey, ekeys);
         return true;
     }
 
@@ -123,7 +151,7 @@ internal sealed class CascEncodingIndex
         return ekey;
     }
 
-    private bool TryResolveFromPages(CascKey targetCKey, out CascKey ekey)
+    private bool TryResolveAllFromPages(CascKey targetCKey, out CascKey[] ekeys)
     {
         // Simple, low-memory strategy: scan CKey pages until we find a match.
         // In practice we only resolve a relatively small number of keys per process.
@@ -131,15 +159,15 @@ internal sealed class CascEncodingIndex
         {
             var pageOffset = _cPagesOffset + (pageIndex * _cPageSize);
             var page = _decodedEncodingFile.AsSpan(pageOffset, _cPageSize);
-            if (TryResolveFromPage(page, targetCKey, out ekey))
+            if (TryResolveAllFromPage(page, targetCKey, out ekeys))
                 return true;
         }
 
-        ekey = default;
+        ekeys = [];
         return false;
     }
 
-    private static bool TryResolveFromPage(ReadOnlySpan<byte> page, CascKey targetCKey, out CascKey ekey)
+    private static bool TryResolveAllFromPage(ReadOnlySpan<byte> page, CascKey targetCKey, out CascKey[] ekeys)
     {
         int offset = 0;
         while (offset < page.Length)
@@ -172,18 +200,19 @@ internal sealed class CascEncodingIndex
             if (offset + ekeysBytes > page.Length)
                 break;
 
-            // First EKey is used as the canonical mapping.
-            var resolved = new CascKey(page.Slice(offset, CascKey.Length));
-            offset += ekeysBytes;
-
             if (ckey == targetCKey)
             {
-                ekey = resolved;
+                ekeys = new CascKey[keyCount];
+                for (int i = 0; i < keyCount; i++)
+                    ekeys[i] = new CascKey(page.Slice(offset + (i * CascKey.Length), CascKey.Length));
+
                 return true;
             }
+
+            offset += ekeysBytes;
         }
 
-        ekey = default;
+        ekeys = [];
         return false;
     }
 

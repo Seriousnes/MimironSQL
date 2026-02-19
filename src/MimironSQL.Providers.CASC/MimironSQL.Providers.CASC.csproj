@@ -33,6 +33,8 @@
 	<ItemGroup>
 		<ProjectReference Include="..\MimironSQL.Contracts\MimironSQL.Contracts.csproj" />
 		<ProjectReference Include="..\MimironSQL.Providers.FileSystem\MimironSQL.Providers.FileSystem.csproj" AdditionalProperties="NoWarn=1591" />
+		<ProjectReference Include="..\Salsa20\Salsa20.csproj" />
+		<ProjectReference Include="..\MimironSQL.Formats.Wdc5\MimironSQL.Formats.Wdc5.csproj" />
 	</ItemGroup>
 
 </Project>

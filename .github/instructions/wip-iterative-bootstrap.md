@@ -45,6 +45,10 @@ Build a real EF Core database provider (read-only) for querying DB2 data via EF 
 - **M2: Minimal execution produces results**
   - Basic projections and filtering return correct results.
 
+- **M2.5: Native DB2 execution for core operators**
+  - Prefer native DB2 ops for `Where`, `Find`, and `Include` to minimize table reads, while staying inside EF Core conventions.
+  - See `plans/plan-query-execution.md`.
+
 - **M3: Navigation behaviors become EF-native**
   - Includes/relationships work via EF conventions and provider execution (not custom/manual include engines).
 
@@ -65,4 +69,10 @@ Build a real EF Core database provider (read-only) for querying DB2 data via EF 
 - **Async query support deferred**: queries are sync-only for now; async integration tests may be skipped temporarily.
 - **Correctness-first execution**: it is acceptable to execute some predicates client-side initially.
   - TODO in code: switch to DB2-native filtering/selection later.
+- **Native DB2 ops focus (2026-02-15)**: prioritize native DB2 execution for `Where`/`Find`/`Include` to reduce reads.
+  - Allow client-side evaluation for arbitrary .NET methods/complex constructs *after* safe pushdown where possible.
+  - Safe partial pushdown rule of thumb: allow partial pushdown for `&&`, avoid unsafe partial pushdown under `||`.
+  - Plan: `plans/plan-query-execution.md`.
+- **Navigation predicate translation is a milestone**: avoid long-term dependence on compiling EF Core rewritten lambdas.
+  - TODO: translate navigation predicates (e.g., `.Any`, `.Count`, `.Contains` over navigations) into joins/subqueries in the provider IR.
 - **DI pattern**: follow Cosmos style (provider registers EF interfaces, then uses provider-specific services via DI).

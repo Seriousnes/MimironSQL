@@ -7,6 +7,12 @@ namespace MimironSQL.EntityFrameworkCore.Db2.Query.Expressions;
 
 internal sealed class Db2QueryExpression(IEntityType entityType) : Expression
 {
+    internal enum Db2TerminalOperator
+    {
+        None = 0,
+        Count = 1,
+    }
+
     public IEntityType EntityType { get; } = entityType ?? throw new ArgumentNullException(nameof(entityType));
 
     public List<LambdaExpression> Predicates { get; } = [];
@@ -16,6 +22,10 @@ internal sealed class Db2QueryExpression(IEntityType entityType) : Expression
     public List<(string JoinOperator, Db2QueryExpression Inner, LambdaExpression OuterKeySelector, LambdaExpression InnerKeySelector)> Joins { get; } = [];
 
     public Expression? Limit { get; private set; }
+
+    public Db2TerminalOperator TerminalOperator { get; private set; } = Db2TerminalOperator.None;
+
+    public bool NegateScalarResult { get; private set; }
 
     public void ApplyPredicate(LambdaExpression predicate)
     {
@@ -56,6 +66,13 @@ internal sealed class Db2QueryExpression(IEntityType entityType) : Expression
             Limit,
             limit);
     }
+
+    public void ApplyTerminalOperator(Db2TerminalOperator terminalOperator)
+    {
+        TerminalOperator = terminalOperator;
+    }
+
+    public void ApplyScalarNegation() => NegateScalarResult = !NegateScalarResult;
 
     public override Type Type => typeof(IEnumerable<ValueBuffer>);
 

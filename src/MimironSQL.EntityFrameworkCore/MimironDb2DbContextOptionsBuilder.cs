@@ -47,4 +47,7 @@ public sealed class MimironDb2DbContextOptionsBuilder : IMimironDb2DbContextOpti
 
     internal void SetForeignKeyArrayModeling(ForeignKeyArrayModeling modeling)
         => Extension = Extension.WithForeignKeyArrayModeling(modeling);
+
+    internal void SetRelaxLayoutValidation(bool relaxLayoutValidation)
+        => Extension = Extension.WithRelaxLayoutValidation(relaxLayoutValidation);
 }

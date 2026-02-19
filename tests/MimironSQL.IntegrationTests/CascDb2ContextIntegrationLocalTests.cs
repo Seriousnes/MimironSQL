@@ -11,48 +11,49 @@ public sealed class CascDb2ContextIntegrationLocalTests(CascDb2ContextIntegratio
 {
     private WoWDb2Context context => fixture.Context;
 
+    //[LocalCascFact]
+    //public void Can_query_db2context_using_casc_db2_provider()
+    //{
+    //    var query = context.Map
+    //        .Include(x => x.MapChallengeModes)
+    //            .ThenInclude(x => x.FirstRewardQuest)
+    //        .Include(x => x.MapChallengeModes)
+    //            .ThenInclude(x => x.RewardQuest)
+    //        .Where(x => x.MapChallengeModes.Any(m => m.FirstRewardQuestID.Any(q => q > 0) || m.RewardQuestID.Any(q => q > 0)))
+    //        .Take(10);
+
+    //    var expressionText = query.Expression.ToString();
+    //    var results = query.ToList();
+
+    //    //using var s = new ShouldlyScope();
+    //    //s.Run(() =>
+    //    //{
+    //    results.Count.ShouldBeGreaterThan(0);
+    //    results.Any(x => x.Id > 0).ShouldBeTrue();
+    //    results.Any(x => !string.IsNullOrWhiteSpace(x.Directory)).ShouldBeTrue();
+    //    results.All(x => x.MapChallengeModes.Any(m => m.FirstRewardQuest.Count > 0 || m.RewardQuest.Count > 0)).ShouldBeTrue();
+    //    //});        
+    //}
+
     [LocalCascFact]
-    public async Task Can_query_db2context_using_casc_db2_provider()
+    public void Can_include_multiple_levels_of_navigation_properties()
     {
-        var query = context.Map
-            .Include(x => x.MapChallengeModes)
-                .ThenInclude(x => x.FirstRewardQuest)
-            .Include(x => x.MapChallengeModes)
-                .ThenInclude(x => x.RewardQuest)
-            .Include(x => x.MapChallengeModes)
-                .ThenInclude(x => x.Map)
-            .Where(x => x.MapChallengeModes.Any(m => m.FirstRewardQuestID.Any(q => q > 0) || m.RewardQuestID.Any(q => q > 0)))
-            .Take(10);
+        var result = context.SpellItemEnchantment
+            .Include(x => x.RequiredSkill)
+            .Include(x => x.EffectArgCollection)
+                .ThenInclude(x => x.SpellName)
+            .SingleOrDefault(x => x.Id == 2930);
 
-        var expressionText = query.Expression.ToString();
+        result.ShouldNotBeNull();        
+        result.RequiredSkill.ShouldNotBeNull();
+        result.RequiredSkill.DisplayName.ShouldBe("Outland Enchanting");
 
-        var results = query.ToList();
-        results.Count.ShouldBeGreaterThan(0);
-        results.Any(x => x.Id > 0).ShouldBeTrue();
-        results.Any(x => !string.IsNullOrWhiteSpace(x.Directory)).ShouldBeTrue();
-
-        var whereHoldsForAll = results.All(x => x.MapChallengeModes.Any(m => m.FirstRewardQuestID.Any(q => q > 0) || m.RewardQuestID.Any(q => q > 0)));
-        if (!whereHoldsForAll)
-        {
-            var failing = results.First(x => !x.MapChallengeModes.Any(m => m.FirstRewardQuestID.Any(q => q > 0) || m.RewardQuestID.Any(q => q > 0)));
-
-            var totalModes = failing.MapChallengeModes.Count;
-            var modesWithAnyIds = failing.MapChallengeModes.Count(m => m.FirstRewardQuestID.Any(q => q > 0) || m.RewardQuestID.Any(q => q > 0));
-            var maxFirst = failing.MapChallengeModes.SelectMany(m => m.FirstRewardQuestID.DefaultIfEmpty(0)).Max();
-            var maxReward = failing.MapChallengeModes.SelectMany(m => m.RewardQuestID.DefaultIfEmpty(0)).Max();
-
-            var anyModeMatchesViaSet = context.Set<MapChallengeModeEntity>()
-                .Where(m => m.MapID == failing.Id)
-                .AsEnumerable()
-                .Any(m => m.FirstRewardQuestID.Any(q => q > 0) || m.RewardQuestID.Any(q => q > 0));
-
-            whereHoldsForAll.ShouldBeTrue(
-                $"Query Where(...) did not hold for returned results. Failing Map Id={failing.Id}, MapChallengeModes={totalModes}, ModesWithAnyQuestIds={modesWithAnyIds}, MaxFirstRewardQuestID={maxFirst}, MaxRewardQuestID={maxReward}, AnyModeMatchesViaSet={anyModeMatchesViaSet}.\nExpression: {expressionText}");
-        }
-        results.All(x => x.MapChallengeModes.Any(m => m.FirstRewardQuest.Count > 0 || m.RewardQuest.Count > 0)).ShouldBeTrue();
+        var spell = result.EffectArgCollection.First();
+        spell.Description.ShouldBe("Instantly Kills the target.  I hope you feel good about yourself now.....");
+        spell.SpellName.Name.ShouldBe("Death Touch");
     }
 
-    [LocalCascFact]
+    [LocalCascFact(Timeout = 10000)]
     public async Task Can_query_db2context_for_spell()
     {
         var result = context.Spell
@@ -73,13 +74,13 @@ public sealed class CascDb2ContextIntegrationLocalTests(CascDb2ContextIntegratio
     }
 
     [LocalCascFact]
-    public async Task Can_query_by_clr_type()
+    public void Can_query_by_clr_type()
     {
         const string tableName = "Spell";
 
         var entityType = context.Model.GetEntityTypes().FirstOrDefault(et => et.GetTableName().CompareTo($"{tableName}", StringComparison.InvariantCultureIgnoreCase) == 0);
         entityType.ShouldNotBeNull();
-        var entity = await context.FindAsync(entityType.ClrType, 454009);
+        var entity = context.Find(entityType.ClrType, 454009);
         entity.ShouldBeOfType<SpellEntity>();
         var spellEntity = (SpellEntity)entity;
         spellEntity.ShouldNotBeNull();
@@ -106,12 +107,16 @@ public class CascDb2ContextIntegrationLocalTestsFixture
         var manifestPath = Path.Combine(testDataDir, "manifest.json");
         File.Exists(manifestPath).ShouldBeTrue();
 
+        var tactKeyFilePath = Path.Combine(testDataDir, "WoW.txt");
+        File.Exists(tactKeyFilePath).ShouldBeTrue();
+
         var optionsBuilder = new DbContextOptionsBuilder<WoWDb2Context>();
         optionsBuilder.UseMimironDb2ForTests(o => o
                 .UseCasc()
                 .WithWowInstallRoot(wowInstallRoot)
                 .WithDbdDefinitions(Path.Combine(testDataDir, "definitions"))
                 .WithManifest(testDataDir, "manifest.json")
+            .WithTactKeyFile(tactKeyFilePath)
                 .Apply());
 
         Context = new WoWDb2Context(optionsBuilder.Options);

@@ -7,9 +7,11 @@ using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.DependencyInjection;
 
 using MimironSQL.EntityFrameworkCore.Db2.Query;
+using MimironSQL.EntityFrameworkCore.Db2.Model;
 using MimironSQL.EntityFrameworkCore.Diagnostics.Internal;
 using MimironSQL.EntityFrameworkCore.Infrastructure;
 using MimironSQL.EntityFrameworkCore.Query.Internal;
+using MimironSQL.EntityFrameworkCore.Storage;
 using MimironSQL.EntityFrameworkCore.Storage.Internal;
 using MimironSQL.Dbd;
 using MimironSQL.Formats;
@@ -52,6 +54,10 @@ public static class MimironDb2ServiceCollectionExtensions
             {
                 services.TryAddSingleton<IDbdParser, DbdParser>();
                 services.TryAddSingleton<IDb2Format, Wdc5Format>();
+
+                // DbContext-scoped store: caches parsed DB2 headers / files per table.
+                services.TryAddScoped<IMimironDb2Store, MimironDb2Store>();
+                services.TryAddScoped<IDb2ModelBinding, Db2ModelBindingProvider>();
             });
         builder.TryAddCoreServices();
 

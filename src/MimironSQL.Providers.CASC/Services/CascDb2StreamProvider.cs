@@ -3,14 +3,13 @@ namespace MimironSQL.Providers;
 /// <summary>
 /// Provides read-only access to DB2 files from a World of Warcraft installation via CASC.
 /// </summary>
-/// <param name="manifestProvider">The manifest provider used to resolve table names to FileDataIds.</param>
-/// <param name="options">CASC provider options.</param>
-public sealed class CascDb2StreamProvider(IManifestProvider manifestProvider, CascDb2ProviderOptions options) : IDb2StreamProvider
+public sealed class CascDb2StreamProvider : IDb2StreamProvider
 {
     private static readonly CascInstallCache Cache = new();
 
-    private readonly IManifestProvider _manifestProvider = manifestProvider ?? throw new ArgumentNullException(nameof(manifestProvider));
-    private readonly CascDb2ProviderOptions _options = options ?? throw new ArgumentNullException(nameof(options));
+    private readonly IManifestProvider _manifestProvider;
+    private readonly CascDb2ProviderOptions _options;
+    private readonly ITactKeyProvider? _tactKeyProvider;
 
     private readonly SemaphoreSlim _initLock = new(1, 1);
     private bool _initialized;
@@ -18,6 +17,22 @@ public sealed class CascDb2StreamProvider(IManifestProvider manifestProvider, Ca
     private CascLocalArchiveReader? _archiveReader;
     private CascEncodingIndex? _encoding;
     private CascRootIndex? _root;
+
+    /// <summary>
+    /// Creates a new CASC DB2 stream provider.
+    /// </summary>
+    /// <param name="manifestProvider">The manifest provider used to resolve table names to FileDataIds.</param>
+    /// <param name="options">CASC provider options.</param>
+    /// <param name="tactKeyProvider">Optional TACT key provider used for decrypting encrypted BLTE blocks.</param>
+    public CascDb2StreamProvider(
+        IManifestProvider manifestProvider,
+        CascDb2ProviderOptions options,
+        ITactKeyProvider? tactKeyProvider = null)
+    {
+        _manifestProvider = manifestProvider ?? throw new ArgumentNullException(nameof(manifestProvider));
+        _options = options ?? throw new ArgumentNullException(nameof(options));
+        _tactKeyProvider = tactKeyProvider;
+    }
 
     /// <summary>
     /// Raised when encrypted BLTE blocks are encountered and skipped during decoding.
@@ -108,6 +123,35 @@ public sealed class CascDb2StreamProvider(IManifestProvider manifestProvider, Ca
         if (_archiveReader is null || _encoding is null)
             throw new InvalidOperationException("Storage was not opened from an install root.");
 
+        if (_encoding.TryGetEKeys(ckey, out var ekeys) && ekeys.Length > 0)
+        {
+            Exception? lastDecodeException = null;
+
+            foreach (var ekey in ekeys)
+            {
+                try
+                {
+                    var stream = await TryOpenDb2ByEKeyAsync(ekey, cancellationToken).ConfigureAwait(false);
+                    if (stream is not null)
+                        return stream;
+                }
+                catch (KeyNotFoundException ex)
+                {
+                    // Most commonly: missing TACT key for an encrypted BLTE block.
+                    // If the ENCODING table provides multiple EKeys, try the others.
+                    lastDecodeException = ex;
+                }
+                catch (InvalidDataException ex)
+                {
+                    // If the EKey points at a record we can't decode, try the others.
+                    lastDecodeException = ex;
+                }
+            }
+
+            if (lastDecodeException is not null)
+                throw lastDecodeException;
+        }
+
         if (_encoding.TryGetEKey(ckey, out var resolvedEKey))
             return await TryOpenDb2ByEKeyAsync(resolvedEKey, cancellationToken).ConfigureAwait(false);
 
@@ -125,27 +169,30 @@ public sealed class CascDb2StreamProvider(IManifestProvider manifestProvider, Ca
         if (_archiveReader is null)
             throw new InvalidOperationException("Storage was not opened from an install root.");
 
+        byte[] blte;
         try
         {
-            var blte = await _archiveReader.ReadBlteBytesAsync(ekey, cancellationToken).ConfigureAwait(false);
-            int skippedBlockCount = 0;
-            long skippedLogicalBytes = 0;
-
-            var decoded = BlteDecoder.Decode(blte, new BlteDecodeOptions(skipped =>
-            {
-                skippedBlockCount++;
-                skippedLogicalBytes += skipped.LogicalSize;
-            }));
-
-            if (skippedBlockCount > 0)
-                EncryptedBlteBlocksSkipped?.Invoke(new CascStorageEncryptedBlteBlocksSkipped(ekey, skippedBlockCount, skippedLogicalBytes));
-
-            return new MemoryStream(decoded, writable: false);
+            blte = await _archiveReader.ReadBlteBytesAsync(ekey, cancellationToken).ConfigureAwait(false);
         }
         catch (KeyNotFoundException)
         {
+            // EKey not present in local .idx journals.
             return null;
         }
+
+        int skippedBlockCount = 0;
+        long skippedLogicalBytes = 0;
+
+        var decoded = BlteDecoder.Decode(blte, new BlteDecodeOptions(skipped =>
+        {
+            skippedBlockCount++;
+            skippedLogicalBytes += skipped.LogicalSize;
+        }, TactKeyProvider: _tactKeyProvider, ThrowOnEncryptedBlockWithoutKey: _options.ThrowOnEncryptedBlockWithoutKey));
+
+        if (skippedBlockCount > 0)
+            EncryptedBlteBlocksSkipped?.Invoke(new CascStorageEncryptedBlteBlocksSkipped(ekey, skippedBlockCount, skippedLogicalBytes));
+
+        return new MemoryStream(decoded, writable: false);
     }
 
     internal async Task<Stream> OpenDb2ByEKeyAsync(CascKey ekey, CancellationToken cancellationToken = default)

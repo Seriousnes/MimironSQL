@@ -2,6 +2,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
 using MimironSQL.EntityFrameworkCore;
+using MimironSQL.Providers;
 
 namespace MimironSQL.Providers;
 
@@ -59,6 +60,8 @@ public static class MimironDb2CascOptionsBuilderExtensions
             casc.DbdDefinitionsDirectory = bound.DbdDefinitionsDirectory;
             casc.ManifestDirectory = bound.ManifestDirectory;
             casc.ManifestAssetName = bound.ManifestAssetName;
+            casc.TactKeyFilePath = bound.TactKeyFilePath;
+            casc.ThrowOnEncryptedBlockWithoutKey = bound.ThrowOnEncryptedBlockWithoutKey;
         });
     }
 
@@ -72,6 +75,11 @@ public static class MimironDb2CascOptionsBuilderExtensions
         var wowInstallRoot = ReadString(casc, configuration, "WowInstallRoot") ?? string.Empty;
         var dbdDefsDir = ReadString(casc, configuration, "DbdDefinitionsDirectory");
         var cacheDir = ReadString(casc, configuration, "ManifestDirectory") ?? string.Empty;
+        var tactKeyFilePath = ReadString(casc, configuration, "TactKeyFilePath");
+
+        var throwOnEncryptedBlockWithoutKey = casc.GetValue<bool?>("ThrowOnEncryptedBlockWithoutKey") ??
+                             configuration.GetValue<bool?>("ThrowOnEncryptedBlockWithoutKey") ??
+                             false;
 
         var assetName = casc["ManifestAssetName"]?.Trim() ??
                         configuration["ManifestAssetName"]?.Trim() ??
@@ -83,6 +91,8 @@ public static class MimironDb2CascOptionsBuilderExtensions
             DbdDefinitionsDirectory = dbdDefsDir,
             ManifestDirectory = cacheDir,
             ManifestAssetName = assetName,
+            TactKeyFilePath = tactKeyFilePath,
+            ThrowOnEncryptedBlockWithoutKey = throwOnEncryptedBlockWithoutKey,
         };
     }
 
@@ -123,6 +133,17 @@ public static class MimironDb2CascOptionsBuilderExtensions
         /// The manifest asset name (default: <c>manifest.json</c>).
         /// </summary>
         public string ManifestAssetName { get; set; } = "manifest.json";
+
+        /// <summary>
+        /// Optional path to a TACT key file (e.g. <c>WoW.txt</c>) used to decrypt encrypted DB2 sections.
+        /// </summary>
+        public string? TactKeyFilePath { get; set; }
+
+        /// <summary>
+        /// When <see langword="true"/>, throws if an encrypted BLTE block is encountered but its TACT key is missing.
+        /// When <see langword="false"/> (default), encrypted blocks are skipped and output is zero-filled.
+        /// </summary>
+        public bool ThrowOnEncryptedBlockWithoutKey { get; set; } = false;
 
         /// <summary>
         /// Optional explicit DBD provider instance to register.
@@ -217,6 +238,25 @@ public static class MimironDb2CascOptionsBuilderExtensions
         }
 
         /// <summary>
+        /// Configures a file-system TACT key provider.
+        /// </summary>
+        public CascDb2ProviderBuilder WithTactKeyFile(string tactKeyFilePath)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(tactKeyFilePath);
+            TactKeyFilePath = tactKeyFilePath;
+            return this;
+        }
+
+        /// <summary>
+        /// Enables strict BLTE decoding: throw when encrypted blocks cannot be decrypted due to missing TACT keys.
+        /// </summary>
+        public CascDb2ProviderBuilder WithStrictTactKeys()
+        {
+            ThrowOnEncryptedBlockWithoutKey = true;
+            return this;
+        }
+
+        /// <summary>
         /// Applies the configured CASC provider settings to the underlying provider options builder.
         /// </summary>
         /// <returns>The underlying provider options builder.</returns>
@@ -237,6 +277,8 @@ public static class MimironDb2CascOptionsBuilderExtensions
                 DbdDefinitionsDirectory = DbdDefinitionsDirectory,
                 ManifestDirectory = ManifestDirectory ?? string.Empty,
                 ManifestAssetName = ManifestAssetName,
+                TactKeyFilePath = TactKeyFilePath,
+                ThrowOnEncryptedBlockWithoutKey = ThrowOnEncryptedBlockWithoutKey,
             };
 
             var configHash = HashCode.Combine(
@@ -244,7 +286,9 @@ public static class MimironDb2CascOptionsBuilderExtensions
                 hasCustomDbdProvider ? (_dbdProviderType?.FullName ?? DbdProvider?.GetType().FullName ?? "factory") : cascOptions.DbdDefinitionsDirectory,
                 _manifestProviderType?.FullName ?? ManifestProvider?.GetType().FullName ?? (ManifestProviderFactory is not null ? "factory" : null),
                 cascOptions.ManifestDirectory,
-                cascOptions.ManifestAssetName);
+                cascOptions.ManifestAssetName,
+                cascOptions.TactKeyFilePath,
+                cascOptions.ThrowOnEncryptedBlockWithoutKey);
 
             return _builder.ConfigureProvider(
                 providerKey: "CASC",

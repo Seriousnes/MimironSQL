@@ -9,7 +9,11 @@ namespace MimironSQL.EntityFrameworkCore.Tests;
 
 internal static class TestHelpers
 {
-    public const string WowVersion = "12.0.1.65867";
+    private const string DefaultWowVersion = "12.0.0.65655";
+
+    private static readonly Lazy<string> WowVersionLazy = new(ResolveWowVersion);
+
+    public static string WowVersion => WowVersionLazy.Value;
 
     public static DbContextOptionsBuilder UseMimironDb2ForTests(
         this DbContextOptionsBuilder optionsBuilder,
@@ -40,6 +44,15 @@ internal static class TestHelpers
         });
 
         return optionsBuilder;
+    }
+
+    private static string ResolveWowVersion()
+    {
+        var env = Environment.GetEnvironmentVariable("WOW_VERSION");
+        if (!string.IsNullOrWhiteSpace(env))
+            return env.Trim();
+
+        return DefaultWowVersion;
     }
 
     public static IDbdFile CreateMockDbdFile()

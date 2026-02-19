@@ -69,7 +69,7 @@ FirstRewardQuestID<32>[6]
         mapChallengeMode.SourceText.ShouldNotContain("MapIDKey");
 
         mapChallengeMode.SourceText.ShouldNotContain("[ForeignKey(");
-        mapChallengeMode.SourceText.ShouldContain("public ICollection<int> FirstRewardQuestID { get; set; } = [];");
+        mapChallengeMode.SourceText.ShouldContain("public int[] FirstRewardQuestID { get; set; } = [];");
         mapChallengeMode.SourceText.ShouldContain("public virtual ICollection<QuestV2Entity> FirstRewardQuest { get; set; } = [];");
 
         var dbContext = results.Single(s => s.HintName.EndsWith("WoWDb2Context.g.cs", StringComparison.Ordinal));
@@ -269,6 +269,149 @@ Foo<32>
         var foo = results.Single(s => s.HintName.EndsWith("FooEntity.g.cs", StringComparison.Ordinal));
         foo.SourceText.ShouldContain("public partial class FooEntity");
         foo.SourceText.ShouldContain("public int Foo { get; set; }");
+    }
+
+    [Fact]
+    public void Generator_honors_block_filter_case_insensitively()
+    {
+        var env = "WOW_VERSION=1.0.0.1\n";
+
+        var minimal = """
+COLUMNS
+int ID
+
+BUILD 1.0.0.1
+$id$ID<32>
+""";
+
+        var filter = """
+!^foo$
+""";
+
+        var results = RunGenerator(
+            additionalFiles:
+            [
+                (".env", env),
+                (".filter", filter),
+                ("Foo.dbd", minimal),
+                ("Bar.dbd", minimal),
+            ]);
+
+        results.Any(s => s.HintName.EndsWith("FooEntity.g.cs", StringComparison.Ordinal)).ShouldBeFalse();
+        results.Any(s => s.HintName.EndsWith("BarEntity.g.cs", StringComparison.Ordinal)).ShouldBeTrue();
+
+        var dbContext = results.Single(s => s.HintName.EndsWith("WoWDb2Context.g.cs", StringComparison.Ordinal));
+        dbContext.SourceText.ShouldNotContain("DbSet<FooEntity>");
+        dbContext.SourceText.ShouldContain("DbSet<BarEntity>");
+    }
+
+    [Fact]
+    public void Generator_allows_when_matches_both_block_and_allow()
+    {
+        var env = "WOW_VERSION=1.0.0.1\n";
+
+        var minimal = """
+COLUMNS
+int ID
+
+BUILD 1.0.0.1
+$id$ID<32>
+""";
+
+        var filter = """
+!^Foo$
+~^Foo$
+""";
+
+        var results = RunGenerator(
+            additionalFiles:
+            [
+                (".env", env),
+                (".filter", filter),
+                ("Foo.dbd", minimal),
+            ]);
+
+        results.Any(s => s.HintName.EndsWith("FooEntity.g.cs", StringComparison.Ordinal)).ShouldBeTrue();
+    }
+
+    [Fact]
+    public void Generator_combines_filter_and_filter_local_lines()
+    {
+        var env = "WOW_VERSION=1.0.0.1\n";
+
+        var minimal = """
+COLUMNS
+int ID
+
+BUILD 1.0.0.1
+$id$ID<32>
+""";
+
+        var filter = """
+!^Foo$
+""";
+
+        var filterLocal = """
+~^Foo$
+""";
+
+        var results = RunGenerator(
+            additionalFiles:
+            [
+                (".env", env),
+                (".filter", filter),
+                (".filter.local", filterLocal),
+                ("Foo.dbd", minimal),
+            ]);
+
+        results.Any(s => s.HintName.EndsWith("FooEntity.g.cs", StringComparison.Ordinal)).ShouldBeTrue();
+    }
+
+    [Fact]
+    public void Generator_does_not_emit_navigation_when_target_entity_is_filtered_out()
+    {
+        var env = "WOW_VERSION=1.0.0.1\n";
+
+        var mapDbd = """
+COLUMNS
+int ID
+
+BUILD 1.0.0.1
+$id$ID<32>
+""";
+
+        var mapChallengeModeDbd = """
+COLUMNS
+int ID
+int<Map::ID> MapID
+
+BUILD 1.0.0.1
+$id$ID<32>
+MapID<32>
+""";
+
+        var filter = """
+!.*
+~MapChallengeMode
+""";
+
+        var results = RunGenerator(
+            additionalFiles:
+            [
+                (".env", env),
+                (".filter", filter),
+                ("Map.dbd", mapDbd),
+                ("MapChallengeMode.dbd", mapChallengeModeDbd),
+            ]);
+
+        results.Any(s => s.HintName.EndsWith("MapEntity.g.cs", StringComparison.Ordinal)).ShouldBeFalse();
+
+        var mapChallengeMode = results.Single(s => s.HintName.EndsWith("MapChallengeModeEntity.g.cs", StringComparison.Ordinal));
+        mapChallengeMode.SourceText.ShouldContain("public int MapID { get; set; }");
+        mapChallengeMode.SourceText.ShouldNotContain("public virtual MapEntity");
+
+        var mapChallengeModeConfig = results.Single(s => s.HintName.EndsWith("MapChallengeModeEntityConfiguration.g.cs", StringComparison.Ordinal));
+        mapChallengeModeConfig.SourceText.ShouldNotContain("HasOne(x => x.Map)");
     }
 
     private static ImmutableArray<(string HintName, string SourceText)> RunGenerator((string Path, string Content)[] additionalFiles)

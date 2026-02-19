@@ -15,35 +15,31 @@ namespace MimironSQL.EntityFrameworkCore.Tests.Db2.Query;
 public sealed class QueryTranslationCharacterizationTests
 {
     [Fact]
-    public void FirstOrDefault_throws_translation_not_implemented_yet()
+    public void FirstOrDefault_returns_null_for_empty_sequence()
     {
         using var built = CreateContext<TranslationContext>();
-        var ex = Should.Throw<NotSupportedException>(() => built.Context.Entities.FirstOrDefault());
-        ex.Message.ShouldBe("MimironDb2 query translation is not implemented yet.");
+        built.Context.Entities.FirstOrDefault().ShouldBeNull();
     }
 
     [Fact]
-    public void SingleOrDefault_throws_translation_not_implemented_yet()
+    public void SingleOrDefault_returns_null_for_empty_sequence()
     {
         using var built = CreateContext<TranslationContext>();
-        var ex = Should.Throw<NotSupportedException>(() => built.Context.Entities.SingleOrDefault());
-        ex.Message.ShouldBe("MimironDb2 query translation is not implemented yet.");
+        built.Context.Entities.SingleOrDefault().ShouldBeNull();
     }
 
     [Fact]
-    public void Any_throws_translation_not_implemented_yet()
+    public void Any_returns_false_for_empty_sequence()
     {
         using var built = CreateContext<TranslationContext>();
-        var ex = Should.Throw<NotSupportedException>(() => built.Context.Entities.Any());
-        ex.Message.ShouldBe("MimironDb2 query translation is not implemented yet.");
+        built.Context.Entities.Any().ShouldBeFalse();
     }
 
     [Fact]
-    public void Count_throws_translation_not_implemented_yet()
+    public void Count_returns_zero_for_empty_sequence()
     {
         using var built = CreateContext<TranslationContext>();
-        var ex = Should.Throw<NotSupportedException>(() => built.Context.Entities.Count());
-        ex.Message.ShouldBe("MimironDb2 query translation is not implemented yet.");
+        built.Context.Entities.Count().ShouldBe(0);
     }
 
     [Fact]
@@ -76,12 +72,13 @@ public sealed class QueryTranslationCharacterizationTests
 
         optionsBuilder.UseMimironDb2ForTests(o =>
         {
+            o.WithRelaxedLayoutValidation();
             o.ConfigureProvider(
                 providerKey: "test",
                 providerConfigHash: 0,
                 applyProviderServices: services =>
                 {
-                    services.AddSingleton<IDbdProvider>(new EmptyDbdProvider());
+                    services.AddSingleton<IDbdProvider>(new TranslationEntityDbdProvider());
                     services.AddSingleton<IDb2StreamProvider>(new EmptyDb2StreamProvider());
                     services.AddSingleton<IDb2Format>(new EmptyDb2Format());
                 });
@@ -130,10 +127,56 @@ public sealed class QueryTranslationCharacterizationTests
         public string? Name { get; set; }
     }
 
-    private sealed class EmptyDbdProvider : IDbdProvider
+    private sealed class TranslationEntityDbdProvider : IDbdProvider
     {
         public IDbdFile Open(string tableName)
-            => throw new InvalidOperationException("EmptyDbdProvider should not be used by translation-only tests.");
+        {
+            if (!string.Equals(tableName, nameof(TranslationEntity), StringComparison.Ordinal))
+                throw new InvalidOperationException($"Unexpected table name '{tableName}'.");
+
+            return new TestDbdFile(new TestDbdBuildBlock(
+                buildLine: TestHelpers.WowVersion,
+                entries:
+                [
+                    new TestDbdLayoutEntry("Id", Db2ValueType.Int64, isNonInline: true, isId: true),
+                    new TestDbdLayoutEntry("Name", Db2ValueType.String, isNonInline: false, isId: false)
+                ]));
+        }
+    }
+
+    private sealed class TestDbdFile(IDbdBuildBlock buildBlock) : IDbdFile
+    {
+        public IReadOnlyDictionary<string, IDbdColumn> ColumnsByName { get; } = new Dictionary<string, IDbdColumn>(StringComparer.Ordinal);
+        public IReadOnlyList<IDbdLayout> Layouts { get; } = Array.Empty<IDbdLayout>();
+        public IReadOnlyList<IDbdBuildBlock> GlobalBuilds { get; } = [buildBlock];
+
+        public bool TryGetLayout(uint layoutHash, out IDbdLayout layout)
+        {
+            layout = default!;
+            return false;
+        }
+    }
+
+    private sealed class TestDbdBuildBlock(string buildLine, IReadOnlyList<IDbdLayoutEntry> entries) : IDbdBuildBlock
+    {
+        public string BuildLine { get; } = buildLine;
+        public IReadOnlyList<IDbdLayoutEntry> Entries { get; } = entries;
+
+        public int GetPhysicalColumnCount()
+            => Entries.Count(static e => !e.IsNonInline);
+    }
+
+    private sealed class TestDbdLayoutEntry(string name, Db2ValueType valueType, bool isNonInline, bool isId) : IDbdLayoutEntry
+    {
+        public string Name { get; } = name;
+        public Db2ValueType ValueType { get; } = valueType;
+        public string? ReferencedTableName => null;
+        public int ElementCount => 1;
+        public bool IsVerified => true;
+        public bool IsNonInline { get; } = isNonInline;
+        public bool IsId { get; } = isId;
+        public bool IsRelation => false;
+        public string? InlineTypeToken => null;
     }
 
     private sealed class EmptyDb2StreamProvider : IDb2StreamProvider
@@ -187,7 +230,7 @@ public sealed class QueryTranslationCharacterizationTests
             private sealed class EmptyHeader : IDb2FileHeader
             {
                 public uint LayoutHash => 0;
-                public int FieldsCount => 0;
+                public int FieldsCount => 1;
             }
         }
     }

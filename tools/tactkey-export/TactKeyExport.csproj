@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<OutputType>Exe</OutputType>
+		<TargetFramework>net10.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<IsPackable>false</IsPackable>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\..\src\MimironSQL.EntityFrameworkCore\MimironSQL.EntityFrameworkCore.csproj" />
+		<ProjectReference Include="..\..\src\MimironSQL.Providers.CASC\MimironSQL.Providers.CASC.csproj" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<Content Include="definitions\**\*.dbd" CopyToOutputDirectory="PreserveNewest" />
+		<Content Include="manifest.json" CopyToOutputDirectory="PreserveNewest" />
+		<Content Include=".env" CopyToOutputDirectory="PreserveNewest" />
+	</ItemGroup>
+
+</Project>

@@ -10,6 +10,7 @@
 *.userosscache
 *.sln.docstates
 *.env.local
+*.filter.local
 
 # User-local test configuration
 appsettings.development.json

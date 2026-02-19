@@ -7,6 +7,8 @@ using LibDeflate;
 
 using K4os.Compression.LZ4;
 
+using Security.Cryptography;
+
 namespace MimironSQL.Providers;
 
 /// <summary>
@@ -27,6 +29,8 @@ internal static class BlteDecoder
     {
         var span = blte;
 
+        var optionsOrDefault = options ?? new BlteDecodeOptions();
+
         if (span.Length < 8)
             throw new InvalidDataException("BLTE buffer too small");
 
@@ -40,7 +44,7 @@ internal static class BlteDecoder
         if (headerSize == 0)
         {
             // Single block: [mode][payload]
-            return DecodeSingleBlock(span[8..], expectedMd5: [], blockIndex: 0, options?.OnSkippedBlock);
+            return DecodeSingleBlock(span[8..], expectedMd5: [], blockIndex: 0, optionsOrDefault);
         }
 
         if (headerSize > span.Length)
@@ -90,7 +94,7 @@ internal static class BlteDecoder
         int dstOffset = 0;
         int dataOffset = checked((int)headerSize);
         ReadOnlySpan<byte> emptyMd5 = [];
-        var onSkippedBlock = options?.OnSkippedBlock;
+        // optionsOrDefault already computed above.
 
         for (int i = 0; i < numBlocks; i++)
         {
@@ -104,7 +108,7 @@ internal static class BlteDecoder
             if (dataOffset + rawSizeInt > span.Length)
                 throw new InvalidDataException("BLTE data truncated");
 
-            DecodeBlockInto(span.Slice(dataOffset, rawSizeInt), output.AsSpan(dstOffset, logicalSizeInt), logicalSize, emptyMd5, blockIndex: i, onSkippedBlock);
+            DecodeBlockInto(span.Slice(dataOffset, rawSizeInt), output.AsSpan(dstOffset, logicalSizeInt), logicalSize, emptyMd5, blockIndex: i, optionsOrDefault);
             dataOffset += rawSizeInt;
             dstOffset += logicalSizeInt;
         }
@@ -119,7 +123,7 @@ internal static class BlteDecoder
         ReadOnlySpan<byte> encodedBlock,
         ReadOnlySpan<byte> expectedMd5,
         int blockIndex,
-        Action<BlteSkippedBlock>? onSkippedBlock)
+        BlteDecodeOptions options)
     {
         var span = encodedBlock;
 
@@ -139,14 +143,7 @@ internal static class BlteDecoder
 
         if (mode == 'E')
         {
-            onSkippedBlock?.Invoke(new BlteSkippedBlock(
-                BlockIndex: blockIndex,
-                RawSize: (uint)encodedBlock.Length,
-                LogicalSize: 0,
-                Mode: mode));
-
-            // No keys available: preserve offsets by outputting zero-filled bytes.
-            return [];
+            return DecodeEncryptedSingleBlock(payload, blockIndex, options);
         }
 
         return mode switch
@@ -165,7 +162,7 @@ internal static class BlteDecoder
         uint logicalSizeHint,
         ReadOnlySpan<byte> expectedMd5,
         int blockIndex,
-        Action<BlteSkippedBlock>? onSkippedBlock)
+        BlteDecodeOptions options)
     {
         if (encodedBlock is { Length: < 1 })
             throw new InvalidDataException("BLTE block too small");
@@ -183,13 +180,7 @@ internal static class BlteDecoder
 
         if (mode == 'E')
         {
-            onSkippedBlock?.Invoke(new BlteSkippedBlock(
-                BlockIndex: blockIndex,
-                RawSize: (uint)encodedBlock.Length,
-                LogicalSize: logicalSizeHint,
-                Mode: mode));
-
-            destination.Clear();
+            DecodeEncryptedBlockInto(payload, destination, logicalSizeHint, blockIndex, options);
             return;
         }
 
@@ -218,6 +209,208 @@ internal static class BlteDecoder
             default:
                 throw new InvalidDataException($"Unsupported BLTE block mode '{mode}'");
         }
+    }
+
+    private static byte[] DecodeEncryptedSingleBlock(
+        ReadOnlySpan<byte> payload,
+        int blockIndex,
+        BlteDecodeOptions options)
+    {
+        if (!TryParseEncryptedBlock(payload, out var keyName, out var iv, out var type, out var encryptedData))
+            throw new InvalidDataException("BLTE encrypted block payload was malformed.");
+
+        if (type is not 'S')
+            throw new NotSupportedException($"BLTE encrypted block type '{type}' is not supported (only 'S' salsa20 is supported).");
+
+        if (!TryResolveTactKey(keyName, blockIndex, options, out var key, out var shouldSkip))
+        {
+            if (shouldSkip)
+                return [];
+
+            throw new InvalidOperationException("Failed to resolve a TACT key for an encrypted BLTE block.");
+        }
+
+        var decrypted = new byte[encryptedData.Length];
+        Span<byte> nonce = stackalloc byte[8];
+
+        FillNonce(iv, blockIndex, nonce);
+        using (var salsa20 = new Salsa20(key.Span, nonce))
+        {
+            salsa20.Transform(encryptedData, decrypted);
+        }
+
+        var innerMode = (char)(decrypted.Length > 0 ? decrypted[0] : (byte)0);
+        if (innerMode is 'E')
+            throw new InvalidDataException("BLTE encrypted block decrypted to another encrypted block; this is not supported.");
+
+        try
+        {
+            return DecodeSingleBlock(decrypted, expectedMd5: [], blockIndex, options);
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidDataException(
+                $"BLTE encrypted block decrypted but inner BLTE could not be decoded. KeyName={Convert.ToHexString(keyName)} IV={Convert.ToHexString(iv)} BlockIndex={blockIndex} Nonce={Convert.ToHexString(nonce)} InnerMode={(innerMode == '\0' ? "(none)" : $"'{innerMode}' (0x{(byte)innerMode:X2})")}",
+                ex);
+        }
+    }
+
+    private static void DecodeEncryptedBlockInto(
+        ReadOnlySpan<byte> payload,
+        Span<byte> destination,
+        uint logicalSizeHint,
+        int blockIndex,
+        BlteDecodeOptions options)
+    {
+        if (!TryParseEncryptedBlock(payload, out var keyName, out var iv, out var type, out var encryptedData))
+            throw new InvalidDataException("BLTE encrypted block payload was malformed.");
+
+        if (type is not 'S')
+            throw new NotSupportedException($"BLTE encrypted block type '{type}' is not supported (only 'S' salsa20 is supported).");
+
+        if (!TryResolveTactKey(keyName, blockIndex, options, out var key, out var shouldSkip))
+        {
+            if (shouldSkip)
+            {
+                destination.Clear();
+                return;
+            }
+
+            throw new InvalidOperationException("Failed to resolve a TACT key for an encrypted BLTE block.");
+        }
+
+        var decrypted = new byte[encryptedData.Length];
+        Span<byte> nonce = stackalloc byte[8];
+
+        FillNonce(iv, blockIndex, nonce);
+        using (var salsa20 = new Salsa20(key.Span, nonce))
+        {
+            salsa20.Transform(encryptedData, decrypted);
+        }
+
+        var innerMode = (char)(decrypted.Length > 0 ? decrypted[0] : (byte)0);
+        if (innerMode is 'E')
+            throw new InvalidDataException("BLTE encrypted block decrypted to another encrypted block; this is not supported.");
+
+        try
+        {
+            DecodeBlockInto(decrypted, destination, logicalSizeHint, expectedMd5: [], blockIndex, options);
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidDataException(
+                $"BLTE encrypted block decrypted but inner BLTE could not be decoded. KeyName={Convert.ToHexString(keyName)} IV={Convert.ToHexString(iv)} BlockIndex={blockIndex} Nonce={Convert.ToHexString(nonce)} InnerMode={(innerMode == '\0' ? "(none)" : $"'{innerMode}' (0x{(byte)innerMode:X2})")}",
+                ex);
+        }
+    }
+
+    private static bool TryParseEncryptedBlock(
+        ReadOnlySpan<byte> payload,
+        out ReadOnlySpan<byte> keyName,
+        out ReadOnlySpan<byte> iv,
+        out char type,
+        out ReadOnlySpan<byte> encryptedData)
+    {
+        keyName = default;
+        iv = default;
+        type = default;
+        encryptedData = default;
+
+        if (payload.Length < 1)
+            return false;
+
+        var keyNameLength = payload[0];
+        if (keyNameLength != 8)
+            throw new InvalidDataException($"BLTE encrypted block key_name_length was {keyNameLength} (expected 8).");
+
+        var keyNameStart = 1;
+        var keyNameEnd = keyNameStart + keyNameLength;
+        if (payload.Length < keyNameEnd + 1)
+            return false;
+
+        keyName = payload.Slice(keyNameStart, keyNameLength);
+
+        var ivLength = payload[keyNameEnd];
+        if (ivLength is not (4 or 8))
+            throw new InvalidDataException($"BLTE encrypted block IV_length was {ivLength} (expected 4 or 8).");
+
+        var ivStart = keyNameEnd + 1;
+        var ivEnd = ivStart + ivLength;
+        if (payload.Length < ivEnd + 1)
+            return false;
+
+        iv = payload.Slice(ivStart, ivLength);
+        type = (char)payload[ivEnd];
+        encryptedData = payload[(ivEnd + 1)..];
+        return true;
+    }
+
+    private static bool TryResolveTactKey(
+        ReadOnlySpan<byte> keyName,
+        int blockIndex,
+        BlteDecodeOptions options,
+        out ReadOnlyMemory<byte> key,
+        out bool shouldSkip)
+    {
+        key = default;
+        shouldSkip = false;
+
+        var tactKeyProvider = options.TactKeyProvider;
+        if (tactKeyProvider is null)
+        {
+            if (!options.ThrowOnEncryptedBlockWithoutKey)
+            {
+                options.OnSkippedBlock?.Invoke(new BlteSkippedBlock(
+                    BlockIndex: blockIndex,
+                    RawSize: (uint)(keyName.Length + 1),
+                    LogicalSize: 0,
+                    Mode: 'E'));
+                shouldSkip = true;
+                return false;
+            }
+
+            throw new InvalidOperationException("Encountered an encrypted BLTE block but no ITactKeyProvider was configured.");
+        }
+
+        ulong lookupBe = BinaryPrimitives.ReadUInt64BigEndian(keyName);
+        ulong lookupLe = BinaryPrimitives.ReadUInt64LittleEndian(keyName);
+
+        if (tactKeyProvider.TryGetKey(lookupBe, out key) || tactKeyProvider.TryGetKey(lookupLe, out key))
+            return true;
+
+        if (!options.ThrowOnEncryptedBlockWithoutKey)
+        {
+            options.OnSkippedBlock?.Invoke(new BlteSkippedBlock(
+                BlockIndex: blockIndex,
+                RawSize: (uint)(keyName.Length + 1),
+                LogicalSize: 0,
+                Mode: 'E'));
+            shouldSkip = true;
+            return false;
+        }
+
+        throw new KeyNotFoundException($"Missing TACT key for BLTE key_name {Convert.ToHexString(keyName)} (lookups tried: 0x{lookupBe:X16}, 0x{lookupLe:X16}).");
+    }
+
+    private static void FillNonce(ReadOnlySpan<byte> iv, int blockIndex, Span<byte> nonce)
+    {
+        nonce.Clear();
+
+        if (iv.Length is not (4 or 8))
+            throw new ArgumentOutOfRangeException(nameof(iv), $"BLTE encrypted IV must be 4 or 8 bytes, but was {iv.Length}.");
+
+        // CascLib behavior:
+        // - If IV is 4 bytes, pad to 8 by appending zeros.
+        // - XOR the block index into the first 4 bytes (little-endian).
+        iv.CopyTo(nonce);
+
+        Span<byte> indexBytes = stackalloc byte[4];
+        BinaryPrimitives.WriteInt32LittleEndian(indexBytes, blockIndex);
+
+        nonce[0] ^= indexBytes[0];
+        nonce[1] ^= indexBytes[1];
+        nonce[2] ^= indexBytes[2];
+        nonce[3] ^= indexBytes[3];
     }
 
     private static byte[] DecodeZlib(ReadOnlySpan<byte> payload, uint? logicalSizeHint)

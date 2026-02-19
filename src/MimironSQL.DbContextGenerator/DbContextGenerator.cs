@@ -1,13 +1,13 @@
 using System.Collections.Immutable;
-using System.Globalization;
 using System.Text;
 
 using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.Text;
 
 using MimironSQL.Dbd;
-using MimironSQL.Db2;
+using MimironSQL.DbContextGenerator.Utility;
+using MimironSQL.DbContextGenerator.Filters;
+using MimironSQL.DbContextGenerator.Models;
 
 namespace MimironSQL.DbContextGenerator;
 
@@ -72,6 +72,35 @@ public sealed class DbContextGenerator : IIncrementalGenerator
                 return new EnvResult(EnvResultKind.Ok, version, value);
             });
 
+        var filterProvider = context.AdditionalTextsProvider
+            .Where(static f =>
+            {
+                var fileName = Path.GetFileName(f.Path);
+                return string.Equals(fileName, ".filter", StringComparison.OrdinalIgnoreCase) || string.Equals(fileName, ".filter.local", StringComparison.OrdinalIgnoreCase);
+            })
+            .Collect()
+            .Select(static (files, cancellationToken) =>
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                if (files.Length == 0)
+                    return FilterSet.Empty;
+
+                List<string> lines = [];
+
+                foreach (var f in files)
+                {
+                    var text = f.GetText(cancellationToken);
+                    if (text is null)
+                        continue;
+
+                    foreach (var line in text.Lines.Select(static l => l.ToString()))
+                        lines.Add(line);
+                }
+
+                return FilterSet.Create([.. lines]);
+            });
+
         var dbdFilesProvider = context.AdditionalTextsProvider
             .Where(static f => f.Path.EndsWith(".dbd", StringComparison.OrdinalIgnoreCase));
 
@@ -79,11 +108,12 @@ public sealed class DbContextGenerator : IIncrementalGenerator
 
         var entitySpecsProvider = dbdFilesProvider
             .Combine(envProvider)
+            .Combine(filterProvider)
             .Select(static (input, cancellationToken) =>
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
-                var (dbdFileText, env) = input;
+                var ((dbdFileText, env), filters) = input;
                 if (env.Kind != EnvResultKind.Ok || env.Version is null)
                     return null;
 
@@ -93,6 +123,9 @@ public sealed class DbContextGenerator : IIncrementalGenerator
 
                 var tableName = Path.GetFileNameWithoutExtension(dbdFileText.Path);
                 if (string.IsNullOrWhiteSpace(tableName))
+                    return null;
+
+                if (!filters.IsAllowed(tableName))
                     return null;
 
                 var dbd = ParseDbd(sourceText);
@@ -359,8 +392,11 @@ public sealed class DbContextGenerator : IIncrementalGenerator
         sb.AppendLine($"public partial class {entity.ClassName} : Db2Entity<{entity.IdTypeName}>");
         sb.AppendLine("{");
 
-        var navsByForeignKey = entity.Navigations
+        var includedNavigations = entity.Navigations
             .Where(n => byTableName.ContainsKey(n.TargetTableName))
+            .ToImmutableArray();
+
+        var navsByForeignKey = includedNavigations
             .GroupBy(n => n.ForeignKeyPropertyName, StringComparer.Ordinal)
             .ToDictionary(g => g.Key, g => g.ToArray(), StringComparer.Ordinal);
 
@@ -377,7 +413,7 @@ public sealed class DbContextGenerator : IIncrementalGenerator
                 continue;
 
             fkPropertyTypeByName[fkPropertyName] = nav.IsForeignKeyArray
-                ? $"ICollection<{target.IdTypeName}>"
+                ? $"{target.IdTypeName}[]"
                 : target.IdTypeName;
         }
 
@@ -425,7 +461,12 @@ public sealed class DbContextGenerator : IIncrementalGenerator
         sb.AppendLine();
         sb.AppendLine("using Microsoft.EntityFrameworkCore;");
         sb.AppendLine("using Microsoft.EntityFrameworkCore.Metadata.Builders;");
-        if (entity.Navigations.Any(static n => n.IsForeignKeyArray))
+
+        var includedNavigations = entity.Navigations
+            .Where(n => byTableName.ContainsKey(n.TargetTableName))
+            .ToImmutableArray();
+
+        if (includedNavigations.Any(static n => n.IsForeignKeyArray))
             sb.AppendLine("using MimironSQL.EntityFrameworkCore.Db2.Model;");
         sb.AppendLine();
         sb.AppendLine("namespace MimironSQL;");
@@ -436,24 +477,24 @@ public sealed class DbContextGenerator : IIncrementalGenerator
         sb.AppendLine("{");
         sb.AppendLine($"    public void Configure(EntityTypeBuilder<{entity.ClassName}> builder)");
         sb.AppendLine("    {");
-        sb.AppendLine($"        builder.ToTable(\"{EscapeString(entity.TableName)}\");");
+        sb.AppendLine($"        builder.ToTable(\"{entity.TableName.EscapeString()}\");");
         sb.AppendLine("        builder.HasKey(x => x.Id);");
+        sb.AppendLine("        builder.Property(x => x.Id).ValueGeneratedNever();");
 
         if (!string.Equals(entity.IdColumnName, "ID", StringComparison.Ordinal))
-            sb.AppendLine($"        builder.Property(x => x.Id).HasColumnName(\"{EscapeString(entity.IdColumnName)}\");");
+            sb.AppendLine($"        builder.Property(x => x.Id).HasColumnName(\"{entity.IdColumnName.EscapeString()}\");");
 
         foreach (var p in entity.ScalarProperties)
         {
             if (p.ColumnName is null)
                 continue;
 
-            sb.AppendLine($"        builder.Property(x => x.{p.PropertyName}).HasColumnName(\"{EscapeString(p.ColumnName)}\");");
+            sb.AppendLine($"        builder.Property(x => x.{p.PropertyName}).HasColumnName(\"{p.ColumnName.EscapeString()}\");");
         }
 
-        foreach (var nav in entity.Navigations)
+        foreach (var nav in includedNavigations)
         {
-            if (!byTableName.TryGetValue(nav.TargetTableName, out var target))
-                continue;
+            _ = byTableName[nav.TargetTableName];
 
             if (nav.IsForeignKeyArray)
             {
@@ -472,606 +513,5 @@ public sealed class DbContextGenerator : IIncrementalGenerator
         sb.AppendLine("}");
 
         return sb.ToString();
-    }
-
-    private static string EscapeString(string value)
-        => value.Replace("\\", "\\\\").Replace("\"", "\\\"");
-
-    private enum EnvResultKind
-    {
-        Ok,
-        MissingEnv,
-        MissingWowVersion,
-        InvalidWowVersion,
-    }
-
-    private readonly struct EnvResult(EnvResultKind kind, WowVersion? version, string? rawValue)
-    {
-        /// <summary>
-        /// Gets the kind of environment read result.
-        /// </summary>
-        public EnvResultKind Kind { get; } = kind;
-
-        /// <summary>
-        /// Gets the parsed WoW version when available.
-        /// </summary>
-        public WowVersion? Version { get; } = version;
-
-        /// <summary>
-        /// Gets the raw <c>WOW_VERSION</c> value when present.
-        /// </summary>
-        public string? RawValue { get; } = rawValue;
-
-        /// <summary>
-        /// Gets an <see cref="EnvResult"/> that represents a missing <c>.env</c> file.
-        /// </summary>
-        public static EnvResult Missing => new(EnvResultKind.MissingEnv, null, null);
-
-        /// <summary>
-        /// Gets an <see cref="EnvResult"/> that represents a missing <c>WOW_VERSION</c> key.
-        /// </summary>
-        public static EnvResult MissingWowVersion => new(EnvResultKind.MissingWowVersion, null, null);
-    }
-
-    private readonly struct WowVersion(int major, int minor, int patch, int build, bool hasBuild) : IComparable<WowVersion>
-    {
-        /// <summary>
-        /// Gets the major version component.
-        /// </summary>
-        public int Major { get; } = major;
-
-        /// <summary>
-        /// Gets the minor version component.
-        /// </summary>
-        public int Minor { get; } = minor;
-
-        /// <summary>
-        /// Gets the patch version component.
-        /// </summary>
-        public int Patch { get; } = patch;
-
-        /// <summary>
-        /// Gets the build component.
-        /// </summary>
-        public int Build { get; } = build;
-
-        /// <summary>
-        /// Gets a value indicating whether the build component was explicitly provided.
-        /// </summary>
-        public bool HasBuild { get; } = hasBuild;
-
-        /// <summary>
-        /// Tries to parse a WoW version from the provided text.
-        /// </summary>
-        /// <param name="value">The text to parse.</param>
-        /// <param name="version">The parsed version when the method returns <see langword="true"/>.</param>
-        /// <returns><see langword="true"/> if parsing succeeded; otherwise <see langword="false"/>.</returns>
-        public static bool TryParse(string value, out WowVersion version)
-        {
-            var rawParts = value.Split(['.'], StringSplitOptions.RemoveEmptyEntries);
-            if (rawParts.Length is not (3 or 4))
-            {
-                version = default;
-                return false;
-            }
-
-            var majorText = rawParts[0].Trim();
-            var minorText = rawParts[1].Trim();
-            var patchText = rawParts[2].Trim();
-
-            if (!int.TryParse(majorText, NumberStyles.Integer, CultureInfo.InvariantCulture, out var major) ||
-                !int.TryParse(minorText, NumberStyles.Integer, CultureInfo.InvariantCulture, out var minor) ||
-                !int.TryParse(patchText, NumberStyles.Integer, CultureInfo.InvariantCulture, out var patch))
-            {
-                version = default;
-                return false;
-            }
-
-            if (rawParts.Length == 3)
-            {
-                version = new WowVersion(major, minor, patch, build: 0, hasBuild: false);
-                return true;
-            }
-
-            var buildText = rawParts[3].Trim();
-            if (!int.TryParse(buildText, NumberStyles.Integer, CultureInfo.InvariantCulture, out var build))
-            {
-                version = default;
-                return false;
-            }
-
-            version = new WowVersion(major, minor, patch, build, hasBuild: true);
-            return true;
-        }
-
-        /// <summary>
-        /// Gets an effective upper bound used for range comparisons.
-        /// </summary>
-        /// <returns>The effective upper bound version.</returns>
-        public WowVersion GetEffectiveUpperBound()
-            => HasBuild ? this : new WowVersion(Major, Minor, Patch, int.MaxValue, hasBuild: false);
-
-        /// <summary>
-        /// Compares this version to another version.
-        /// </summary>
-        /// <param name="other">The other version.</param>
-        /// <returns>
-        /// A value less than zero if this instance precedes <paramref name="other"/>, zero if they are equal,
-        /// or a value greater than zero if this instance follows <paramref name="other"/>.
-        /// </returns>
-        public int CompareTo(WowVersion other)
-        {
-            var major = Major.CompareTo(other.Major);
-            if (major != 0) return major;
-
-            var minor = Minor.CompareTo(other.Minor);
-            if (minor != 0) return minor;
-
-            var patch = Patch.CompareTo(other.Patch);
-            if (patch != 0) return patch;
-
-            return Build.CompareTo(other.Build);
-        }
-    }
-
-    private sealed class EntitySpec(
-        string tableName,
-        string className,
-        string idColumnName,
-        string idTypeName,
-        ImmutableArray<ScalarPropertySpec> scalarProperties,
-        ImmutableArray<NavigationSpec> navigations)
-    {
-        /// <summary>
-        /// Gets the source table name.
-        /// </summary>
-        public string TableName { get; } = tableName;
-
-        /// <summary>
-        /// Gets the generated CLR type name.
-        /// </summary>
-        public string ClassName { get; } = className;
-
-        /// <summary>
-        /// Gets the DB2 schema column name that backs the <c>Id</c> property.
-        /// </summary>
-        public string IdColumnName { get; } = idColumnName;
-
-        /// <summary>
-        /// Gets the CLR type name used for the entity key.
-        /// </summary>
-        public string IdTypeName { get; } = idTypeName;
-
-        /// <summary>
-        /// Gets the scalar property specifications for the entity.
-        /// </summary>
-        public ImmutableArray<ScalarPropertySpec> ScalarProperties { get; } = scalarProperties;
-
-        /// <summary>
-        /// Gets the navigation property specifications for the entity.
-        /// </summary>
-        public ImmutableArray<NavigationSpec> Navigations { get; } = navigations;
-
-        /// <summary>
-        /// Creates an entity specification from a DBD file and a selected build block.
-        /// </summary>
-        /// <param name="tableName">The source table name.</param>
-        /// <param name="dbd">The parsed DBD file.</param>
-        /// <param name="build">The selected build block.</param>
-        /// <returns>The created entity specification.</returns>
-        public static EntitySpec Create(string tableName, DbdFile dbd, DbdBuildBlock build)
-        {
-            var className = $"{NameNormalizer.NormalizeTypeName(tableName)}Entity";
-
-            var idEntry = build.Entries.FirstOrDefault(e => e.IsId);
-            var keyEntry = idEntry ?? build.Entries.FirstOrDefault(static e =>
-                e is { ElementCount: 1 } && (e.ValueType == Db2ValueType.Int64 || e.ValueType == Db2ValueType.UInt64 || TypeMapping.TryMapInlineInteger(e.InlineTypeToken, out _)));
-
-            var idColumnName = keyEntry?.Name ?? "ID";
-            var idType = TypeMapping.GetIdClrType(keyEntry, dbd.ColumnsByName);
-
-            var scalarProperties = new List<ScalarPropertySpec>();
-            var navigations = new List<NavigationSpec>();
-            var usedNames = new HashSet<string>(StringComparer.Ordinal);
-            var scalarPropertyNameByColumnName = new Dictionary<string, (string EscapedPropertyName, string UnescapedPropertyName)>(StringComparer.Ordinal);
-
-            foreach (var entry in build.Entries.Where(e => !ReferenceEquals(e, keyEntry) && !e.IsId && (e.ElementCount == 1 || (e.ElementCount > 1 && e.ReferencedTableName is { Length: > 0 }))))
-            {
-                var columnName = entry.Name;
-                var propertyName = NameNormalizer.NormalizePropertyName(columnName);
-                propertyName = NameNormalizer.MakeUnique(propertyName, usedNames);
-
-                var typeName = TypeMapping.GetClrTypeName(entry);
-                var initializer = TypeMapping.GetInitializer(typeName);
-
-                string? mappedColumnName = null;
-                if (!string.Equals(propertyName, columnName, StringComparison.Ordinal))
-                    mappedColumnName = columnName;
-
-                var escapedPropertyName = NameNormalizer.EscapeIdentifier(propertyName);
-
-                scalarProperties.Add(new ScalarPropertySpec(
-                    escapedPropertyName,
-                    typeName,
-                    initializer,
-                    mappedColumnName));
-
-                scalarPropertyNameByColumnName[columnName] = (escapedPropertyName, propertyName);
-            }
-
-            foreach (var entry in build.Entries.Where(e => !ReferenceEquals(e, keyEntry) && !e.IsId && (e.ElementCount == 1 || (e.ElementCount > 1 && e.ReferencedTableName is { Length: > 0 }))))
-            {
-                if (entry.ReferencedTableName is not { Length: > 0 } targetTable)
-                    continue;
-
-                var columnName = entry.Name;
-                if (!scalarPropertyNameByColumnName.TryGetValue(columnName, out var scalarProperty))
-                    continue;
-
-                var rawNavName = columnName.EndsWith("ID", StringComparison.Ordinal)
-                    ? columnName.Substring(0, columnName.Length - 2)
-                    : columnName;
-
-                var navName = NameNormalizer.NormalizePropertyName(rawNavName);
-                if (string.Equals(navName, scalarProperty.UnescapedPropertyName, StringComparison.Ordinal))
-                {
-                    navName += entry.ElementCount > 1 ? "Collection" : "Entity";
-                }
-
-                navName = NameNormalizer.MakeUnique(navName, usedNames);
-
-                var isForeignKeyArray = entry.ElementCount > 1;
-
-                navigations.Add(new NavigationSpec(
-                    targetTableName: targetTable,
-                    foreignKeyPropertyName: scalarProperty.EscapedPropertyName,
-                    propertyName: NameNormalizer.EscapeIdentifier(navName),
-                    isCollection: isForeignKeyArray,
-                    isForeignKeyArray: isForeignKeyArray));
-            }
-
-            return new EntitySpec(tableName, className, idColumnName, idType, [.. scalarProperties], [.. navigations]);
-        }
-    }
-
-    private sealed class ScalarPropertySpec(string propertyName, string typeName, string initializer, string? columnName)
-    {
-        /// <summary>
-        /// Gets the C# property name.
-        /// </summary>
-        public string PropertyName { get; } = propertyName;
-
-        /// <summary>
-        /// Gets the CLR type name.
-        /// </summary>
-        public string TypeName { get; } = typeName;
-
-        /// <summary>
-        /// Gets the initializer source text for the generated property.
-        /// </summary>
-        public string Initializer { get; } = initializer;
-
-        /// <summary>
-        /// Gets the source column name when it differs from <see cref="PropertyName"/>.
-        /// </summary>
-        public string? ColumnName { get; } = columnName;
-    }
-
-    private sealed class NavigationSpec(string targetTableName, string foreignKeyPropertyName, string propertyName, bool isCollection)
-    {
-        /// <summary>
-        /// Gets the target table name for the navigation.
-        /// </summary>
-        public string TargetTableName { get; } = targetTableName;
-
-        /// <summary>
-        /// Gets the foreign key property name in the source entity.
-        /// </summary>
-        public string ForeignKeyPropertyName { get; } = foreignKeyPropertyName;
-
-        /// <summary>
-        /// Gets the navigation property name.
-        /// </summary>
-        public string PropertyName { get; } = propertyName;
-
-        /// <summary>
-        /// Gets a value indicating whether the navigation is a collection.
-        /// </summary>
-        public bool IsCollection { get; } = isCollection;
-
-        /// <summary>
-        /// Gets a value indicating whether the navigation is configured using <c>HasForeignKeyArray</c>.
-        /// </summary>
-        public bool IsForeignKeyArray { get; } = false;
-
-        public NavigationSpec(string targetTableName, string foreignKeyPropertyName, string propertyName, bool isCollection, bool isForeignKeyArray)
-            : this(targetTableName, foreignKeyPropertyName, propertyName, isCollection)
-        {
-            IsForeignKeyArray = isForeignKeyArray;
-        }
-    }
-
-    private static class NameNormalizer
-    {
-        /// <summary>
-        /// Normalizes a DBD table name into a CLR type name.
-        /// </summary>
-        /// <param name="tableName">The source table name.</param>
-        /// <returns>A normalized CLR type name.</returns>
-        public static string NormalizeTypeName(string tableName)
-        {
-            if (string.IsNullOrWhiteSpace(tableName))
-                return "_";
-
-            // Preserve current behavior for already-CLR-safe names that don't need normalization.
-            // If the name has underscores, we historically PascalCased it.
-            // If the name has hyphens or other non-identifier characters, we normalize/escape to a stable identifier.
-            var hasUnderscore = tableName.IndexOf('_') >= 0;
-            var needsEscaping = tableName.IndexOfAny(['-', '.', ' ', '\t', '\r', '\n']) >= 0
-                || tableName.Any(static c => !(char.IsLetterOrDigit(c) || c == '_'))
-                || char.IsDigit(tableName[0]);
-
-            if (!needsEscaping)
-            {
-                return hasUnderscore
-                    ? EscapeIdentifier(ToPascalCase(tableName))
-                    : EscapeIdentifier(tableName);
-            }
-
-            return EscapeIdentifier(NormalizeTypeNameWithEscapes(tableName));
-        }
-
-        private static string NormalizeTypeNameWithEscapes(string tableName)
-        {
-            var sb = new StringBuilder(tableName.Length + 8);
-            var token = new StringBuilder(capacity: 16);
-
-            void FlushToken()
-            {
-                if (token.Length == 0)
-                    return;
-
-                sb.Append(char.ToUpperInvariant(token[0]));
-                if (token.Length > 1)
-                    sb.Append(token.ToString(1, token.Length - 1));
-                token.Clear();
-            }
-
-            foreach (var c in tableName)
-            {
-                if (char.IsLetterOrDigit(c))
-                {
-                    token.Append(c);
-                    continue;
-                }
-
-                if (c == '_')
-                {
-                    FlushToken();
-                    continue;
-                }
-
-                if (c == '-')
-                {
-                    // User-requested: replace hyphens with a non-colliding token.
-                    FlushToken();
-                    sb.Append("__");
-                    continue;
-                }
-
-                // General non-identifier escaping: stable, readable-ish, and extremely unlikely to collide.
-                FlushToken();
-                sb.Append("__u");
-                sb.Append(((int)c).ToString("X4", CultureInfo.InvariantCulture));
-                sb.Append("__");
-            }
-
-            FlushToken();
-
-            if (sb.Length == 0)
-                sb.Append('_');
-
-            if (char.IsDigit(sb[0]))
-                sb.Insert(0, '_');
-
-            return sb.ToString();
-        }
-
-        /// <summary>
-        /// Normalizes a DBD column name into a CLR property name.
-        /// </summary>
-        /// <param name="columnName">The source column name.</param>
-        /// <returns>A normalized CLR property name.</returns>
-        public static string NormalizePropertyName(string columnName)
-        {
-            // Don't normalize Field_X_Y_Z style columns
-            if (columnName.StartsWith("Field_", StringComparison.InvariantCultureIgnoreCase))
-                return columnName;
-
-            if (columnName.EndsWith("_lang", StringComparison.Ordinal))
-                return ToPascalCase(columnName.Substring(0, columnName.Length - 5));
-
-            return columnName.IndexOf('_') switch
-            {
-                >= 0 => ToPascalCase(columnName),
-                _ => columnName,
-            };
-        }
-
-        /// <summary>
-        /// Makes the provided name unique within the set of previously used names.
-        /// </summary>
-        /// <param name="name">The base name.</param>
-        /// <param name="used">The set of names already used.</param>
-        /// <returns>A unique name.</returns>
-        public static string MakeUnique(string name, HashSet<string> used)
-        {
-            if (used.Add(name))
-                return name;
-
-            for (var i = 2; ; i++)
-            {
-                var candidate = name + i.ToString(CultureInfo.InvariantCulture);
-                if (used.Add(candidate))
-                    return candidate;
-            }
-        }
-
-        /// <summary>
-        /// Escapes an identifier if it is a C# keyword.
-        /// </summary>
-        /// <param name="identifier">The identifier to escape.</param>
-        /// <returns>The escaped identifier.</returns>
-        public static string EscapeIdentifier(string identifier)
-        {
-            if (SyntaxFacts.GetKeywordKind(identifier) != SyntaxKind.None)
-                return "@" + identifier;
-
-            return identifier;
-        }
-
-        private static string ToPascalCase(string value)
-        {
-            var parts = value.Split(['_'], StringSplitOptions.RemoveEmptyEntries);
-            if (parts.Length == 0)
-                return value;
-
-            var sb = new StringBuilder();
-            foreach (var part in parts.Where(static p => p is { Length: > 0 }))
-            {
-                if (part.Equals("ID", StringComparison.Ordinal))
-                {
-                    sb.Append("ID");
-                    continue;
-                }
-
-                sb.Append(char.ToUpperInvariant(part[0]));
-                if (part.Length > 1)
-                    sb.Append(part.Substring(1));
-            }
-
-            return sb.ToString();
-        }
-    }
-
-    private static class TypeMapping
-    {
-        /// <summary>
-        /// Gets the CLR type name used for the entity key based on the DBD layout and column metadata.
-        /// </summary>
-        /// <param name="idEntry">The DBD entry describing the key.</param>
-        /// <param name="columnsByName">DBD columns keyed by column name.</param>
-        /// <returns>A CLR type name.</returns>
-        public static string GetIdClrType(DbdLayoutEntry? idEntry, IReadOnlyDictionary<string, DbdColumn> columnsByName)
-        {
-            if (idEntry is null)
-                return "int";
-
-            if (idEntry.Name is null)
-                return "int";
-
-            if (TryMapInlineInteger(idEntry.InlineTypeToken, out var mapped))
-                return PromoteUnsignedKeyType(mapped);
-
-            if (columnsByName.TryGetValue(idEntry.Name, out var col))
-            {
-                return col.ValueType switch
-                {
-                    Db2ValueType.UInt64 => "uint",
-                    Db2ValueType.Int64 => "int",
-                    Db2ValueType.String or Db2ValueType.LocString => "string",
-                    _ => "int",
-                };
-            }
-
-            return "int";
-        }
-
-        private static string PromoteUnsignedKeyType(string typeName)
-        {
-            return typeName switch
-            {
-                "byte" => "short",
-                "ushort" => "int",
-                "uint" => "long",
-                _ => typeName,
-            };
-        }
-
-        /// <summary>
-        /// Gets the CLR type name for the specified DBD entry.
-        /// </summary>
-        /// <param name="entry">The DBD entry.</param>
-        /// <returns>A CLR type name.</returns>
-        public static string GetClrTypeName(DbdLayoutEntry entry)
-        {
-            var elementType = GetClrElementTypeName(entry);
-            return entry.ElementCount > 1 ? $"ICollection<{elementType}>" : elementType;
-        }
-
-        private static string GetClrElementTypeName(DbdLayoutEntry entry)
-        {
-            if (TryMapInlineInteger(entry.InlineTypeToken, out var mapped))
-                return mapped;
-
-            return entry.ValueType switch
-            {
-                Db2ValueType.Single => "float",
-                Db2ValueType.String or Db2ValueType.LocString => "string",
-                Db2ValueType.UInt64 => "uint",
-                Db2ValueType.Int64 => "int",
-                _ => "int",
-            };
-        }
-
-        /// <summary>
-        /// Gets the initializer source text for a generated property of the given type.
-        /// </summary>
-        /// <param name="typeName">The CLR type name.</param>
-        /// <returns>An initializer string, or an empty string when no initializer is required.</returns>
-        public static string GetInitializer(string typeName)
-        {
-            if (typeName.StartsWith("ICollection<", StringComparison.Ordinal))
-                return " = [];";
-
-            return typeName switch
-            {
-                "string" => " = string.Empty;",
-                _ => string.Empty,
-            };
-        }
-
-        public static bool TryMapInlineInteger(string? inlineTypeToken, out string clrType)
-        {
-            clrType = string.Empty;
-
-            if (inlineTypeToken is null)
-                return false;
-
-            var token = inlineTypeToken.Trim();
-            if (token.Length == 0)
-                return false;
-
-            var isUnsigned = token.StartsWith("u", StringComparison.Ordinal);
-            var numberText = isUnsigned ? token.Substring(1) : token;
-
-            if (!int.TryParse(numberText, NumberStyles.Integer, CultureInfo.InvariantCulture, out var bits))
-                return false;
-
-            clrType = (bits, isUnsigned) switch
-            {
-                (8, true) => "byte",
-                (8, false) => "sbyte",
-                (16, true) => "ushort",
-                (16, false) => "short",
-                (32, true) => "uint",
-                (32, false) => "int",
-                (64, true) => "ulong",
-                (64, false) => "long",
-                _ => "int",
-            };
-
-            return true;
-        }
     }
 }

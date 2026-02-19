@@ -2,7 +2,7 @@ using System.Text;
 
 using MimironSQL.Db2;
 using MimironSQL.Dbd;
-using MimironSQL.EntityFrameworkCore.Db2.Schema;
+using MimironSQL.EntityFrameworkCore.Schema;
 using MimironSQL.Providers;
 
 using NSubstitute;

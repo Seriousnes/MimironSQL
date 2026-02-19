@@ -1,0 +1,26 @@
+using System.Reflection;
+
+using MimironSQL.EntityFrameworkCore.Schema;
+
+namespace MimironSQL.EntityFrameworkCore.Model;
+
+internal sealed class Db2ReferenceNavigation(
+    Type sourceClrType,
+    MemberInfo navigationMember,
+    Type targetClrType,
+    Db2ReferenceNavigationKind kind,
+    MemberInfo sourceKeyMember,
+    MemberInfo targetKeyMember,
+    Db2FieldSchema sourceKeyFieldSchema,
+    Db2FieldSchema targetKeyFieldSchema)
+{
+    public Type SourceClrType { get; } = sourceClrType;
+    public MemberInfo NavigationMember { get; } = navigationMember;
+    public Type TargetClrType { get; } = targetClrType;
+    public Db2ReferenceNavigationKind Kind { get; } = kind;
+
+    public MemberInfo SourceKeyMember { get; } = sourceKeyMember;
+    public MemberInfo TargetKeyMember { get; } = targetKeyMember;
+    public Db2FieldSchema SourceKeyFieldSchema { get; } = sourceKeyFieldSchema;
+    public Db2FieldSchema TargetKeyFieldSchema { get; } = targetKeyFieldSchema;
+}

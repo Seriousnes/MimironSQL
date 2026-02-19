@@ -384,7 +384,7 @@ public sealed class DbContextGenerator : IIncrementalGenerator
         sb.AppendLine("#nullable enable");
         sb.AppendLine();
         sb.AppendLine("using System.Collections.Generic;");
-        sb.AppendLine("using MimironSQL.Db2;");
+        sb.AppendLine("using MimironSQL.EntityFrameworkCore.Model;");
         sb.AppendLine();
         sb.AppendLine("namespace MimironSQL;");
         sb.AppendLine();
@@ -467,7 +467,7 @@ public sealed class DbContextGenerator : IIncrementalGenerator
             .ToImmutableArray();
 
         if (includedNavigations.Any(static n => n.IsForeignKeyArray))
-            sb.AppendLine("using MimironSQL.EntityFrameworkCore.Db2.Model;");
+            sb.AppendLine("using MimironSQL.EntityFrameworkCore.Model;");
         sb.AppendLine();
         sb.AppendLine("namespace MimironSQL;");
         sb.AppendLine();

@@ -1,8 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
-
-namespace MimironSQL.IntegrationTests.Helpers;
+﻿namespace MimironSQL.IntegrationTests.Helpers;
 
 public sealed class ShouldlyScope : IDisposable
 {

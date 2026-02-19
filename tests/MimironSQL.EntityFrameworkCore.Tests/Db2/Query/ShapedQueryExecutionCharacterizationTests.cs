@@ -1,6 +1,5 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
-using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.DependencyInjection;
 
 using Shouldly;
@@ -8,7 +7,6 @@ using Shouldly;
 using MimironSQL.Db2;
 using MimironSQL.Dbd;
 using MimironSQL.EntityFrameworkCore.Infrastructure;
-using MimironSQL.EntityFrameworkCore.Tests;
 using MimironSQL.Formats;
 using MimironSQL.Providers;
 

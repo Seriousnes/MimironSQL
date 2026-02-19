@@ -1,6 +1,6 @@
-using MimironSQL.EntityFrameworkCore.Db2.Model;
-using MimironSQL.EntityFrameworkCore.Db2.Query;
-using MimironSQL.EntityFrameworkCore.Db2.Schema;
+using MimironSQL.EntityFrameworkCore.Model;
+using MimironSQL.EntityFrameworkCore.Query.Internal;
+using MimironSQL.EntityFrameworkCore.Schema;
 using MimironSQL.Formats;
 
 namespace MimironSQL.EntityFrameworkCore.Storage;

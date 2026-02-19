@@ -1,13 +1,12 @@
 ﻿using System.Collections.Concurrent;
-
-using MimironSQL.EntityFrameworkCore.Db2.Model;
-using MimironSQL.EntityFrameworkCore.Db2.Query;
-using MimironSQL.EntityFrameworkCore.Db2.Schema;
 using MimironSQL.EntityFrameworkCore.Infrastructure;
 using MimironSQL.Formats;
 using MimironSQL.Providers;
 
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using MimironSQL.EntityFrameworkCore.Query.Internal;
+using MimironSQL.EntityFrameworkCore.Model;
+using MimironSQL.EntityFrameworkCore.Schema;
 
 namespace MimironSQL.EntityFrameworkCore.Storage;
 

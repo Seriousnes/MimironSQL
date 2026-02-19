@@ -2,8 +2,8 @@ using System.Linq.Expressions;
 using System.Reflection;
 
 using MimironSQL.Db2;
-using MimironSQL.EntityFrameworkCore.Db2.Model;
-using MimironSQL.EntityFrameworkCore.Db2.Schema;
+using MimironSQL.EntityFrameworkCore.Model;
+using MimironSQL.EntityFrameworkCore.Schema;
 
 using Shouldly;
 

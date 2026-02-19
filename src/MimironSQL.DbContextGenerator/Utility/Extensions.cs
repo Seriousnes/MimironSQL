@@ -1,8 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
-
-namespace MimironSQL.DbContextGenerator.Utility;
+﻿namespace MimironSQL.DbContextGenerator.Utility;
 
 internal static class Extensions
 {

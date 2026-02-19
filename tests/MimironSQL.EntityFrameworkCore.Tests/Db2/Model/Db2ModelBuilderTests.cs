@@ -1,17 +1,12 @@
 using System.ComponentModel.DataAnnotations.Schema;
 
 using MimironSQL.Db2;
-using MimironSQL.Providers;
-
-using Microsoft.Extensions.DependencyInjection;
-
-using NSubstitute;
 
 using Shouldly;
-using MimironSQL.EntityFrameworkCore.Db2.Model;
-using MimironSQL.EntityFrameworkCore.Db2.Schema;
 
 using Microsoft.EntityFrameworkCore;
+using MimironSQL.EntityFrameworkCore.Schema;
+using MimironSQL.EntityFrameworkCore.Model;
 
 namespace MimironSQL.EntityFrameworkCore.Tests;
 

@@ -4,10 +4,7 @@ using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Query;
 using Microsoft.EntityFrameworkCore.Storage;
-using Microsoft.Extensions.DependencyInjection;
 
-using MimironSQL.EntityFrameworkCore.Db2.Query;
-using MimironSQL.EntityFrameworkCore.Db2.Model;
 using MimironSQL.EntityFrameworkCore.Diagnostics.Internal;
 using MimironSQL.EntityFrameworkCore.Infrastructure;
 using MimironSQL.EntityFrameworkCore.Query.Internal;
@@ -16,6 +13,7 @@ using MimironSQL.EntityFrameworkCore.Storage.Internal;
 using MimironSQL.Dbd;
 using MimironSQL.Formats;
 using MimironSQL.Formats.Wdc5;
+using MimironSQL.EntityFrameworkCore.Model;
 
 // ReSharper disable once CheckNamespace
 namespace Microsoft.Extensions.DependencyInjection;

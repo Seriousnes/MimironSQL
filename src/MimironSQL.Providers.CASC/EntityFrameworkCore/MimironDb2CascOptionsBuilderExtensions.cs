@@ -2,7 +2,6 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
 using MimironSQL.EntityFrameworkCore;
-using MimironSQL.Providers;
 
 namespace MimironSQL.Providers;
 

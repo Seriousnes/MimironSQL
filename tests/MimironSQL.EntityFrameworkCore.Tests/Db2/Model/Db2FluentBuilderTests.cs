@@ -1,12 +1,12 @@
 using System.ComponentModel.DataAnnotations.Schema;
 
 using MimironSQL.Db2;
-using MimironSQL.EntityFrameworkCore.Db2.Model;
-using MimironSQL.EntityFrameworkCore.Db2.Schema;
 
 using Microsoft.EntityFrameworkCore;
 
 using Shouldly;
+using MimironSQL.EntityFrameworkCore.Model;
+using MimironSQL.EntityFrameworkCore.Schema;
 
 namespace MimironSQL.EntityFrameworkCore.Tests;
 

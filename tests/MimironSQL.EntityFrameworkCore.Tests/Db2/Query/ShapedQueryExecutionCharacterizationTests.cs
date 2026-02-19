@@ -8,6 +8,7 @@ using Shouldly;
 using MimironSQL.Db2;
 using MimironSQL.Dbd;
 using MimironSQL.EntityFrameworkCore.Infrastructure;
+using MimironSQL.EntityFrameworkCore.Tests;
 using MimironSQL.Formats;
 using MimironSQL.Providers;
 
@@ -15,6 +16,95 @@ namespace MimironSQL.EntityFrameworkCore.Tests.Db2.Query;
 
 public sealed class ShapedQueryExecutionCharacterizationTests
 {
+    [Fact]
+    public void Where_pushdown_skips_valuebuffer_reads_for_filtered_out_rows()
+    {
+        var dbdProvider = new TestDbdProvider(new Dictionary<string, IDbdFile>(StringComparer.Ordinal)
+        {
+            [nameof(TrackedEntity)] = TestDbdFile.Create(
+                buildLine: TestHelpers.WowVersion,
+                entries:
+                [
+                    new TestDbdLayoutEntry("Id", Db2ValueType.Int64, isNonInline: true, isId: true),
+                    new TestDbdLayoutEntry("Name", Db2ValueType.String)
+                ])
+        });
+
+        var file = new TestDb2File(
+            header: new TestDb2FileHeader(layoutHash: 0, fieldsCount: 1),
+            rowHandles:
+            [
+                new RowHandle(0, 0, rowId: 1),
+                new RowHandle(0, 0, rowId: 2),
+                new RowHandle(0, 0, rowId: 3),
+            ],
+            physicalFields: new Dictionary<int, object?>
+            {
+                [0] = "hello"
+            });
+
+        var streamProvider = new TestDb2StreamProvider();
+        var format = new TestDb2Format(new Dictionary<string, IDb2File>(StringComparer.Ordinal)
+        {
+            [nameof(TrackedEntity)] = file
+        });
+
+        using var built = CreateContext<TrackedContext>(dbdProvider, streamProvider, format);
+        var context = built.Context;
+
+        var results = context.Entities
+            .AsNoTracking()
+            .Where(e => e.Id > 2)
+            .ToList();
+
+        results.Count.ShouldBe(1);
+        file.GetReadFieldCalls(fieldIndex: 0).ShouldBe(1);
+    }
+
+    [Fact]
+    public void Find_on_virtual_id_primary_key_uses_TryGetRowById_and_does_not_enumerate_handles()
+    {
+        var dbdProvider = new TestDbdProvider(new Dictionary<string, IDbdFile>(StringComparer.Ordinal)
+        {
+            [nameof(TrackedEntity)] = TestDbdFile.Create(
+                buildLine: TestHelpers.WowVersion,
+                entries:
+                [
+                    new TestDbdLayoutEntry("Id", Db2ValueType.Int64, isNonInline: true, isId: true),
+                    new TestDbdLayoutEntry("Name", Db2ValueType.String)
+                ])
+        });
+
+        var file = new TestDb2File(
+            header: new TestDb2FileHeader(layoutHash: 0, fieldsCount: 1),
+            rowHandles:
+            [
+                new RowHandle(0, 0, rowId: 1),
+                new RowHandle(0, 0, rowId: 2),
+                new RowHandle(0, 0, rowId: 3),
+            ],
+            physicalFields: new Dictionary<int, object?>
+            {
+                [0] = "hello"
+            });
+
+        var streamProvider = new TestDb2StreamProvider();
+        var format = new TestDb2Format(new Dictionary<string, IDb2File>(StringComparer.Ordinal)
+        {
+            [nameof(TrackedEntity)] = file
+        });
+
+        using var built = CreateContext<TrackedContext>(dbdProvider, streamProvider, format);
+        var context = built.Context;
+
+        var found = context.Entities.Find(2);
+        found.ShouldNotBeNull();
+        found!.Id.ShouldBe(2);
+
+        file.TryGetRowByIdCalls.ShouldBe(1);
+        file.EnumerateRowHandlesCalls.ShouldBe(0);
+    }
+
     [Fact]
     public void Tracked_entity_query_throws_NullReferenceException_in_TryGetEntry()
     {
@@ -304,6 +394,8 @@ public sealed class ShapedQueryExecutionCharacterizationTests
         private readonly HashSet<Type> _throwOnReadTypes;
         private readonly string? _throwMessage;
 
+        private readonly Dictionary<int, int> _readFieldCalls = new();
+
         public TestDb2File(
             IDb2FileHeader header,
             IReadOnlyList<RowHandle> rowHandles,
@@ -324,7 +416,17 @@ public sealed class ShapedQueryExecutionCharacterizationTests
         public int RecordsCount => _rowHandles.Count;
         public ReadOnlyMemory<byte> DenseStringTableBytes => ReadOnlyMemory<byte>.Empty;
 
-        public IEnumerable<RowHandle> EnumerateRowHandles() => _rowHandles;
+        public int EnumerateRowHandlesCalls { get; private set; }
+        public int TryGetRowByIdCalls { get; private set; }
+
+        public int GetReadFieldCalls(int fieldIndex)
+            => _readFieldCalls.TryGetValue(fieldIndex, out var count) ? count : 0;
+
+        public IEnumerable<RowHandle> EnumerateRowHandles()
+        {
+            EnumerateRowHandlesCalls++;
+            return _rowHandles;
+        }
 
         public IEnumerable<RowHandle> EnumerateRows() => _rowHandles;
 
@@ -343,10 +445,25 @@ public sealed class ShapedQueryExecutionCharacterizationTests
         }
 
         public bool TryGetRowById<TId>(TId id, out RowHandle row) where TId : IEquatable<TId>, IComparable<TId>
-            => TryGetRowHandle(id, out row);
+        {
+            TryGetRowByIdCalls++;
+
+            var requested = Convert.ToInt32(id);
+            var found = _rowHandles.FirstOrDefault(h => h.RowId == requested);
+            if (found.RowId == 0)
+            {
+                row = default;
+                return false;
+            }
+
+            row = found;
+            return true;
+        }
 
         public T ReadField<T>(RowHandle handle, int fieldIndex)
         {
+            _readFieldCalls[fieldIndex] = GetReadFieldCalls(fieldIndex) + 1;
+
             if (_throwOnReadTypes.Contains(typeof(T)))
                 throw new NotSupportedException(_throwMessage ?? $"Unsupported scalar type {typeof(T).FullName}.");
 

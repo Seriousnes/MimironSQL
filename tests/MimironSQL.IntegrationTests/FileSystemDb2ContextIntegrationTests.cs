@@ -372,6 +372,29 @@ public sealed class FileSystemDb2ContextIntegrationTests(FileSystemTextFixture f
     }
 
     [Fact]
+    public void Find_by_primary_key_executes_end_to_end_via_filesystem_provider()
+    {
+        var id = context.Map.Select(x => x.Id).First(x => x > 0);
+
+        context.ChangeTracker.Clear();
+        var entity = context.Find<MapEntity>(id);
+
+        entity.ShouldNotBeNull();
+        entity!.Id.ShouldBe(id);
+    }
+
+    [Fact]
+    public void Where_id_predicate_and_projection_executes_end_to_end_and_can_return_no_rows()
+    {
+        var results = context.Map
+            .Where(x => x.Id < 0)
+            .Select(x => x.Directory)
+            .ToList();
+
+        results.Count.ShouldBe(0);
+    }
+
+    [Fact]
     public void Selecting_navigation_entity_in_pruned_row_projection_throws()
     {
         var results = context.MapChallengeMode

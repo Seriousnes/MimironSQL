@@ -240,6 +240,109 @@ public sealed class FileSystemDb2ContextIntegrationTests(FileSystemTextFixture f
     }
 
     [Fact]
+    public void OrderBy_Skip_Take_paginates_end_to_end_on_real_db2()
+    {
+        var allIds = context.Map
+            .AsNoTracking()
+            .Select(x => x.Id)
+            .ToList();
+
+        allIds.Count.ShouldBeGreaterThan(0);
+
+        var expected = allIds
+            .OrderBy(static x => x)
+            .Skip(5)
+            .Take(10)
+            .ToList();
+
+        var results = context.Map
+            .AsNoTracking()
+            .OrderBy(x => x.Id)
+            .Skip(5)
+            .Take(10)
+            .Select(x => x.Id)
+            .ToList();
+
+        results.ShouldBe(expected);
+    }
+
+    [Fact]
+    public void OrderBy_ThenBy_applies_compound_ordering_end_to_end_on_real_db2()
+    {
+        var all = context.Map
+            .AsNoTracking()
+            .ToList();
+
+        all.Count.ShouldBeGreaterThan(0);
+
+        var expected = all
+            .OrderBy(static x => x.Directory)
+            .ThenBy(static x => x.Id)
+            .Take(25)
+            .Select(static x => x.Id)
+            .ToList();
+
+        var results = context.Map
+            .AsNoTracking()
+            .OrderBy(x => x.Directory)
+            .ThenBy(x => x.Id)
+            .Take(25)
+            .Select(x => x.Id)
+            .ToList();
+
+        results.ShouldBe(expected);
+    }
+
+    [Fact]
+    public void Parameterized_Skip_is_supported_end_to_end_on_real_db2()
+    {
+        var skip = 5;
+
+        var allIds = context.Map
+            .AsNoTracking()
+            .Select(x => x.Id)
+            .ToList();
+
+        var expected = allIds
+            .OrderBy(static x => x)
+            .Skip(skip)
+            .Take(10)
+            .ToList();
+
+        var results = context.Map
+            .AsNoTracking()
+            .OrderBy(x => x.Id)
+            .Skip(skip)
+            .Take(10)
+            .Select(x => x.Id)
+            .ToList();
+
+        results.ShouldBe(expected);
+    }
+
+    [Fact]
+    public void LastOrDefault_without_OrderBy_matches_natural_file_order_end_to_end()
+    {
+        var expected = context.Map
+            .AsNoTracking()
+            .ToList()
+            .LastOrDefault();
+
+        var found = context.Map
+            .AsNoTracking()
+            .LastOrDefault();
+
+        if (expected is null)
+        {
+            found.ShouldBeNull();
+            return;
+        }
+
+        found.ShouldNotBeNull();
+        found!.Id.ShouldBe(expected.Id);
+    }
+
+    [Fact]
     public void Can_intersect_two_navigation_string_predicates_in_single_where()
     {
         var directory = context.MapChallengeMode

@@ -22,7 +22,7 @@ internal sealed class MimironDb2ShapedQueryCompilingExpressionVisitor(
     private static readonly MethodInfo QueryMethodInfo = typeof(Db2ClientQueryExecutor)
         .GetTypeInfo()
         .GetDeclaredMethods(nameof(Db2ClientQueryExecutor.Query))
-        .Single(m => m.IsGenericMethodDefinition && m.GetParameters().Length == 7);
+        .Single(m => m.IsGenericMethodDefinition && m.GetParameters().Length == 8);
 
     private static readonly MethodInfo EnumerableSingleMethodInfo = typeof(Enumerable)
         .GetTypeInfo()
@@ -32,6 +32,16 @@ internal sealed class MimironDb2ShapedQueryCompilingExpressionVisitor(
     private static readonly MethodInfo EnumerableSingleOrDefaultMethodInfo = typeof(Enumerable)
         .GetTypeInfo()
         .GetDeclaredMethods(nameof(Enumerable.SingleOrDefault))
+        .Single(m => m.GetParameters().Length == 1);
+
+    private static readonly MethodInfo EnumerableLastMethodInfo = typeof(Enumerable)
+        .GetTypeInfo()
+        .GetDeclaredMethods(nameof(Enumerable.Last))
+        .Single(m => m.GetParameters().Length == 1);
+
+    private static readonly MethodInfo EnumerableLastOrDefaultMethodInfo = typeof(Enumerable)
+        .GetTypeInfo()
+        .GetDeclaredMethods(nameof(Enumerable.LastOrDefault))
         .Single(m => m.GetParameters().Length == 1);
 
     private static readonly MethodInfo GetQueryContextIntParameterValueMethodInfo = typeof(Db2QueryContextParameterReader)
@@ -122,6 +132,7 @@ internal sealed class MimironDb2ShapedQueryCompilingExpressionVisitor(
         // and won't populate its runtime value. Pass the limit expression into Query(...) as a normal int
         // expression-tree argument so EF's parameterization pipeline can do its job.
         var remainingExpression = RewriteLimitExpression(db2QueryExpression.Limit);
+        var offsetExpression = RewriteOffsetExpression(db2QueryExpression.Offset);
 
         // Sync-only execution for now.
         // TODO: add async query execution support.
@@ -129,20 +140,42 @@ internal sealed class MimironDb2ShapedQueryCompilingExpressionVisitor(
             QueryMethodInfo.MakeGenericMethod(resultType),
             QueryCompilationContext.QueryContextParameter,
             Expression.Constant(db2QueryExpression),
+            offsetExpression,
             remainingExpression,
             valueBuffers,
             shaperConstant,
             entityShaperConstant,
             Expression.Constant(includePlans, typeof(IncludePlan[])));
 
-        if (db2QueryExpression.TerminalOperator == Db2QueryExpression.Db2TerminalOperator.Count)
+        if (db2QueryExpression.TerminalOperator != Db2QueryExpression.Db2TerminalOperator.None)
         {
-            var countMethod = typeof(Enumerable)
-                .GetMethods(BindingFlags.Public | BindingFlags.Static)
-                .Single(m => m.Name == nameof(Enumerable.Count) && m.GetParameters().Length == 1)
-                .MakeGenericMethod(resultType);
+            Expression terminalResult = db2QueryExpression.TerminalOperator switch
+            {
+                Db2QueryExpression.Db2TerminalOperator.Count => Expression.Call(
+                    typeof(Enumerable)
+                        .GetMethods(BindingFlags.Public | BindingFlags.Static)
+                        .Single(m => m.Name == nameof(Enumerable.Count) && m.GetParameters().Length == 1)
+                        .MakeGenericMethod(resultType),
+                    enumerable),
+                Db2QueryExpression.Db2TerminalOperator.Last => Expression.Call(
+                    EnumerableLastMethodInfo.MakeGenericMethod(resultType),
+                    enumerable),
+                Db2QueryExpression.Db2TerminalOperator.LastOrDefault => Expression.Call(
+                    EnumerableLastOrDefaultMethodInfo.MakeGenericMethod(resultType),
+                    enumerable),
+                _ => throw new NotSupportedException(
+                    $"MimironDb2 does not support terminal operator '{db2QueryExpression.TerminalOperator}'."),
+            };
 
-            return Expression.Call(countMethod, enumerable);
+            if (db2QueryExpression.NegateScalarResult)
+            {
+                if (terminalResult.Type != typeof(bool))
+                    throw new NotSupportedException("MimironDb2 scalar negation is only supported for boolean scalar results.");
+
+                terminalResult = Expression.Not(terminalResult);
+            }
+
+            return terminalResult;
         }
 
         // This override bypasses EF Core's base cardinality handling, so we must apply it here.
@@ -222,6 +255,64 @@ internal sealed class MimironDb2ShapedQueryCompilingExpressionVisitor(
 
             throw new NotSupportedException(
                 $"MimironDb2 only supports Take() limits which are constants, captured variables, QueryParameterExpression, or Math.Min/Max compositions during bootstrap. Limit expression type: {expression.GetType().FullName}. Expression: {expression}.");
+        }
+    }
+
+    private Expression RewriteOffsetExpression(Expression? offset)
+    {
+        // Goal: same as RewriteLimitExpression, but for Skip() offsets.
+        // Support addition compositions since multiple Skip() calls are cumulative.
+
+        if (offset is null)
+            return Expression.Constant(0);
+
+        return Rewrite(offset);
+
+        Expression Rewrite(Expression expression)
+        {
+            while (expression is UnaryExpression { NodeType: ExpressionType.Convert or ExpressionType.ConvertChecked } u)
+                expression = u.Operand;
+
+            if (expression.Type != typeof(int))
+                throw new NotSupportedException($"MimironDb2 Skip() offset expression must be int, but was '{expression.Type.FullName}'.");
+
+            if (expression is ConstantExpression { Value: int })
+                return expression;
+
+            // Allow captured variables (closure field/property). These are reducible and safe.
+            if (expression is MemberExpression)
+                return expression;
+
+            if (expression is BinaryExpression { NodeType: ExpressionType.Add or ExpressionType.AddChecked } add)
+                return Expression.Add(Rewrite(add.Left), Rewrite(add.Right));
+
+            if (expression is MethodCallExpression call
+                && call.Method.DeclaringType == typeof(Math)
+                && call.Arguments.Count == 2
+                && (call.Method.Name == nameof(Math.Min) || call.Method.Name == nameof(Math.Max))
+                && call.Method.ReturnType == typeof(int))
+            {
+                return Expression.Call(call.Method, Rewrite(call.Arguments[0]), Rewrite(call.Arguments[1]));
+            }
+
+            // EF Core parameter for Skip() count.
+            if (expression.GetType().Name == "QueryParameterExpression")
+            {
+                const BindingFlags InstanceAnyVisibility = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+
+                var nameProperty = expression.GetType().GetProperty("Name", InstanceAnyVisibility);
+                var nameField = expression.GetType().GetField("_name", InstanceAnyVisibility);
+                var parameterName = nameProperty?.GetValue(expression) as string
+                    ?? nameField?.GetValue(expression) as string;
+
+                if (string.IsNullOrWhiteSpace(parameterName))
+                    throw new NotSupportedException("MimironDb2 could not read QueryParameterExpression parameter name.");
+
+                return BuildQueryContextIntParameterLookup(parameterName);
+            }
+
+            throw new NotSupportedException(
+                $"MimironDb2 only supports Skip() offsets which are constants, captured variables, QueryParameterExpression, or simple Add/Min/Max compositions during bootstrap. Offset expression type: {expression.GetType().FullName}. Expression: {expression}.");
         }
     }
 

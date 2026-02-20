@@ -203,7 +203,43 @@ internal sealed class MimironDb2QueryableMethodTranslatingExpressionVisitor(
             resultSelector);
 
     protected override ShapedQueryExpression? TranslateLastOrDefault(ShapedQueryExpression source, LambdaExpression? predicate, Type returnType, bool returnDefault)
-        => throw new NotSupportedException("MimironDb2 query translation is not implemented yet.");
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(returnType);
+
+        // Correctness-first, client-side execution for now.
+        if (predicate is not null)
+        {
+            source = TranslateWhere(source, predicate)
+                ?? throw new NotSupportedException("MimironDb2 query translation is not implemented yet.");
+        }
+
+        if (source.QueryExpression is not Expressions.Db2QueryExpression queryExpression)
+            throw new NotSupportedException("MimironDb2 query translation requires Db2QueryExpression as the query root.");
+
+        // If ordered, implement Last/LastOrDefault by reversing the orderings and taking the first element.
+        if (queryExpression.Orderings.Count > 0)
+        {
+            var existing = queryExpression.Orderings.ToArray();
+            queryExpression.Orderings.Clear();
+
+            foreach (var (keySelector, ascending) in existing)
+                queryExpression.ApplyOrdering(keySelector, !ascending);
+
+            source = TranslateTake(source, Expression.Constant(1))
+                ?? throw new NotSupportedException("MimironDb2 query translation is not implemented yet.");
+
+            return source.UpdateResultCardinality(returnDefault ? ResultCardinality.SingleOrDefault : ResultCardinality.Single);
+        }
+
+        // If not ordered, use natural file order for Last/LastOrDefault.
+        queryExpression.ApplyTerminalOperator(
+            returnDefault
+                ? Expressions.Db2QueryExpression.Db2TerminalOperator.LastOrDefault
+                : Expressions.Db2QueryExpression.Db2TerminalOperator.Last);
+
+        return source.UpdateResultCardinality(returnDefault ? ResultCardinality.SingleOrDefault : ResultCardinality.Single);
+    }
 
     protected override ShapedQueryExpression? TranslateLongCount(ShapedQueryExpression source, LambdaExpression? predicate)
         => throw new NotSupportedException("MimironDb2 query translation is not implemented yet.");
@@ -218,7 +254,18 @@ internal sealed class MimironDb2QueryableMethodTranslatingExpressionVisitor(
         => throw new NotSupportedException("MimironDb2 query translation is not implemented yet.");
 
     protected override ShapedQueryExpression? TranslateOrderBy(ShapedQueryExpression source, LambdaExpression keySelector, bool ascending)
-        => throw new NotSupportedException("MimironDb2 query translation is not implemented yet.");
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(keySelector);
+
+        if (source.QueryExpression is not Expressions.Db2QueryExpression queryExpression)
+            throw new NotSupportedException("MimironDb2 query translation requires Db2QueryExpression as the query root.");
+
+        // EF Core semantics: OrderBy resets prior orderings.
+        queryExpression.Orderings.Clear();
+        queryExpression.ApplyOrdering(keySelector, ascending);
+        return source;
+    }
 
     protected override ShapedQueryExpression? TranslateReverse(ShapedQueryExpression source)
         => throw new NotSupportedException("MimironDb2 query translation is not implemented yet.");
@@ -260,7 +307,19 @@ internal sealed class MimironDb2QueryableMethodTranslatingExpressionVisitor(
     }
 
     protected override ShapedQueryExpression? TranslateSkip(ShapedQueryExpression source, Expression count)
-        => throw new NotSupportedException("MimironDb2 query translation is not implemented yet.");
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(count);
+
+        if (source.QueryExpression is not Expressions.Db2QueryExpression queryExpression)
+            throw new NotSupportedException("MimironDb2 query translation requires Db2QueryExpression as the query root.");
+
+        if (count.Type != typeof(int))
+            throw new NotSupportedException("MimironDb2 currently only supports Skip() with an int count expression.");
+
+        queryExpression.ApplyOffset(count);
+        return source;
+    }
 
     protected override ShapedQueryExpression? TranslateSkipWhile(ShapedQueryExpression source, LambdaExpression predicate)
         => throw new NotSupportedException("MimironDb2 query translation is not implemented yet.");
@@ -461,7 +520,16 @@ internal sealed class MimironDb2QueryableMethodTranslatingExpressionVisitor(
         => throw new NotSupportedException("MimironDb2 query translation is not implemented yet.");
 
     protected override ShapedQueryExpression? TranslateThenBy(ShapedQueryExpression source, LambdaExpression keySelector, bool ascending)
-        => throw new NotSupportedException("MimironDb2 query translation is not implemented yet.");
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(keySelector);
+
+        if (source.QueryExpression is not Expressions.Db2QueryExpression queryExpression)
+            throw new NotSupportedException("MimironDb2 query translation requires Db2QueryExpression as the query root.");
+
+        queryExpression.ApplyOrdering(keySelector, ascending);
+        return source;
+    }
 
     protected override ShapedQueryExpression? TranslateUnion(ShapedQueryExpression source1, ShapedQueryExpression source2)
         => throw new NotSupportedException("MimironDb2 query translation is not implemented yet.");

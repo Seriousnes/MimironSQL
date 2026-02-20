@@ -11,9 +11,12 @@ namespace MimironSQL.EntityFrameworkCore.Query.Internal;
 
 internal static class Db2ClientQueryExecutor
 {
+    private readonly record struct Row<TResult>(object? Entity, TResult Result);
+
     internal static IEnumerable<TResult> Query<TResult>(
         QueryContext queryContext,
         Db2QueryExpression queryExpression,
+        int offset,
         int remaining,
         IEnumerable<ValueBuffer> valueBuffers,
         Func<QueryContext, ValueBuffer, TResult> shaper,
@@ -21,6 +24,12 @@ internal static class Db2ClientQueryExecutor
         IncludePlan[] includePlans)
     {
         queryContext.InitializeStateManager(standAlone: false);
+
+        offset = Math.Max(0, offset);
+        remaining = remaining < 0 ? -1 : Math.Max(0, remaining);
+
+        if (remaining == 0)
+            return [];
 
         var entityType = queryExpression.EntityType;
 
@@ -54,7 +63,76 @@ internal static class Db2ClientQueryExecutor
             }
         }
 
-        var results = new List<TResult>();
+        var resultClrTypeForOrdering = typeof(TResult);
+        var needsOrdering = queryExpression.Orderings.Count > 0;
+
+        if (needsOrdering)
+        {
+            var rows = new List<Row<TResult>>();
+
+            foreach (var valueBuffer in valueBuffers)
+            {
+                object? entity;
+                TResult result;
+
+                try
+                {
+                    entity = entityShaper(queryContext, valueBuffer);
+                }
+                catch (InvalidCastException ex)
+                {
+                    throw CreateShaperDebugException(queryExpression, valueBuffer, ex);
+                }
+
+                if (entityPredicates.Count > 0)
+                {
+                    if (entity is null)
+                        continue;
+
+                    if (entityPredicates.Any(p => !p(queryContext, entity)))
+                        continue;
+                }
+
+                try
+                {
+                    result = shaper(queryContext, valueBuffer);
+                }
+                catch (InvalidCastException ex)
+                {
+                    throw CreateShaperDebugException(queryExpression, valueBuffer, ex);
+                }
+
+                if (resultPredicates.Count > 0)
+                {
+                    if (result is null)
+                        continue;
+
+                    var boxed = (object)result;
+                    if (resultPredicates.Any(p => !p(queryContext, boxed)))
+                        continue;
+                }
+
+                rows.Add(new Row<TResult>(entity, result));
+            }
+
+            IEnumerable<Row<TResult>> orderedRows = ApplyOrdering(queryContext, queryExpression, entityType.ClrType, resultClrTypeForOrdering, rows);
+
+            if (offset > 0)
+                orderedRows = orderedRows.Skip(offset);
+
+            if (remaining >= 0)
+                orderedRows = orderedRows.Take(remaining);
+
+            var results = orderedRows.Select(static r => r.Result).ToList();
+
+            if (includePlans is { Length: > 0 } && results.Count > 0)
+                new Db2IncludeExecutor().ExecuteIncludes(queryContext, includePlans, results);
+
+            return results;
+        }
+
+        var resultsUnordered = new List<TResult>();
+        var offsetRemaining = offset;
 
         foreach (var valueBuffer in valueBuffers)
         {
@@ -101,15 +179,126 @@ internal static class Db2ClientQueryExecutor
                     continue;
             }
 
-            results.Add(result);
+            if (offsetRemaining > 0)
+            {
+                offsetRemaining--;
+                continue;
+            }
+
+            resultsUnordered.Add(result);
             if (remaining > 0)
                 remaining--;
         }
 
-        if (includePlans is { Length: > 0 } && results.Count > 0)
-            new Db2IncludeExecutor().ExecuteIncludes(queryContext, includePlans, results);
+        if (includePlans is { Length: > 0 } && resultsUnordered.Count > 0)
+            new Db2IncludeExecutor().ExecuteIncludes(queryContext, includePlans, resultsUnordered);
 
-        return results;
+        return resultsUnordered;
+    }
+
+    private static IEnumerable<Row<TResult>> ApplyOrdering<TResult>(
+        QueryContext queryContext,
+        Db2QueryExpression queryExpression,
+        Type entityClrType,
+        Type resultClrType,
+        IEnumerable<Row<TResult>> rows)
+    {
+        ArgumentNullException.ThrowIfNull(queryContext);
+        ArgumentNullException.ThrowIfNull(queryExpression);
+        ArgumentNullException.ThrowIfNull(entityClrType);
+        ArgumentNullException.ThrowIfNull(resultClrType);
+        ArgumentNullException.ThrowIfNull(rows);
+
+        IOrderedEnumerable<Row<TResult>>? ordered = null;
+
+        foreach (var (keySelector, ascending) in queryExpression.Orderings)
+        {
+            var parameterType = keySelector.Parameters[0].Type;
+
+            if (Db2RowPredicateCompiler.TryGetTransparentIdentifierTypes(parameterType, out _, out _))
+            {
+                throw new NotSupportedException(
+                    "MimironDb2 does not yet support ordering over transparent identifier shapes during bootstrap execution.");
+            }
+
+            var target = GetOrderingTarget(entityClrType, resultClrType, parameterType);
+            var compiledKey = CompileOrderingKeySelector<TResult>(entityClrType, resultClrType, keySelector, target);
+
+            if (ordered is null)
+            {
+                ordered = ascending
+                    ? rows.OrderBy(r => compiledKey(queryContext, r), Comparer<object?>.Default)
+                    : rows.OrderByDescending(r => compiledKey(queryContext, r), Comparer<object?>.Default);
+            }
+            else
+            {
+                ordered = ascending
+                    ? ordered.ThenBy(r => compiledKey(queryContext, r), Comparer<object?>.Default)
+                    : ordered.ThenByDescending(r => compiledKey(queryContext, r), Comparer<object?>.Default);
+            }
+        }
+
+        return ordered ?? rows;
+
+        static OrderingTarget GetOrderingTarget(Type entityClrType, Type resultClrType, Type parameterType)
+        {
+            if (parameterType == entityClrType || parameterType.IsAssignableFrom(entityClrType))
+                return OrderingTarget.Entity;
+
+            if (parameterType == resultClrType || parameterType == typeof(object) || parameterType.IsAssignableFrom(resultClrType))
+                return OrderingTarget.Result;
+
+            throw new NotSupportedException(
+                $"MimironDb2 cannot apply ordering key selector with parameter type '{parameterType.FullName}' to entity '{entityClrType.FullName}' or result '{resultClrType.FullName}'.");
+        }
+    }
+
+    private enum OrderingTarget
+    {
+        Entity = 0,
+        Result = 1,
+    }
+
+    private static Func<QueryContext, Row<TResult>, object?> CompileOrderingKeySelector<TResult>(
+        Type entityClrType,
+        Type resultClrType,
+        LambdaExpression keySelector,
+        OrderingTarget target)
+    {
+        ArgumentNullException.ThrowIfNull(entityClrType);
+        ArgumentNullException.ThrowIfNull(resultClrType);
+        ArgumentNullException.ThrowIfNull(keySelector);
+
+        if (keySelector.Parameters.Count != 1)
+            throw new NotSupportedException("MimironDb2 only supports single-parameter ordering key selectors during bootstrap execution.");
+
+        var queryContextParameter = Expression.Parameter(typeof(QueryContext), "qc");
+        var rowParameter = Expression.Parameter(typeof(Row<TResult>), "row");
+
+        var expectedParameterType = keySelector.Parameters[0].Type;
+
+        Expression source = target switch
+        {
+            OrderingTarget.Entity => Expression.Convert(Expression.Property(rowParameter, nameof(Row<TResult>.Entity)), expectedParameterType),
+            OrderingTarget.Result => Expression.Convert(Expression.Property(rowParameter, nameof(Row<TResult>.Result)), expectedParameterType),
+            _ => throw new NotSupportedException($"Unexpected ordering target '{target}'."),
+        };
+
+        var rewrittenBody = new ParameterReplaceVisitor(keySelector.Parameters[0], source).Visit(keySelector.Body);
+        rewrittenBody = new QueryParameterRemovingVisitor(queryContextParameter).Visit(rewrittenBody!);
+        rewrittenBody = new CorrelatedNavigationRemovingVisitor(queryContextParameter).Visit(rewrittenBody!);
+        rewrittenBody = new EfPropertyRemovingVisitor(queryContextParameter).Visit(rewrittenBody!);
+
+        var boxedBody = rewrittenBody!.Type == typeof(object)
+            ? rewrittenBody
+            : Expression.Convert(rewrittenBody, typeof(object));
+
+        var lambda = Expression.Lambda<Func<QueryContext, Row<TResult>, object?>>(
+            boxedBody,
+            queryContextParameter,
+            rowParameter);
+
+        return lambda.Compile();
     }
 
     private static Exception CreateShaperDebugException(Db2QueryExpression queryExpression, ValueBuffer valueBuffer, InvalidCastException inner)

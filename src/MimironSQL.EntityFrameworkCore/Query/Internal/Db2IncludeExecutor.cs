@@ -23,6 +23,7 @@ internal sealed class Db2IncludeExecutor
 
         var store = dbContext.GetService<IMimironDb2Store>();
         var modelBinding = dbContext.GetService<IDb2ModelBinding>().GetBinding();
+        var fkGroupingCache = dbContext.GetService<Db2FkGroupingCache>();
         var entityFactory = new DefaultDb2EntityFactory();
 
         var knownEntities = new List<object>(capacity: results.Count);
@@ -93,7 +94,7 @@ internal sealed class Db2IncludeExecutor
 
                     if (navigation.IsCollection)
                     {
-                        ExecuteCollectionNavigationInclude(dbContext, store, modelBinding, entityFactory, sources, navigation, getterCache, setterCache, listFactoryCache, oneToManyCache, knownEntities);
+                        ExecuteCollectionNavigationInclude(dbContext, store, modelBinding, entityFactory, fkGroupingCache, sources, navigation, getterCache, setterCache, listFactoryCache, oneToManyCache, knownEntities);
                     }
                     else
                     {
@@ -401,6 +402,7 @@ internal sealed class Db2IncludeExecutor
         IMimironDb2Store store,
         Db2ModelBinding modelBinding,
         IDb2EntityFactory entityFactory,
+        Db2FkGroupingCache fkGroupingCache,
         IReadOnlyList<object> sources,
         INavigation navigation,
         Dictionary<(Type ClrType, string Name), Func<object, object?>> getterCache,
@@ -434,6 +436,20 @@ internal sealed class Db2IncludeExecutor
                     principalIds.Add(id);
             }
 
+            if (principalIds.Count == 0)
+            {
+                var navSetterNoIds = GetOrCompileSetter(setterCache, sourceClrType, navigation.Name);
+                var listFactoryNoIds = GetOrCompileListFactory(listFactoryCache, targetClrType);
+
+                for (var i = 0; i < sources.Count; i++)
+                {
+                    navSetterNoIds(sources[i], listFactoryNoIds());
+                    dbContext.Entry(sources[i]).Collection(navigation.Name).IsLoaded = true;
+                }
+
+                return;
+            }
+
             var dependentTableName = navigation.TargetEntityType.GetTableName() ?? targetClrType.Name;
             var dependentSchema = store.GetSchema(dependentTableName);
 
@@ -449,7 +465,7 @@ internal sealed class Db2IncludeExecutor
 
             if (!oneToManyCache.TryGetValue((dependentTableName, fkField.ColumnStartIndex), out var lookup))
             {
-                lookup = ScanOneToMany(store, dependentTableName, dependentSchema, modelBinding, entityFactory, principalIds, targetClrType, fkField.ColumnStartIndex, knownEntities, dbContext, getterCache, setterCache);
+                lookup = ScanOneToMany(store, dependentTableName, dependentSchema, modelBinding, entityFactory, fkGroupingCache, principalIds, targetClrType, fkField.ColumnStartIndex, knownEntities, dbContext, getterCache, setterCache);
                 oneToManyCache.Add((dependentTableName, fkField.ColumnStartIndex), lookup);
 
                 if (traceIncludes)
@@ -488,6 +504,7 @@ internal sealed class Db2IncludeExecutor
         Db2TableSchema dependentSchema,
         Db2ModelBinding modelBinding,
         IDb2EntityFactory entityFactory,
+        Db2FkGroupingCache fkGroupingCache,
         HashSet<int> principalIds,
         Type dependentClrType,
         int foreignKeyFieldIndex,
@@ -496,9 +513,22 @@ internal sealed class Db2IncludeExecutor
         Dictionary<(Type ClrType, string Name), Func<object, object?>> getterCache,
         Dictionary<(Type ClrType, string Name), Action<object, object?>> setterCache)
     {
-        var lookup = new Dictionary<int, List<object>>();
+        if (principalIds.Count == 0)
+            return [];
 
-        // Open once per DbContext; we still scan only once per include.
+        var cacheKey = new Db2FkGroupingCache.Key(dependentTableName, dependentSchema.LayoutHash, foreignKeyFieldIndex);
+        var grouping = fkGroupingCache.GetOrBuild(cacheKey, () => BuildFkGrouping(store, dependentTableName, foreignKeyFieldIndex));
+
+        var rowIdsToLoad = new List<int>();
+        foreach (var principalId in principalIds)
+        {
+            if (grouping.TryGetValue(principalId, out var rowIds))
+                rowIdsToLoad.AddRange(rowIds);
+        }
+
+        if (rowIdsToLoad.Count == 0)
+            return [];
+
         var (file, _) = store.OpenTableWithSchema<RowHandle>(dependentTableName);
 
         // Materializer (typed) for the dependent entity.
@@ -511,8 +541,6 @@ internal sealed class Db2IncludeExecutor
         var materializeMethod = materializerType.GetMethod(nameof(Db2EntityMaterializer<object>.Materialize))
             ?? throw new InvalidOperationException("Db2EntityMaterializer.Materialize method was not found.");
 
-        // Ensure dependent entities have non-default keys before attaching for tracking.
-        // Many generated entity types follow Db2Entity<TKey>.Id conventions.
         Func<object, object?>? dependentIdGetter = null;
         Action<object, object?>? dependentIdSetter = null;
         try
@@ -522,7 +550,6 @@ internal sealed class Db2IncludeExecutor
         }
         catch (NotSupportedException)
         {
-            // If no public Id property exists, we just won't try to fix it here.
         }
 
         Dictionary<int, object>? trackedById = null;
@@ -546,21 +573,41 @@ internal sealed class Db2IncludeExecutor
             }
         }
 
-        foreach (var handle in file.EnumerateRowHandles())
+        var handles = new List<RowHandle>(capacity: rowIdsToLoad.Count);
+        for (var i = 0; i < rowIdsToLoad.Count; i++)
         {
-            var fk = file.ReadField<int>(handle, foreignKeyFieldIndex);
-            if (fk == 0)
-                continue;
+            if (file.TryGetRowById(rowIdsToLoad[i], out var handle))
+                handles.Add(handle);
+        }
 
-            if (principalIds.Count > 0 && !principalIds.Contains(fk))
+        if (handles.Count == 0)
+            return [];
+
+        handles.Sort(static (a, b) =>
+        {
+            var section = a.SectionIndex.CompareTo(b.SectionIndex);
+            if (section != 0)
+                return section;
+
+            return a.RowIndexInSection.CompareTo(b.RowIndexInSection);
+        });
+
+        var entitiesByRowId = new Dictionary<int, object>(capacity: handles.Count);
+
+        for (var i = 0; i < handles.Count; i++)
+        {
+            var handle = handles[i];
+            var rowId = handle.RowId;
+
+            if (entitiesByRowId.ContainsKey(rowId))
                 continue;
 
             object entity;
-            var rowId = handle.RowId;
-
             if (trackedById is not null && trackedById.TryGetValue(rowId, out var tracked))
             {
                 entity = tracked;
+                if (!knownEntities.Contains(tracked))
+                    knownEntities.Add(tracked);
             }
             else
             {
@@ -580,16 +627,63 @@ internal sealed class Db2IncludeExecutor
                 trackedById?.TryAdd(rowId, entity);
             }
 
-            if (!lookup.TryGetValue(fk, out var list))
+            entitiesByRowId[rowId] = entity;
+        }
+
+        var lookup = new Dictionary<int, List<object>>(capacity: principalIds.Count);
+        foreach (var principalId in principalIds)
+        {
+            if (!grouping.TryGetValue(principalId, out var dependentRowIds))
+                continue;
+
+            if (dependentRowIds.Length == 0)
+                continue;
+
+            var list = new List<object>(capacity: dependentRowIds.Length);
+            for (var i = 0; i < dependentRowIds.Length; i++)
             {
-                list = [];
-                lookup.Add(fk, list);
+                if (entitiesByRowId.TryGetValue(dependentRowIds[i], out var entity))
+                    list.Add(entity);
             }
 
-            list.Add(entity);
+            if (list.Count > 0)
+                lookup[principalId] = list;
         }
 
         return lookup;
+    }
+
+    private static IReadOnlyDictionary<int, int[]> BuildFkGrouping(
+        IMimironDb2Store store,
+        string dependentTableName,
+        int foreignKeyFieldIndex)
+    {
+        var (file, _) = store.OpenTableWithSchema<RowHandle>(dependentTableName);
+
+        var temp = new Dictionary<int, List<int>>();
+        foreach (var handle in file.EnumerateRowHandles())
+        {
+            var fk = file.ReadField<int>(handle, foreignKeyFieldIndex);
+            if (fk == 0)
+                continue;
+
+            if (!temp.TryGetValue(fk, out var list))
+            {
+                list = [];
+                temp.Add(fk, list);
+            }
+
+            list.Add(handle.RowId);
+        }
+
+        if (temp.Count == 0)
+            return new Dictionary<int, int[]>();
+
+        var result = new Dictionary<int, int[]>(capacity: temp.Count);
+        foreach (var (fk, list) in temp)
+            result.Add(fk, [.. list]);
+
+        return result;
     }
 
     private static IReadOnlyList<object> MaterializeByIdsUntyped(

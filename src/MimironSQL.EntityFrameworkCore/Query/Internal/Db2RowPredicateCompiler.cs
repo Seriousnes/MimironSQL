@@ -193,6 +193,24 @@ internal static class Db2RowPredicateCompiler
             return false;
         }
 
+        // string.StartsWith/EndsWith/Contains against a DB2 string field.
+        // Must be checked before the IN-list Contains branch, since that branch matches by method name.
+        if (expression is MethodCallExpression stringCall
+            && stringCall.Method.DeclaringType == typeof(string)
+            && stringCall.Method.Name is nameof(string.StartsWith) or nameof(string.EndsWith) or nameof(string.Contains))
+        {
+            return TryTranslateStringMethodCall(
+                entityType,
+                storeObject,
+                schema,
+                entityParameter,
+                queryContextParameter,
+                fileParameter,
+                handleParameter,
+                stringCall,
+                out translated);
+        }
+
         // Contains/IN against an in-memory set: ids.Contains(e.Id) or Enumerable.Contains(ids, e.Id)
         if (expression is MethodCallExpression call
             && call.Method.Name == nameof(Enumerable.Contains))
@@ -285,6 +303,118 @@ internal static class Db2RowPredicateCompiler
                 _ => throw new NotSupportedException($"Unsupported comparison operator '{op}'."),
             };
         }
+    }
+
+    private static bool TryTranslateStringMethodCall(
+        IEntityType entityType,
+        StoreObjectIdentifier storeObject,
+        Db2TableSchema schema,
+        ParameterExpression entityParameter,
+        ParameterExpression queryContextParameter,
+        ParameterExpression fileParameter,
+        ParameterExpression handleParameter,
+        MethodCallExpression call,
+        out Expression translated)
+    {
+        translated = null!;
+
+        // Only instance methods on string.
+        if (call.Object is null)
+            return false;
+
+        if (call.Method.DeclaringType != typeof(string))
+            return false;
+
+        if (call.Method.Name is not (nameof(string.StartsWith) or nameof(string.EndsWith) or nameof(string.Contains)))
+            return false;
+
+        if (call.Arguments.Count is < 1 or > 2)
+            return false;
+
+        if (!TryTranslateFieldAccess(entityType, storeObject, schema, entityParameter, fileParameter, handleParameter, call.Object, out var receiverTranslated))
+            return false;
+
+        var valueArgument = call.Arguments[0];
+        if (!TryTranslateStringMethodArgument(valueArgument, entityParameter, queryContextParameter, out var valueTranslated))
+            return false;
+
+        if (call.Arguments.Count == 1)
+        {
+            translated = Expression.Call(receiverTranslated, call.Method, valueTranslated);
+            return true;
+        }
+
+        if (!TryGetConstantStringComparison(call.Arguments[1], out var comparison))
+            return false;
+
+        if (comparison is not (StringComparison.Ordinal or StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        translated = Expression.Call(receiverTranslated, call.Method, valueTranslated, Expression.Constant(comparison));
+        return true;
+    }
+
+    private static bool TryTranslateStringMethodArgument(
+        Expression argument,
+        ParameterExpression entityParameter,
+        ParameterExpression queryContextParameter,
+        out Expression translated)
+    {
+        // Allow constants and captured/query parameters (but reject anything that depends on the entity).
+        translated = null!;
+
+        if (argument.Type != typeof(string))
+            return false;
+
+        if (ParameterSearchVisitor.Contains(argument, entityParameter))
+            return false;
+
+        if (IsConstantOrCapturedString(argument, queryContextParameter))
+        {
+            translated = argument;
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool IsConstantOrCapturedString(Expression expression, ParameterExpression queryContextParameter)
+    {
+        while (expression is UnaryExpression { NodeType: ExpressionType.Convert or ExpressionType.ConvertChecked } u)
+            expression = u.Operand;
+
+        if (expression is ConstantExpression)
+            return true;
+
+        // Captured variable: closure field/property access ("new <>c__DisplayClass" instance constant).
+        if (expression is MemberExpression { Expression: ConstantExpression })
+            return true;
+
+        // Compiled query parameter / captured value: QueryParameterRemovingVisitor rewrites these into a
+        // call to a private helper which reads from QueryContext at runtime.
+        if (expression is MethodCallExpression { Method: { Name: "EvaluateQueryParameterExpression", DeclaringType: var decl } } call
+            && decl == typeof(QueryParameterRemovingVisitor)
+            && ParameterSearchVisitor.Contains(call, queryContextParameter))
+        {
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool TryGetConstantStringComparison(Expression expression, out StringComparison comparison)
+    {
+        while (expression is UnaryExpression { NodeType: ExpressionType.Convert or ExpressionType.ConvertChecked } u)
+            expression = u.Operand;
+
+        if (expression is ConstantExpression { Value: StringComparison sc })
+        {
+            comparison = sc;
+            return true;
+        }
+
+        comparison = default;
+        return false;
     }
 
     internal static bool TryTranslateFieldAccess(

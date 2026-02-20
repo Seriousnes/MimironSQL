@@ -22,6 +22,7 @@ internal sealed class Db2TableSchema(
     private readonly Dictionary<string, Db2FieldSchema> _fieldsByName = fields.ToDictionary(static f => f.Name, static f => f, StringComparer.Ordinal);
 
     public string TableName { get; } = tableName;
+    public string LayoutHash { get; } = allowedLayoutHashes is { Count: 1 } hashes ? hashes[0].ToString("X8") : "*";
     public int PhysicalColumnCount { get; } = physicalColumnCount;
     public IReadOnlyList<Db2FieldSchema> Fields { get; } = fields;
 

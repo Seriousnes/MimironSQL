@@ -53,6 +53,8 @@ public static class MimironDb2ServiceCollectionExtensions
                 services.TryAddSingleton<IDbdParser, DbdParser>();
                 services.TryAddSingleton<IDb2Format, Wdc5Format>();
 
+                services.TryAddSingleton<Db2FkGroupingCache, Db2FkGroupingCache>();
+
                 // DbContext-scoped store: caches parsed DB2 headers / files per table.
                 services.TryAddScoped<IMimironDb2Store, MimironDb2Store>();
                 services.TryAddScoped<IDb2ModelBinding, Db2ModelBindingProvider>();

@@ -40,8 +40,9 @@ internal sealed class Db2IncludeExecutor
         var setterCache = new Dictionary<(Type ClrType, string Name), Action<object, object?>>(capacity: 16);
         var listFactoryCache = new Dictionary<Type, Func<System.Collections.IList>>(capacity: 8);
 
-        // Per-query scan cache to ensure each table is enumerated at most once.
-        var oneToManyCache = new Dictionary<(string DependentTable, int ForeignKeyFieldIndex), Dictionary<int, List<object>>>(capacity: 8);
+        // Per-query include cache keyed by dependent table + FK field index.
+        // Must not depend on a specific principal-id set; entries incrementally materialize dependents by row ID.
+        var oneToManyCache = new Dictionary<(string DependentTable, int ForeignKeyFieldIndex), OneToManyCacheEntry>(capacity: 8);
 
         var traceIncludes = string.Equals(Environment.GetEnvironmentVariable("MIMIRON_TRACE_INCLUDES"), "1", StringComparison.Ordinal);
         if (traceIncludes)
@@ -408,7 +409,7 @@ internal sealed class Db2IncludeExecutor
         Dictionary<(Type ClrType, string Name), Func<object, object?>> getterCache,
         Dictionary<(Type ClrType, string Name), Action<object, object?>> setterCache,
         Dictionary<Type, Func<System.Collections.IList>> listFactoryCache,
-        Dictionary<(string DependentTable, int ForeignKeyFieldIndex), Dictionary<int, List<object>>> oneToManyCache,
+        Dictionary<(string DependentTable, int ForeignKeyFieldIndex), OneToManyCacheEntry> oneToManyCache,
         List<object> knownEntities)
     {
         var traceIncludes = string.Equals(Environment.GetEnvironmentVariable("MIMIRON_TRACE_INCLUDES"), "1", StringComparison.Ordinal);
@@ -463,14 +464,17 @@ internal sealed class Db2IncludeExecutor
             if (traceIncludes)
                 Console.WriteLine($"[MimironDb2] Collection include '{navigation.DeclaringEntityType.DisplayName()}.{navigation.Name}': sources={sources.Count}, principalIds={principalIds.Count}, dependentTable={dependentTableName}, fkColumn={fkColumnName}, fkFieldIndex={fkField.ColumnStartIndex}");
 
-            if (!oneToManyCache.TryGetValue((dependentTableName, fkField.ColumnStartIndex), out var lookup))
+            var cacheKey = (DependentTable: dependentTableName, ForeignKeyFieldIndex: fkField.ColumnStartIndex);
+            if (!oneToManyCache.TryGetValue(cacheKey, out var entry))
             {
-                lookup = ScanOneToMany(store, dependentTableName, dependentSchema, modelBinding, entityFactory, fkGroupingCache, principalIds, targetClrType, fkField.ColumnStartIndex, knownEntities, dbContext, getterCache, setterCache);
-                oneToManyCache.Add((dependentTableName, fkField.ColumnStartIndex), lookup);
-
-                if (traceIncludes)
-                    Console.WriteLine($"[MimironDb2] Collection include '{navigation.DeclaringEntityType.DisplayName()}.{navigation.Name}': scanned lookup keys={lookup.Count}");
+                entry = new OneToManyCacheEntry(dependentTableName, dependentSchema.LayoutHash, fkField.ColumnStartIndex);
+                oneToManyCache.Add(cacheKey, entry);
             }
+
+            var lookup = entry.GetLookup(store, dependentSchema, modelBinding, entityFactory, fkGroupingCache, principalIds, targetClrType, knownEntities, dbContext, getterCache, setterCache);
+
+            if (traceIncludes)
+                Console.WriteLine($"[MimironDb2] Collection include '{navigation.DeclaringEntityType.DisplayName()}.{navigation.Name}': lookup keys={lookup.Count}");
 
             var navSetter = GetOrCompileSetter(setterCache, sourceClrType, navigation.Name);
             var listFactory = GetOrCompileListFactory(listFactoryCache, targetClrType);
@@ -498,40 +502,103 @@ internal sealed class Db2IncludeExecutor
         }
     }
 
-    private static Dictionary<int, List<object>> ScanOneToMany(
+    private sealed class OneToManyCacheEntry(string dependentTableName, string layoutHash, int foreignKeyFieldIndex)
+    {
+        private readonly string _dependentTableName = dependentTableName;
+        private readonly Db2FkGroupingCache.Key _cacheKey = new(dependentTableName, layoutHash, foreignKeyFieldIndex);
+        private readonly Dictionary<int, object> _entitiesByRowId = new();
+        private readonly Dictionary<int, List<object>> _lookupByPrincipalId = new();
+
+        public Dictionary<int, List<object>> GetLookup(
+            IMimironDb2Store store,
+            Db2TableSchema dependentSchema,
+            Db2ModelBinding modelBinding,
+            IDb2EntityFactory entityFactory,
+            Db2FkGroupingCache fkGroupingCache,
+            HashSet<int> principalIds,
+            Type dependentClrType,
+            List<object> knownEntities,
+            DbContext dbContext,
+            Dictionary<(Type ClrType, string Name), Func<object, object?>> getterCache,
+            Dictionary<(Type ClrType, string Name), Action<object, object?>> setterCache)
+        {
+            if (principalIds.Count == 0)
+                return [];
+
+            var grouping = fkGroupingCache.GetOrBuild(_cacheKey, () => BuildFkGrouping(store, _dependentTableName, _cacheKey.ForeignKeyFieldIndex));
+
+            var missingRowIds = new HashSet<int>();
+            foreach (var principalId in principalIds)
+            {
+                if (_lookupByPrincipalId.ContainsKey(principalId))
+                    continue;
+
+                if (!grouping.TryGetValue(principalId, out var rowIds))
+                    continue;
+
+                for (var i = 0; i < rowIds.Length; i++)
+                {
+                    var rowId = rowIds[i];
+                    if (!_entitiesByRowId.ContainsKey(rowId))
+                        missingRowIds.Add(rowId);
+                }
+            }
+
+            if (missingRowIds.Count > 0)
+                EnsureDependentsMaterialized(_entitiesByRowId, missingRowIds, store, _dependentTableName, dependentSchema, modelBinding, entityFactory, dependentClrType, dbContext, knownEntities, getterCache, setterCache);
+
+            foreach (var principalId in principalIds)
+            {
+                if (_lookupByPrincipalId.ContainsKey(principalId))
+                    continue;
+
+                if (!grouping.TryGetValue(principalId, out var dependentRowIds))
+                    continue;
+
+                if (dependentRowIds.Length == 0)
+                    continue;
+
+                var list = new List<object>(capacity: dependentRowIds.Length);
+                for (var i = 0; i < dependentRowIds.Length; i++)
+                {
+                    if (_entitiesByRowId.TryGetValue(dependentRowIds[i], out var entity))
+                        list.Add(entity);
+                }
+
+                if (list.Count > 0)
+                    _lookupByPrincipalId[principalId] = list;
+            }
+
+            var result = new Dictionary<int, List<object>>(capacity: principalIds.Count);
+            foreach (var principalId in principalIds)
+            {
+                if (_lookupByPrincipalId.TryGetValue(principalId, out var dependents))
+                    result[principalId] = dependents;
+            }
+
+            return result;
+        }
+    }
+
+    private static void EnsureDependentsMaterialized(
+        Dictionary<int, object> entitiesByRowId,
+        HashSet<int> rowIdsToLoad,
         IMimironDb2Store store,
         string dependentTableName,
         Db2TableSchema dependentSchema,
         Db2ModelBinding modelBinding,
         IDb2EntityFactory entityFactory,
-        Db2FkGroupingCache fkGroupingCache,
-        HashSet<int> principalIds,
         Type dependentClrType,
-        int foreignKeyFieldIndex,
-        List<object> knownEntities,
         DbContext dbContext,
+        List<object> knownEntities,
         Dictionary<(Type ClrType, string Name), Func<object, object?>> getterCache,
         Dictionary<(Type ClrType, string Name), Action<object, object?>> setterCache)
     {
-        if (principalIds.Count == 0)
-            return [];
-
-        var cacheKey = new Db2FkGroupingCache.Key(dependentTableName, dependentSchema.LayoutHash, foreignKeyFieldIndex);
-        var grouping = fkGroupingCache.GetOrBuild(cacheKey, () => BuildFkGrouping(store, dependentTableName, foreignKeyFieldIndex));
-
-        var rowIdsToLoad = new List<int>();
-        foreach (var principalId in principalIds)
-        {
-            if (grouping.TryGetValue(principalId, out var rowIds))
-                rowIdsToLoad.AddRange(rowIds);
-        }
-
         if (rowIdsToLoad.Count == 0)
-            return [];
+            return;
 
         var (file, _) = store.OpenTableWithSchema<RowHandle>(dependentTableName);
 
-        // Materializer (typed) for the dependent entity.
         var db2EntityType = modelBinding.GetEntityType(dependentClrType).WithSchema(dependentTableName, dependentSchema);
 
         var materializerType = typeof(Db2EntityMaterializer<>).MakeGenericType(dependentClrType);
@@ -574,14 +641,17 @@ internal sealed class Db2IncludeExecutor
         }
 
         var handles = new List<RowHandle>(capacity: rowIdsToLoad.Count);
-        for (var i = 0; i < rowIdsToLoad.Count; i++)
+        foreach (var rowId in rowIdsToLoad)
         {
-            if (file.TryGetRowById(rowIdsToLoad[i], out var handle))
+            if (entitiesByRowId.ContainsKey(rowId))
+                continue;
+
+            if (file.TryGetRowById(rowId, out var handle))
                 handles.Add(handle);
         }
 
         if (handles.Count == 0)
-            return [];
+            return;
 
         handles.Sort(static (a, b) =>
         {
@@ -591,8 +661,6 @@ internal sealed class Db2IncludeExecutor
 
             return a.RowIndexInSection.CompareTo(b.RowIndexInSection);
         });
-
-        var entitiesByRowId = new Dictionary<int, object>(capacity: handles.Count);
 
         for (var i = 0; i < handles.Count; i++)
         {
@@ -629,28 +697,6 @@ internal sealed class Db2IncludeExecutor
 
             entitiesByRowId[rowId] = entity;
         }
-
-        var lookup = new Dictionary<int, List<object>>(capacity: principalIds.Count);
-        foreach (var principalId in principalIds)
-        {
-            if (!grouping.TryGetValue(principalId, out var dependentRowIds))
-                continue;
-
-            if (dependentRowIds.Length == 0)
-                continue;
-
-            var list = new List<object>(capacity: dependentRowIds.Length);
-            for (var i = 0; i < dependentRowIds.Length; i++)
-            {
-                if (entitiesByRowId.TryGetValue(dependentRowIds[i], out var entity))
-                    list.Add(entity);
-            }
-
-            if (list.Count > 0)
-                lookup[principalId] = list;
-        }
-
-        return lookup;
     }
 
     private static IReadOnlyDictionary<int, int[]> BuildFkGrouping(

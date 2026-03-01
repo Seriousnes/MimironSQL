@@ -1,6 +1,8 @@
 # MimironSQL
 
-A read-only Entity Framework Core database provider for World of Warcraft DB2 files. MimironSQL lets you query game data tables using familiar LINQ and EF Core patterns, with full support for the WDC5 binary format and WoWDBDefs-driven schema discovery.
+Using AI to generate a read-only Entity Framework Core database provider for World of Warcraft DB2 files. 
+
+MimironSQL lets you query game data tables using familiar LINQ and EF Core patterns, with full support for the WDC5 binary format and WoWDBDefs-driven schema discovery.
 
 ## Features
 

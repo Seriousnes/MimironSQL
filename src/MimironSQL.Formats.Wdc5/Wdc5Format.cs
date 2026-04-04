@@ -11,9 +11,11 @@ namespace MimironSQL.Formats.Wdc5;
 /// Creates a new WDC5 format reader.
 /// </remarks> 
 /// <param name="tactKeyProvider">Optional TACT key provider for decrypting encrypted DB2 files.</param>
-public sealed class Wdc5Format(ITactKeyProvider? tactKeyProvider = null) : IDb2Format
+/// <param name="formatOptions">Optional WDC5 format options.</param>
+public sealed class Wdc5Format(ITactKeyProvider? tactKeyProvider = null, Wdc5FormatOptions? formatOptions = null) : IDb2Format
 {
     private readonly ITactKeyProvider? _tactKeyProvider = tactKeyProvider;
+    private readonly Wdc5FormatOptions _formatOptions = formatOptions ?? new Wdc5FormatOptions();
 
     /// <inheritdoc />
     public Db2Format Format => Db2Format.Wdc5;
@@ -21,8 +23,8 @@ public sealed class Wdc5Format(ITactKeyProvider? tactKeyProvider = null) : IDb2F
     /// <inheritdoc />
     public IDb2File OpenFile(Stream stream)
         => _tactKeyProvider is null
-            ? new Wdc5File(stream)
-            : new Wdc5File(stream, new Wdc5FileOptions(TactKeyProvider: _tactKeyProvider));
+            ? new Wdc5File(stream, new Wdc5FileOptions(EagerSparseOffsetTable: _formatOptions.EagerSparseOffsetTable))
+            : new Wdc5File(stream, new Wdc5FileOptions(TactKeyProvider: _tactKeyProvider, EagerSparseOffsetTable: _formatOptions.EagerSparseOffsetTable));
 
     /// <inheritdoc />
     public Db2FileLayout GetLayout(IDb2File file)

@@ -24,10 +24,12 @@ public enum Wdc5RecordLoadingMode
 /// <param name="TactKeyProvider">Provides TACT keys used to decrypt encrypted sections.</param>
 /// <param name="EncryptedRowNonceStrategy">Controls how per-row nonces are derived for decryption.</param>
 /// <param name="RecordLoadingMode">Controls whether record and string data is loaded lazily or eagerly.</param>
+/// <param name="EagerSparseOffsetTable">Controls whether sparse field offset tables are built during file construction.</param>
 public sealed record Wdc5FileOptions(
     ITactKeyProvider? TactKeyProvider = null,
     Wdc5EncryptedRowNonceStrategy EncryptedRowNonceStrategy = Wdc5EncryptedRowNonceStrategy.SourceId,
-    Wdc5RecordLoadingMode RecordLoadingMode = Wdc5RecordLoadingMode.Lazy);
+    Wdc5RecordLoadingMode RecordLoadingMode = Wdc5RecordLoadingMode.Lazy,
+    bool EagerSparseOffsetTable = false);
 
 /// <summary>
 /// Selects which row identifier is used to derive the decryption nonce.

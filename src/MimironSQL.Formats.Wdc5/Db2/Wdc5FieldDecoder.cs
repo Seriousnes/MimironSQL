@@ -4,6 +4,48 @@ namespace MimironSQL.Formats.Wdc5.Db2;
 
 internal static class Wdc5FieldDecoder
 {
+    public static ulong ReadScalarRaw(int id, ref Wdc5RowReader reader, FieldMetaData fieldMeta, ColumnMetaData columnMeta, uint[] palletData, Dictionary<int, uint> commonData)
+    {
+        switch (columnMeta.CompressionType)
+        {
+            case CompressionType.None:
+                {
+                    var bitSize = 32 - fieldMeta.Bits;
+                    if (bitSize <= 0)
+                        bitSize = columnMeta.Immediate.BitWidth;
+
+                    return reader.ReadUInt64(bitSize);
+                }
+            case CompressionType.SignedImmediate:
+                return unchecked((ulong)reader.ReadUInt64Signed(columnMeta.Immediate.BitWidth));
+            case CompressionType.Immediate:
+                return reader.ReadUInt64(columnMeta.Immediate.BitWidth);
+            case CompressionType.Common:
+                {
+                    if (commonData.TryGetValue(id, out var value))
+                        return value;
+
+                    return columnMeta.Common.DefaultValue;
+                }
+            case CompressionType.Pallet:
+                {
+                    var palletIndex = reader.ReadUInt32(columnMeta.Pallet.BitWidth);
+                    return palletData[palletIndex];
+                }
+            case CompressionType.PalletArray:
+                {
+                    var palletIndex = reader.ReadUInt32(columnMeta.Pallet.BitWidth);
+                    return columnMeta switch
+                    {
+                        { Pallet.Cardinality: 1 } => palletData[palletIndex],
+                        _ => throw new NotSupportedException("Raw scalar reads are only supported for single-cardinality pallet arrays."),
+                    };
+                }
+            default:
+                throw new NotSupportedException($"Unexpected compression type {columnMeta.CompressionType}.");
+        }
+    }
+
     public static T ReadScalar<T>(int id, ref Wdc5RowReader reader, FieldMetaData fieldMeta, ColumnMetaData columnMeta, uint[] palletData, Dictionary<int, uint> commonData)
         where T : unmanaged
     {

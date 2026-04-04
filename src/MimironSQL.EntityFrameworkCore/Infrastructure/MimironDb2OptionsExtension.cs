@@ -1,6 +1,8 @@
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.DependencyInjection;
 
+using MimironSQL.Formats.Wdc5;
+
 namespace MimironSQL.EntityFrameworkCore.Infrastructure;
 
 internal sealed class MimironDb2OptionsExtension : IDbContextOptionsExtension
@@ -14,6 +16,8 @@ internal sealed class MimironDb2OptionsExtension : IDbContextOptionsExtension
 
     public bool RelaxLayoutValidation { get; private init; }
 
+    public bool EagerSparseOffsetTable { get; private init; }
+
     public ForeignKeyArrayModeling ForeignKeyArrayModeling { get; private init; } = ForeignKeyArrayModeling.SharedTypeJoinEntity;
 
     public DbContextOptionsExtensionInfo Info => _info ??= new ExtensionInfo(this);
@@ -25,6 +29,7 @@ internal sealed class MimironDb2OptionsExtension : IDbContextOptionsExtension
         services.AddEntityFrameworkMimironDb2();
 
         services.AddSingleton<IModelCustomizer, MimironDb2ModelCustomizer>();
+        services.AddSingleton(new Wdc5FormatOptions { EagerSparseOffsetTable = EagerSparseOffsetTable });
 
         ApplyProviderServices?.Invoke(services);
     }
@@ -43,6 +48,7 @@ internal sealed class MimironDb2OptionsExtension : IDbContextOptionsExtension
             WowVersion = wowVersion,
             ForeignKeyArrayModeling = ForeignKeyArrayModeling,
             RelaxLayoutValidation = RelaxLayoutValidation,
+            EagerSparseOffsetTable = EagerSparseOffsetTable,
         };
 
     public MimironDb2OptionsExtension WithProvider(string providerKey, int providerConfigHash, Action<IServiceCollection> applyProviderServices)
@@ -54,6 +60,7 @@ internal sealed class MimironDb2OptionsExtension : IDbContextOptionsExtension
             WowVersion = WowVersion,
             ForeignKeyArrayModeling = ForeignKeyArrayModeling,
             RelaxLayoutValidation = RelaxLayoutValidation,
+            EagerSparseOffsetTable = EagerSparseOffsetTable,
         };
 
     public MimironDb2OptionsExtension WithForeignKeyArrayModeling(ForeignKeyArrayModeling modeling)
@@ -65,6 +72,7 @@ internal sealed class MimironDb2OptionsExtension : IDbContextOptionsExtension
             WowVersion = WowVersion,
             ForeignKeyArrayModeling = modeling,
             RelaxLayoutValidation = RelaxLayoutValidation,
+            EagerSparseOffsetTable = EagerSparseOffsetTable,
         };
 
     public MimironDb2OptionsExtension WithRelaxLayoutValidation(bool relaxLayoutValidation)
@@ -76,6 +84,19 @@ internal sealed class MimironDb2OptionsExtension : IDbContextOptionsExtension
             WowVersion = WowVersion,
             ForeignKeyArrayModeling = ForeignKeyArrayModeling,
             RelaxLayoutValidation = relaxLayoutValidation,
+            EagerSparseOffsetTable = EagerSparseOffsetTable,
+        };
+
+    public MimironDb2OptionsExtension WithEagerSparseOffsetTable(bool eagerSparseOffsetTable)
+        => new()
+        {
+            ProviderKey = ProviderKey,
+            ProviderConfigHash = ProviderConfigHash,
+            ApplyProviderServices = ApplyProviderServices,
+            WowVersion = WowVersion,
+            ForeignKeyArrayModeling = ForeignKeyArrayModeling,
+            RelaxLayoutValidation = RelaxLayoutValidation,
+            EagerSparseOffsetTable = eagerSparseOffsetTable,
         };
 
     private sealed class ExtensionInfo(IDbContextOptionsExtension extension) : DbContextOptionsExtensionInfo(extension)
@@ -87,7 +108,7 @@ internal sealed class MimironDb2OptionsExtension : IDbContextOptionsExtension
         public override int GetServiceProviderHashCode()
         {
             var e = (MimironDb2OptionsExtension)Extension;
-            return HashCode.Combine(e.ProviderKey, e.ProviderConfigHash, e.WowVersion, (int)e.ForeignKeyArrayModeling, e.RelaxLayoutValidation);
+            return HashCode.Combine(e.ProviderKey, e.ProviderConfigHash, e.WowVersion, (int)e.ForeignKeyArrayModeling, e.RelaxLayoutValidation, e.EagerSparseOffsetTable);
         }
 
         public override bool ShouldUseSameServiceProvider(DbContextOptionsExtensionInfo other)
@@ -101,6 +122,7 @@ internal sealed class MimironDb2OptionsExtension : IDbContextOptionsExtension
             debugInfo["MimironDb2:WowVersion"] = e.WowVersion ?? string.Empty;
             debugInfo["MimironDb2:ForeignKeyArrayModeling"] = e.ForeignKeyArrayModeling.ToString();
             debugInfo["MimironDb2:RelaxLayoutValidation"] = e.RelaxLayoutValidation ? "1" : "0";
+            debugInfo["MimironDb2:EagerSparseOffsetTable"] = e.EagerSparseOffsetTable ? "1" : "0";
         }
     }
 }

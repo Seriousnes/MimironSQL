@@ -5,6 +5,8 @@ namespace MimironSQL.Formats.Wdc5.Db2;
 /// </summary>
 public sealed class Wdc5Section
 {
+    internal Lazy<Wdc5SparseOffsetTable>? SparseOffsetTable { get; set; }
+
     /// <summary>
     /// Gets the raw section header.
     /// </summary>

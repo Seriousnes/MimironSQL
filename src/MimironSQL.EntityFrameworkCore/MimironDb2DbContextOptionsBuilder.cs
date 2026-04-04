@@ -49,4 +49,7 @@ public sealed class MimironDb2DbContextOptionsBuilder : IMimironDb2DbContextOpti
 
     internal void SetRelaxLayoutValidation(bool relaxLayoutValidation)
         => Extension = Extension.WithRelaxLayoutValidation(relaxLayoutValidation);
+
+    internal void SetEagerSparseOffsetTable(bool eagerSparseOffsetTable)
+        => Extension = Extension.WithEagerSparseOffsetTable(eagerSparseOffsetTable);
 }

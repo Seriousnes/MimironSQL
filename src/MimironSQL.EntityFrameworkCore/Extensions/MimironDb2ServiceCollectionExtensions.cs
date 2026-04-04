@@ -14,6 +14,7 @@ using MimironSQL.Dbd;
 using MimironSQL.Formats;
 using MimironSQL.Formats.Wdc5;
 using MimironSQL.EntityFrameworkCore.Model;
+using MimironSQL.Providers;
 
 // ReSharper disable once CheckNamespace
 namespace Microsoft.Extensions.DependencyInjection;
@@ -51,6 +52,7 @@ public static class MimironDb2ServiceCollectionExtensions
             services =>
             {
                 services.TryAddSingleton<IDbdParser, DbdParser>();
+                services.TryAddSingleton<Wdc5FormatOptions, Wdc5FormatOptions>();
                 services.TryAddSingleton<IDb2Format, Wdc5Format>();
 
                 services.TryAddSingleton<Db2FkGroupingCache, Db2FkGroupingCache>();

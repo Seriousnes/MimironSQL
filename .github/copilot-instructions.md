@@ -1,73 +1,37 @@
-# Project Overview
-This project is a SQL engine for reading and querying World of Warcraft DB2 files. It is implemented in C# and designed to be extensible for future file formats used by World of Warcraft. It will support reading DB2 files via the FileSystem (i.e. FileSystemDBDProvider) and via CASC (i.e. CascDBDProvider).
+# Project Guidelines
 
-## Terminal
-- Assume all terminal commands run in **Windows PowerShell (pwsh)**, not `cmd.exe`.
-- Do **not** use `cmd.exe`-specific syntax such as `cd /d`.
-- Prefer `Set-Location` (or `cd`) with **absolute paths** (e.g., `Set-Location "g:\source\MimironSQL"`).
-- Commands can be chained with `;` or `&&`.
+## Code Style
+- Target .NET 10 / C# 14 and prefer modern language features unless compatibility requires otherwise.
+- Follow detailed style guidance in [coding-style.md](./instructions/coding-style.md).
+- Do not add `[MethodImpl(...)]` attributes (including `MethodImplOptions.AggressiveInlining`). Remove them when encountered unless benchmarking proves benefit.
+- Prefer `[InternalsVisibleTo]` for test/benchmark access instead of widening internal types to public.
 
-## Modern C# / Style Rules
-- Target .NET 10 / C# 14 and prefer the newest language features, unless otherwise specified.
-- Follow the additional coding style rules in [coding-style.md](./instructions/coding-style.md).
+## Architecture
+- MimironSQL is a read-only EF Core provider for World of Warcraft DB2 files, with schema sourced from WoWDBDefs `.dbd` definitions.
+- Core boundaries:
+    - `src/MimironSQL.Contracts`: extension interfaces and shared contracts
+    - `src/MimironSQL.Dbd`: `.dbd` parser and model
+    - `src/MimironSQL.DbContextGenerator`: source-generated entities and `WoWDb2Context`
+    - `src/MimironSQL.EntityFrameworkCore`: provider pipeline
+    - `src/MimironSQL.Formats.Wdc5`: WDC5 reader
+    - `src/MimironSQL.Providers.FileSystem` and `src/MimironSQL.Providers.CASC`: data access providers
+    - `src/Salsa20`: encrypted section support
+- Follow the EF Core provider bootstrap plan in [wip-iterative-bootstrap.md](./instructions/wip-iterative-bootstrap.md).
 
-## Performance 
-- Follow the performance guidelines in [performance.md](./instructions/performance.md)
-
-## Design Principles
-- Follow the iterative bootstrap plan in [wip-iterative-bootstrap.md](./instructions/wip-iterative-bootstrap.md) for the EF Core provider development.
-
-### Attributes
-- Do NOT add `[MethodImpl(...)]` attributes (including `MethodImplOptions.AggressiveInlining`).
-- Remove any `[MethodImpl(...)]` attributes you encounter.
-- Only add these attributes back after benchmarking demonstrates a real benefit.
-
-## Repository Structure
-- `src/`: Shipping libraries and packages
-    - `MimironSQL.Contracts/`: Public interfaces and extension points (formats, providers, DBD model)
-    - `MimironSQL.Dbd/`: WoWDBDefs `.dbd` parser + typed model (embedded dependency)
-    - `MimironSQL.DbContextGenerator/`: Roslyn incremental source generator for EF Core DbContext + entities from `.dbd`
-    - `MimironSQL.EntityFrameworkCore/`: Read-only EF Core provider for querying DB2 files via LINQ
-    - `MimironSQL.Formats.Wdc5/`: WDC5 binary format reader (`IDb2Format`)
-    - `MimironSQL.Providers.CASC/`: CASC-based DB2 stream provider (reads from a WoW install)
-    - `MimironSQL.Providers.FileSystem/`: File-system providers (DB2/DBD/TACT keys from disk)
-    - `Salsa20/`: Salsa20 cipher used for TACT-encrypted DB2 sections
-- `tests/`: Test projects (xUnit) and benchmarks
-    - `MimironSQL.Contracts.Tests/`, `MimironSQL.Dbd.Tests/`, `MimironSQL.EntityFrameworkCore.Tests/`, etc.
-    - `MimironSQL.IntegrationTests/`: End-to-end tests
-    - `MimironSQL.Benchmarks/`: BenchmarkDotNet benchmarks
-- `tools/`: Developer tooling (e.g., coverage helpers)
-
-## Development Workflow
-
-### Building the Project
+## Build and Test
+- Assume terminal commands run in Windows PowerShell (`pwsh`), not `cmd.exe`.
 - Build: `dotnet build MimironSQL.slnx`
-- This will restore NuGet packages and compile all projects in the solution
+- Test: `dotnet test MimironSQL.slnx`
+- Test (no rebuild): `dotnet test MimironSQL.slnx --no-build`
+- Coverage helper: see [tools/coverage/README.md](../tools/coverage/README.md)
+- If tests are skipped due to build failure, fix build errors first.
+- All local test suites should pass before committing.
 
-### Running Tests
-- Run all tests: `dotnet test MimironSQL.slnx`
-- Run tests without rebuilding: `dotnet test MimironSQL.slnx --no-build`
-- All tests must pass before committing changes
-
-## Nuget Packages
-- Install packages using the dotnet CLI. Never edit the .csproj files directly.
-- Prefer using latest stable versions of packages unless a specific version is required for compatibility.
-- Prefer well known packages with active maintenance and good community support.
-
-## Test Strategy
-See [test-strategy.md](./instructions/test-strategy.md) for detailed testing instructions.
-
-## Coverage tooling
-
-For the `reportcoverage.cs` helper (ranking misses and class drill-down), see [tools/coverage/README.md](../tools/coverage/README.md).
-
-## File Specifications
-
-### DB2 file structure
-The DB2 file structure is documentation is available here - https://wowdev.wiki/DB2, this project is initially targeting WDC5 and later.
-
-### Metadata
-Since DB2 files don't contain any metadata about column names or data types, we're using the WoWDBDefs repository for DB2 definitions. The `.dbd` files are parsed by the `MimironSQL.Dbd` project. `MimironSQL.DbContextGenerator` can use the parsed `.dbd` definitions to generate EF Core `DbContext` and entity classes with the correct properties and types.
-
-## Testing Access
-- Prefer using `[InternalsVisibleTo]` to allow test/benchmark access; do not change internal types (e.g., `BlteDecoder`) to public for benchmarking.
+## Conventions
+- Install packages with the dotnet CLI; do not hand-edit `.csproj` package references.
+- Keep instruction content concise and link to detail docs instead of duplicating:
+    - [test-strategy.md](./instructions/test-strategy.md)
+    - [performance.md](./instructions/performance.md)
+    - [db2-format.md](./instructions/db2-format.md)
+- DB2 files have no embedded schema metadata; use WoWDBDefs `.dbd` definitions for names/types and generator input.
+- DB2 format reference: https://wowdev.wiki/DB2

@@ -29,7 +29,7 @@ public static class MimironDb2ServiceCollectionExtensions
     /// </summary>
     /// <remarks>
     /// This method is primarily intended for building an internal service provider used with
-    /// <see cref="DbContextOptionsBuilder.UseInternalServiceProvider"/>.
+    /// <see cref="Microsoft.EntityFrameworkCore.DbContextOptionsBuilder.UseInternalServiceProvider(System.IServiceProvider)"/>.
     /// </remarks>
     /// <param name="serviceCollection">The <see cref="IServiceCollection"/> to add services to.</param>
     /// <returns>The same service collection so that multiple calls can be chained.</returns>

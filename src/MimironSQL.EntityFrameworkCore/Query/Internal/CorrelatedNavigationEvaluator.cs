@@ -23,6 +23,35 @@ internal static class CorrelatedNavigationEvaluator
 
     private readonly record struct CacheKey(Type InnerClrType, Type KeyType, string InnerKeyMemberName, Delegate? DependentPredicate, bool IsCount);
 
+    private sealed class CorrelatedCounts
+    {
+        private readonly Dictionary<object, int> _counts = [];
+
+        public int NullCount { get; private set; }
+
+        public int GetCount(object? key)
+        {
+            if (key is null)
+            {
+                return NullCount;
+            }
+
+            return _counts.TryGetValue(key, out var count) ? count : 0;
+        }
+
+        public void Add(object? key)
+        {
+            if (key is null)
+            {
+                NullCount++;
+                return;
+            }
+
+            _counts.TryGetValue(key, out var current);
+            _counts[key] = current + 1;
+        }
+    }
+
     private static readonly ConditionalWeakTable<QueryContext, Dictionary<CacheKey, object>> Cache = [];
 
     private static readonly System.Collections.Concurrent.ConcurrentDictionary<(Type InnerClrType, Type KeyType, string MemberName), Delegate> KeyGetterCache = new();
@@ -56,11 +85,11 @@ internal static class CorrelatedNavigationEvaluator
             dict[key] = cached;
         }
 
-        var counts = (Dictionary<TKey, int>)cached;
-        return counts.TryGetValue(outerKey, out var count) ? count : 0;
+        var counts = (CorrelatedCounts)cached;
+        return counts.GetCount(outerKey);
     }
 
-    private static Dictionary<TKey, int> BuildCounts<TInner, TKey>(
+    private static CorrelatedCounts BuildCounts<TInner, TKey>(
         QueryContext queryContext,
         string innerKeyMemberName,
         Func<QueryContext, object, bool>? dependentPredicate)
@@ -95,7 +124,7 @@ internal static class CorrelatedNavigationEvaluator
             return lambda.Compile();
         });
 
-        var counts = new Dictionary<TKey, int>();
+        var counts = new CorrelatedCounts();
 
         foreach (var handle in file.EnumerateRowHandles())
         {
@@ -107,8 +136,7 @@ internal static class CorrelatedNavigationEvaluator
             }
 
             var k = keyGetter(inner);
-            counts.TryGetValue(k, out var current);
-            counts[k] = current + 1;
+            counts.Add(k);
         }
 
         return counts;

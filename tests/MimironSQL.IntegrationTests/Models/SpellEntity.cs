@@ -6,12 +6,12 @@ namespace MimironSQL;
 
 public partial class SpellEntity
 {
-    public virtual SpellNameEntity SpellName { get; set; }
+    public virtual SpellNameEntity SpellName { get; set; } = null!;
 }
 
 public partial class SpellNameEntity
 {    
-    public virtual SpellEntity Spell { get; set; }
+    public virtual SpellEntity Spell { get; set; } = null!;
 }
 
 public partial class SpellEntityConfiguration

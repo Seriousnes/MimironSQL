@@ -6,14 +6,23 @@ using Microsoft.EntityFrameworkCore.Storage;
 
 namespace MimironSQL.EntityFrameworkCore.Query.Internal;
 
-internal sealed class MimironDb2QueryableMethodTranslatingExpressionVisitor(
-    QueryableMethodTranslatingExpressionVisitorDependencies dependencies,
-    QueryCompilationContext queryCompilationContext,
-    bool subquery)
-    : QueryableMethodTranslatingExpressionVisitor(dependencies, queryCompilationContext, subquery)
+internal sealed class MimironDb2QueryableMethodTranslatingExpressionVisitor : QueryableMethodTranslatingExpressionVisitor
 {
+    private readonly QueryableMethodTranslatingExpressionVisitorDependencies _dependencies;
+    private readonly QueryCompilationContext _queryCompilationContext;
+
+    public MimironDb2QueryableMethodTranslatingExpressionVisitor(
+        QueryableMethodTranslatingExpressionVisitorDependencies dependencies,
+        QueryCompilationContext queryCompilationContext,
+        bool subquery)
+        : base(dependencies, queryCompilationContext, subquery)
+    {
+        _dependencies = dependencies;
+        _queryCompilationContext = queryCompilationContext;
+    }
+
     protected override QueryableMethodTranslatingExpressionVisitor CreateSubqueryVisitor()
-        => new MimironDb2QueryableMethodTranslatingExpressionVisitor(dependencies, queryCompilationContext, subquery: true);
+        => new MimironDb2QueryableMethodTranslatingExpressionVisitor(_dependencies, _queryCompilationContext, subquery: true);
 
     protected override ShapedQueryExpression CreateShapedQueryExpression(IEntityType entityType)
     {
@@ -280,7 +289,7 @@ internal sealed class MimironDb2QueryableMethodTranslatingExpressionVisitor(
     protected override ShapedQueryExpression? TranslateReverse(ShapedQueryExpression source)
         => throw new NotSupportedException("MimironDb2 query translation is not implemented yet.");
 
-    protected override ShapedQueryExpression? TranslateSelect(ShapedQueryExpression source, LambdaExpression selector)
+    protected override ShapedQueryExpression TranslateSelect(ShapedQueryExpression source, LambdaExpression selector)
     {
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(selector);

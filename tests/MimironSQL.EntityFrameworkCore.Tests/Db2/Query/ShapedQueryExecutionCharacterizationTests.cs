@@ -181,7 +181,7 @@ public sealed class ShapedQueryExecutionCharacterizationTests
             context.MapChallengeModes
                 .AsNoTracking()
                 .Include(x => x.Map)
-                .ThenInclude(x => x.MapChallengeModes)
+                .ThenInclude(x => x!.MapChallengeModes)
                 .ThenInclude(x => x.Map)
                 .Take(0)
                 .ToList());

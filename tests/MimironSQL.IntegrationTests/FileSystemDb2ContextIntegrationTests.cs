@@ -46,8 +46,7 @@ public sealed class FileSystemDb2ContextIntegrationTests(FileSystemTextFixture f
 {
     private WoWDb2Context context => fixture.Context;
 
-    // TODO: re-enable once MimironDb2 provides async query execution (async-over-sync is acceptable).
-    [Fact(Skip = "Async query execution is not implemented yet (sync-only bootstrap phase).")]
+    [Fact]
     public async Task ToListAsync_executes_end_to_end_via_async_over_sync()
     {
         var results = await context.Map
@@ -540,5 +539,29 @@ public sealed class FileSystemDb2ContextIntegrationTests(FileSystemTextFixture f
 
         var mapCount = context.Map.Where(x => x.Id > 0).Take(100).Count();
         mapCount.ShouldBeGreaterThan(0);
+    }
+
+    [Fact]
+    public async Task FindAsync_by_table_name_and_id_resolves_entity_via_model_metadata()
+    {
+        // Mirrors the minimal API pattern:
+        //   GET /{tableName}/{id:int}
+        //   -> model lookup -> FindAsync(entityType.ClrType, id)
+        const string tableName = "Spell";
+        const int id = 454009;
+
+        var entityType = context.Model.GetEntityTypes()
+            .FirstOrDefault(et => string.Equals(et.GetTableName(), tableName, StringComparison.OrdinalIgnoreCase));
+        entityType.ShouldNotBeNull();
+
+        var keyProperty = entityType!.FindPrimaryKey()?.Properties.FirstOrDefault();
+        keyProperty.ShouldNotBeNull();
+
+        context.ChangeTracker.Clear();
+        var entity = await context.FindAsync(entityType.ClrType, id);
+
+        entity.ShouldNotBeNull();
+        entity.ShouldBeOfType<SpellEntity>();
+        ((SpellEntity)entity).Id.ShouldBe(id);
     }
 }

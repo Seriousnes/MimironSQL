@@ -48,6 +48,9 @@ internal sealed class MimironDb2ShapedQueryCompilingExpressionVisitor(
         .GetTypeInfo()
         .GetDeclaredMethod(nameof(Db2QueryContextParameterReader.GetIntParameterValue))!;
 
+    private static readonly MethodInfo TaskFromResultMethodInfo = typeof(Task)
+        .GetMethod(nameof(Task.FromResult))!;
+
     protected override Expression VisitExtension(Expression extensionExpression)
     {
         if (extensionExpression is ShapedQueryExpression shapedQueryExpression)
@@ -134,8 +137,6 @@ internal sealed class MimironDb2ShapedQueryCompilingExpressionVisitor(
         var remainingExpression = RewriteLimitExpression(db2QueryExpression.Limit);
         var offsetExpression = RewriteOffsetExpression(db2QueryExpression.Offset);
 
-        // Sync-only execution for now.
-        // TODO: add async query execution support.
         var enumerable = Expression.Call(
             QueryMethodInfo.MakeGenericMethod(resultType),
             QueryCompilationContext.QueryContextParameter,
@@ -177,13 +178,17 @@ internal sealed class MimironDb2ShapedQueryCompilingExpressionVisitor(
                 terminalResult = Expression.Not(terminalResult);
             }
 
-            return terminalResult;
+            return WrapScalarForAsync(terminalResult);
         }
 
         // This override bypasses EF Core's base cardinality handling, so we must apply it here.
         Expression result = shapedQueryExpression.ResultCardinality switch
         {
-            ResultCardinality.Enumerable => enumerable,
+            ResultCardinality.Enumerable => QueryCompilationContext.IsAsync
+                ? Expression.New(
+                    typeof(Db2QueryingEnumerable<>).MakeGenericType(resultType).GetConstructors()[0],
+                    enumerable)
+                : enumerable,
             ResultCardinality.Single => Expression.Call(
                 EnumerableSingleMethodInfo.MakeGenericMethod(resultType),
                 enumerable),
@@ -203,7 +208,21 @@ internal sealed class MimironDb2ShapedQueryCompilingExpressionVisitor(
             result = Expression.Not(result);
         }
 
-        return result;
+        return shapedQueryExpression.ResultCardinality == ResultCardinality.Enumerable
+            ? result
+            : WrapScalarForAsync(result);
+    }
+
+    private Expression WrapScalarForAsync(Expression expression)
+    {
+        if (!QueryCompilationContext.IsAsync)
+        {
+            return expression;
+        }
+
+        return Expression.Call(
+            TaskFromResultMethodInfo.MakeGenericMethod(expression.Type),
+            expression);
     }
 
     private Expression RewriteLimitExpression(Expression? limit)

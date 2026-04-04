@@ -66,7 +66,7 @@ Build a real EF Core database provider (read-only) for querying DB2 data via EF 
 - The provider approaches EF Core provider conventions over time.
 
 ## Current Clarifications (2026-02-14)
-- **Async query support deferred**: queries are sync-only for now; async integration tests may be skipped temporarily.
+- **Async query support (async-over-sync)**: `Db2QueryingEnumerable<T>` wraps sync `IEnumerable<T>` as `IAsyncEnumerable<T>`; scalar results are wrapped via `Task.FromResult`. `FindAsync`, `ToListAsync`, etc. work.
 - **Correctness-first execution**: it is acceptable to execute some predicates client-side initially.
   - TODO in code: switch to DB2-native filtering/selection later.
 - **Native DB2 ops focus (2026-02-15)**: prioritize native DB2 execution for `Where`/`Find`/`Include` to reduce reads.

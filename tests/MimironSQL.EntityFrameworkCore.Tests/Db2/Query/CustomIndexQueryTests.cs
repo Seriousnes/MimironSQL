@@ -1,3 +1,4 @@
+using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -17,6 +18,12 @@ namespace MimironSQL.EntityFrameworkCore.Tests.Db2.Query;
 
 public sealed class CustomIndexQueryTests
 {
+    private const uint IndexedEntityLayoutHash = 0x12345678u;
+    private const int IndexHeaderSize = 4096;
+    private const int HeaderWowVersionOffset = 8;
+    private const int HeaderLayoutHashOffset = 40;
+    private const int HeaderWowVersionMaxBytes = 32;
+
     [Fact]
     public void WithCustomIndexes_SetsExtensionState()
     {
@@ -56,6 +63,82 @@ public sealed class CustomIndexQueryTests
             var indexDirectory = Path.Combine(cacheDirectory, TestHelpers.WowVersion);
             Directory.Exists(indexDirectory).ShouldBeTrue();
             Directory.GetFiles(indexDirectory, "*.db2idx").Length.ShouldBe(1);
+        }
+        finally
+        {
+            TryDeleteDirectory(cacheDirectory);
+        }
+    }
+
+    [Fact]
+    public void EqualityQuery_WithStaleLayoutHashHeader_RebuildsIndex()
+    {
+        var cacheDirectory = Path.Combine(Path.GetTempPath(), $"mimironsql-index-tests-{Guid.NewGuid():N}");
+
+        try
+        {
+            using (var built = CreateContext<IndexedContext>(cacheDirectory))
+            {
+                AssertMatchingRows(QueryByIndexValue(built.Context, 20));
+            }
+
+            var indexFilePath = GetSingleIndexFilePath(cacheDirectory);
+            RewriteIndexHeader(indexFilePath, header => WriteUInt32(header, HeaderLayoutHashOffset, 0x87654321u));
+            ReadIndexHeader(indexFilePath).LayoutHash.ShouldBe(0x87654321u);
+
+            using var rebuilt = CreateContext<IndexedContext>(cacheDirectory);
+
+            AssertMatchingRows(QueryByIndexValue(rebuilt.Context, 20));
+            ReadIndexHeader(indexFilePath).LayoutHash.ShouldBe(IndexedEntityLayoutHash);
+        }
+        finally
+        {
+            TryDeleteDirectory(cacheDirectory);
+        }
+    }
+
+    [Fact]
+    public void EqualityQuery_WithStaleWowVersionHeader_RebuildsIndex()
+    {
+        var cacheDirectory = Path.Combine(Path.GetTempPath(), $"mimironsql-index-tests-{Guid.NewGuid():N}");
+
+        try
+        {
+            using (var built = CreateContext<IndexedContext>(cacheDirectory))
+            {
+                AssertMatchingRows(QueryByIndexValue(built.Context, 20));
+            }
+
+            var indexFilePath = GetSingleIndexFilePath(cacheDirectory);
+            RewriteIndexHeader(indexFilePath, header => WriteFixedLengthString(header, HeaderWowVersionOffset, HeaderWowVersionMaxBytes, "0.0.0.0"));
+            ReadIndexHeader(indexFilePath).WowVersion.ShouldBe("0.0.0.0");
+
+            using var rebuilt = CreateContext<IndexedContext>(cacheDirectory);
+
+            AssertMatchingRows(QueryByIndexValue(rebuilt.Context, 20));
+            ReadIndexHeader(indexFilePath).WowVersion.ShouldBe(TestHelpers.WowVersion);
+        }
+        finally
+        {
+            TryDeleteDirectory(cacheDirectory);
+        }
+    }
+
+    [Fact]
+    public void EqualityQuery_WithCorruptIndexFile_FallsBackToScan()
+    {
+        var cacheDirectory = Path.Combine(Path.GetTempPath(), $"mimironsql-index-tests-{Guid.NewGuid():N}");
+
+        try
+        {
+            using var built = CreateContext<IndexedContext>(cacheDirectory);
+
+            AssertMatchingRows(QueryByIndexValue(built.Context, 20));
+
+            var indexFilePath = GetSingleIndexFilePath(cacheDirectory);
+            File.WriteAllBytes(indexFilePath, [1, 2, 3]);
+
+            AssertMatchingRows(QueryByIndexValue(built.Context, 20));
         }
         finally
         {
@@ -162,6 +245,75 @@ public sealed class CustomIndexQueryTests
         return ms.ToArray();
     }
 
+    private static List<IndexedEntity> QueryByIndexValue(IndexedContext context, int value)
+        => context.Entities
+            .AsNoTracking()
+            .Where(entity => entity.IndexValue == value)
+            .OrderBy(entity => entity.Id)
+            .ToList();
+
+    private static void AssertMatchingRows(IReadOnlyList<IndexedEntity> results)
+    {
+        results.Count.ShouldBe(2);
+        results.Select(static entity => entity.Id).ShouldBe([101, 103]);
+        results.All(static entity => entity.IndexValue == 20).ShouldBeTrue();
+    }
+
+    private static string GetSingleIndexFilePath(string cacheDirectory)
+    {
+        var indexDirectory = Path.Combine(cacheDirectory, TestHelpers.WowVersion);
+        var files = Directory.GetFiles(indexDirectory, "*.db2idx");
+        files.Length.ShouldBe(1);
+        return files[0];
+    }
+
+    private static void RewriteIndexHeader(string filePath, Action<byte[]> mutate)
+    {
+        using var stream = new FileStream(filePath, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+        var header = new byte[IndexHeaderSize];
+        stream.ReadExactly(header);
+        mutate(header);
+        stream.Position = 0;
+        stream.Write(header, 0, header.Length);
+    }
+
+    private static IndexHeader ReadIndexHeader(string filePath)
+    {
+        using var stream = File.OpenRead(filePath);
+        var header = new byte[IndexHeaderSize];
+        stream.ReadExactly(header);
+
+        return new IndexHeader(
+            ReadFixedLengthString(header, HeaderWowVersionOffset, HeaderWowVersionMaxBytes),
+            ReadUInt32(header, HeaderLayoutHashOffset));
+    }
+
+    private static uint ReadUInt32(byte[] buffer, int offset)
+        => BinaryPrimitives.ReadUInt32LittleEndian(buffer.AsSpan(offset));
+
+    private static void WriteUInt32(byte[] buffer, int offset, uint value)
+        => BinaryPrimitives.WriteUInt32LittleEndian(buffer.AsSpan(offset), value);
+
+    private static string ReadFixedLengthString(byte[] buffer, int offset, int maxBytes)
+    {
+        var span = buffer.AsSpan(offset, maxBytes);
+        var end = span.IndexOf((byte)0);
+        if (end < 0)
+        {
+            end = maxBytes;
+        }
+
+        return end == 0 ? string.Empty : Encoding.UTF8.GetString(span[..end]);
+    }
+
+    private static void WriteFixedLengthString(byte[] buffer, int offset, int maxBytes, string value)
+    {
+        var span = buffer.AsSpan(offset, maxBytes);
+        span.Clear();
+        var bytes = Encoding.UTF8.GetBytes(value);
+        bytes.AsSpan(0, Math.Min(bytes.Length, maxBytes - 1)).CopyTo(span);
+    }
+
     private static void WriteWdc5Header(
         BinaryWriter writer,
         int recordsCount,
@@ -182,7 +334,7 @@ public sealed class CustomIndexQueryTests
         writer.Write(recordSize);
         writer.Write(stringTableSize);
         writer.Write(0u);
-        writer.Write(0x12345678u);
+        writer.Write(IndexedEntityLayoutHash);
         writer.Write(minIndex);
         writer.Write(maxIndex);
         writer.Write(0);
@@ -228,6 +380,8 @@ public sealed class CustomIndexQueryTests
         {
         }
     }
+
+    private readonly record struct IndexHeader(string WowVersion, uint LayoutHash);
 
     private sealed record BuiltContext<TContext>(TContext Context, IServiceProvider ServiceProvider) : IDisposable
         where TContext : DbContext

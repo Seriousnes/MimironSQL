@@ -39,28 +39,4 @@ internal sealed class Db2IndexLookup
             return null;
         }
     }
-
-    public List<RowHandle>? TryFindRange(
-        string tableName,
-        Db2FieldSchema fieldSchema,
-        uint layoutHash,
-        ulong loEncoded,
-        ulong hiEncoded)
-    {
-        var indexFilePath = _cacheLocator.GetIndexFilePath(_wowVersion, tableName, fieldSchema.Name, layoutHash);
-        if (!File.Exists(indexFilePath))
-        {
-            return null;
-        }
-
-        try
-        {
-            using var reader = new Db2IndexReader(indexFilePath);
-            return reader.FindRange(loEncoded, hiEncoded);
-        }
-        catch
-        {
-            return null;
-        }
-    }
 }

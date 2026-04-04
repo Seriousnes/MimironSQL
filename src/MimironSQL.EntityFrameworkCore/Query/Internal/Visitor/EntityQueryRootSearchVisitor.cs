@@ -16,7 +16,9 @@ internal sealed class EntityQueryRootSearchVisitor : ExpressionVisitor
     protected override Expression VisitExtension(Expression node)
     {
         if (node.GetType().Name == "EntityQueryRootExpression")
+        {
             _found = true;
+        }
 
         return base.VisitExtension(node);
     }

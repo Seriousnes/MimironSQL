@@ -79,7 +79,9 @@ internal sealed class SchemaMapper(IDbdProvider dbdProvider, string wowVersionRa
         foreach (var build in dbd.GlobalBuilds)
         {
             if (!TryGetBestEligibleBuildVersion(build.BuildLine, _wowVersion, out var candidate))
+            {
                 continue;
+            }
 
             // Select the closest compatible BUILD that is >= the requested WOW_VERSION.
             // That means we prefer the smallest eligible candidate.
@@ -93,7 +95,9 @@ internal sealed class SchemaMapper(IDbdProvider dbdProvider, string wowVersionRa
             }
 
             if (candidate.CompareTo(bestCandidate.Value) == 0 && bestBuild is not null && !ReferenceEquals(bestBuild, build))
+            {
                 throw BuildSelectionAmbiguous(tableName, bestBuild.BuildLine, build.BuildLine, candidate);
+            }
         }
 
         foreach (var layout in dbd.Layouts)
@@ -101,7 +105,9 @@ internal sealed class SchemaMapper(IDbdProvider dbdProvider, string wowVersionRa
             foreach (var build in layout.Builds)
             {
                 if (!TryGetBestEligibleBuildVersion(build.BuildLine, _wowVersion, out var candidate))
+                {
                     continue;
+                }
 
                 if (bestCandidate is null || candidate.CompareTo(bestCandidate.Value) < 0)
                 {
@@ -113,7 +119,9 @@ internal sealed class SchemaMapper(IDbdProvider dbdProvider, string wowVersionRa
                 }
 
                 if (candidate.CompareTo(bestCandidate.Value) == 0 && bestBuild is not null && !ReferenceEquals(bestBuild, build))
+                {
                     throw BuildSelectionAmbiguous(tableName, bestBuild.BuildLine, build.BuildLine, candidate);
+                }
             }
         }
 
@@ -139,14 +147,20 @@ internal sealed class SchemaMapper(IDbdProvider dbdProvider, string wowVersionRa
         best = default;
 
         if (string.IsNullOrWhiteSpace(buildLine))
+        {
             return false;
+        }
 
         var text = buildLine.Trim();
         if (text.StartsWith("BUILD ", StringComparison.Ordinal))
+        {
             text = text["BUILD ".Length..].Trim();
+        }
 
         if (text.Length == 0)
+        {
             return false;
+        }
 
         var requestedEffective = requested.GetEffectiveUpperBound();
         WowVersion? currentBest = null;
@@ -160,9 +174,14 @@ internal sealed class SchemaMapper(IDbdProvider dbdProvider, string wowVersionRa
                 var endText = token[(dash + 1)..].Trim();
 
                 if (!WowVersion.TryParse(startText, out var start))
+                {
                     continue;
+                }
+
                 if (!WowVersion.TryParse(endText, out var end))
+                {
                     continue;
+                }
 
                 var startEffective = start.GetEffectiveUpperBound();
                 var endEffective = end.GetEffectiveUpperBound();
@@ -172,31 +191,43 @@ internal sealed class SchemaMapper(IDbdProvider dbdProvider, string wowVersionRa
                 // If requested is within the range, choose requested.
                 // If requested is above the range, it's not eligible.
                 if (requestedEffective.CompareTo(endEffective) > 0)
+                {
                     continue;
+                }
 
                 var candidate = requestedEffective.CompareTo(startEffective) <= 0
                     ? startEffective
                     : requestedEffective;
 
                 if (currentBest is null || candidate.CompareTo(currentBest.Value) < 0)
+                {
                     currentBest = candidate;
+                }
 
                 continue;
             }
 
             if (!WowVersion.TryParse(token, out var v))
+            {
                 continue;
+            }
 
             var candidateV = v.GetEffectiveUpperBound();
             if (candidateV.CompareTo(requestedEffective) < 0)
+            {
                 continue;
+            }
 
             if (currentBest is null || candidateV.CompareTo(currentBest.Value) < 0)
+            {
                 currentBest = candidateV;
+            }
         }
 
         if (currentBest is not { } found)
+        {
             return false;
+        }
 
         best = found;
         return true;
@@ -259,13 +290,22 @@ internal sealed class SchemaMapper(IDbdProvider dbdProvider, string wowVersionRa
         public int CompareTo(WowVersion other)
         {
             var major = Major.CompareTo(other.Major);
-            if (major != 0) return major;
+            if (major != 0)
+            {
+                return major;
+            }
 
             var minor = Minor.CompareTo(other.Minor);
-            if (minor != 0) return minor;
+            if (minor != 0)
+            {
+                return minor;
+            }
 
             var patch = Patch.CompareTo(other.Patch);
-            if (patch != 0) return patch;
+            if (patch != 0)
+            {
+                return patch;
+            }
 
             return Build.CompareTo(other.Build);
         }

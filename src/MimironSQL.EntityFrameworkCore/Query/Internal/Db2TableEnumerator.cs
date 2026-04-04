@@ -9,12 +9,16 @@ using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.EntityFrameworkCore.Query;
 using Microsoft.EntityFrameworkCore.Storage;
 
+using MimironSQL.Db2;
+using MimironSQL.EntityFrameworkCore.Index;
 using MimironSQL.EntityFrameworkCore.Infrastructure;
 using MimironSQL.EntityFrameworkCore.Query.Internal.Expressions;
 using MimironSQL.EntityFrameworkCore.Schema;
 using MimironSQL.EntityFrameworkCore.Storage;
 using MimironSQL.Formats;
 using MimironSQL.Formats.Wdc5;
+using MimironSQL.Formats.Wdc5.Db2;
+using MimironSQL.Formats.Wdc5.Index;
 
 namespace MimironSQL.EntityFrameworkCore.Query.Internal;
 
@@ -32,7 +36,9 @@ internal static class Db2TableEnumerator
 
         var wowVersion = extension?.WowVersion;
         if (string.IsNullOrWhiteSpace(wowVersion))
+        {
             throw new InvalidOperationException("MimironDb2 WOW_VERSION is not configured. Call UseMimironDb2(o => o.WithWowVersion(...)).");
+        }
 
         var store = dbContext.GetService<IMimironDb2Store>();
         // Prefer DI-provided format, but default to WDC5 for now.
@@ -54,7 +60,9 @@ internal static class Db2TableEnumerator
 
                     var values = fastValueBufferLength > 0 ? new object?[fastValueBufferLength] : Array.Empty<object?>();
                     foreach (var entry in fastReadPlan.Entries)
+                    {
                         values[entry.PropertyIndex] = entry.Reader(typedFile, handle);
+                    }
 
                     yield return new ValueBuffer(values);
                 }
@@ -63,20 +71,25 @@ internal static class Db2TableEnumerator
             }
 
             var rowPredicate = Db2RowPredicateCompiler.TryCompileRowHandlePredicate(entityType, tableName, schema, queryExpression.Predicates);
+            var rowHandles = GetCandidateRowHandles(queryContext, queryExpression, tableName, extension, store, format, typedFile, schema, layout);
 
             var propertiesToRead = GetPropertiesToRead(entityType, additionalRequired: []);
             var valueBufferLength = GetEntityValueBufferLength(entityType);
             var readPlan = ValueBufferReadPlanCache.GetOrCreate(entityType, tableName, wowVersion, layout.LayoutHash, schema, valueBufferLength, propertiesToRead);
 
-            foreach (var handle in typedFile.EnumerateRowHandles())
+            foreach (var handle in rowHandles)
             {
                 if (rowPredicate is not null && !rowPredicate(queryContext, typedFile, handle))
+                {
                     continue;
+                }
 
                 var values = valueBufferLength > 0 ? new object?[valueBufferLength] : Array.Empty<object?>();
 
                 foreach (var entry in readPlan.Entries)
+                {
                     values[entry.PropertyIndex] = entry.Reader(typedFile, handle);
+                }
 
                 yield return new ValueBuffer(values);
             }
@@ -108,10 +121,14 @@ internal static class Db2TableEnumerator
             var (joinOperator, innerQuery, outerKeySelector, innerKeySelector) = joins[joinIndex];
 
             if (joinOperator is not (nameof(Queryable.Join) or nameof(Queryable.LeftJoin)))
+            {
                 throw new NotSupportedException($"MimironDb2 join execution currently only supports Queryable.Join and Queryable.LeftJoin. Saw '{joinOperator}'.");
+            }
 
             if (innerQuery.Joins.Count != 0)
+            {
                 throw new NotSupportedException("MimironDb2 join execution does not currently support nested joins on the inner query.");
+            }
 
             var innerEntityType = innerQuery.EntityType;
             var innerTableName = innerEntityType.GetTableName() ?? innerEntityType.ClrType.Name;
@@ -168,11 +185,15 @@ internal static class Db2TableEnumerator
         foreach (var rootHandle in rootFile.EnumerateRowHandles())
         {
             if (rootRowPredicate is not null && !rootRowPredicate(queryContext, rootFile, rootHandle))
+            {
                 continue;
+            }
 
             var rootValues = rootValueBufferLength > 0 ? new object?[rootValueBufferLength] : Array.Empty<object?>();
             foreach (var entry in rootReadPlan.Entries)
+            {
                 rootValues[entry.PropertyIndex] = entry.Reader(rootFile, rootHandle);
+            }
 
             // Apply joins in order, expanding rows for one-to-many.
             var currentRows = new List<object?[]>(capacity: 1) { rootValues };
@@ -213,7 +234,9 @@ internal static class Db2TableEnumerator
 
                 currentRows = nextRows;
                 if (currentRows.Count == 0)
+                {
                     break;
+                }
             }
 
             foreach (var combined in currentRows)
@@ -227,6 +250,63 @@ internal static class Db2TableEnumerator
 
                 yield return new ValueBuffer(final);
             }
+        }
+    }
+
+    private static IEnumerable<RowHandle> GetCandidateRowHandles(
+        QueryContext queryContext,
+        Db2QueryExpression queryExpression,
+        string tableName,
+        MimironDb2OptionsExtension? extension,
+        IMimironDb2Store store,
+        IDb2Format format,
+        IDb2File<RowHandle> typedFile,
+        Db2TableSchema schema,
+        Db2FileLayout layout)
+    {
+        if (extension is not { EnableCustomIndexes: true } || typedFile is not Wdc5File wdc5File)
+        {
+            return typedFile.EnumerateRowHandles();
+        }
+
+        if (!Db2RowPredicateCompiler.TryGetSingleScalarFieldIndexHint(
+                queryExpression.EntityType,
+                tableName,
+                schema,
+                queryExpression.Predicates,
+                out var fieldSchema,
+            out var getValue))
+        {
+            return typedFile.EnumerateRowHandles();
+        }
+
+        try
+        {
+            var dbContext = queryContext.Context;
+            dbContext.GetService<Db2IndexBuilder>().EnsureBuilt(dbContext.Model, store, format);
+
+            var value = getValue(queryContext);
+            if (value is null)
+            {
+                return typedFile.EnumerateRowHandles();
+            }
+
+            var encodedValue = Db2IndexValueEncoder.EncodeObject(
+                value,
+                fieldSchema.ValueType,
+                Db2IndexBuilder.GetValueByteWidth(typedFile, fieldSchema.ColumnStartIndex));
+
+            var indexedHandles = dbContext.GetService<Db2IndexLookup>().TryFindEquals(tableName, fieldSchema, layout.LayoutHash, encodedValue);
+            if (indexedHandles is null)
+            {
+                return typedFile.EnumerateRowHandles();
+            }
+
+            return indexedHandles.Select(handle => wdc5File.GetRowHandle(handle.SectionIndex, handle.RowIndexInSection));
+        }
+        catch
+        {
+            return typedFile.EnumerateRowHandles();
         }
     }
 
@@ -278,16 +358,22 @@ internal static class Db2TableEnumerator
         foreach (var p in entityType.GetProperties())
         {
             if (p.IsShadowProperty())
+            {
                 continue;
+            }
 
             if (p.PropertyInfo is null)
+            {
                 continue;
+            }
 
             set.Add(p);
         }
 
         foreach (var p in additionalRequired)
+        {
             set.Add(p);
+        }
 
         return set.OrderBy(static p => p.GetIndex()).ToArray();
     }
@@ -315,11 +401,15 @@ internal static class Db2TableEnumerator
             var values = valueBufferLength > 0 ? new object?[valueBufferLength] : Array.Empty<object?>();
 
             foreach (var entry in readPlan.Entries)
+            {
                 values[entry.PropertyIndex] = entry.Reader(file, handle);
+            }
 
             var key = values.Length > keyIndex ? values[keyIndex] : null;
             if (key is null)
+            {
                 continue;
+            }
 
             if (!lookup.TryGetValue(key, out var list))
             {
@@ -339,12 +429,16 @@ internal static class Db2TableEnumerator
         ArgumentNullException.ThrowIfNull(outerKeySelector);
 
         if (outerKeySelector.Parameters.Count != 1)
+        {
             throw new NotSupportedException("MimironDb2 join key selectors must have exactly one parameter.");
+        }
 
         var parameter = outerKeySelector.Parameters[0];
         var body = outerKeySelector.Body;
         while (body is UnaryExpression { NodeType: ExpressionType.Convert or ExpressionType.ConvertChecked } u)
+        {
             body = u.Operand;
+        }
 
         string propertyName;
         Expression instance;
@@ -370,7 +464,9 @@ internal static class Db2TableEnumerator
 
         var slotIndex = ResolveSlotIndexFromInstance(parameter, instance);
         if ((uint)slotIndex >= (uint)slotEntityTypes.Count)
+        {
             throw new NotSupportedException($"MimironDb2 could not resolve join key slot index '{slotIndex}' (slots={slotEntityTypes.Count}).");
+        }
 
         var entityType = slotEntityTypes[slotIndex];
         var property = entityType.FindProperty(propertyName)
@@ -379,7 +475,9 @@ internal static class Db2TableEnumerator
         // Slot offsets are a fixed span layout: sum of entity value buffer lengths for prior slots.
         var slotOffset = 0;
         for (var i = 0; i < slotIndex; i++)
+        {
             slotOffset += GetEntityValueBufferLength(slotEntityTypes[i]);
+        }
 
         return new JoinKeyReference(slotIndex, property.GetIndex(), slotOffset);
     }
@@ -391,7 +489,9 @@ internal static class Db2TableEnumerator
         if (instance == parameter)
         {
             if (Db2RowPredicateCompiler.TryGetTransparentIdentifierTypes(parameter.Type, out _, out _))
+            {
                 throw new NotSupportedException("MimironDb2 cannot use the entire TransparentIdentifier as a join key instance.");
+            }
 
             return 0;
         }
@@ -414,13 +514,17 @@ internal static class Db2TableEnumerator
 
         var type = parameter.Type;
         if (!Db2RowPredicateCompiler.TryGetTransparentIdentifierTypes(type, out _, out _))
+        {
             throw new NotSupportedException("MimironDb2 expected a TransparentIdentifier parameter for this join key selector.");
+        }
 
         var baseIndex = 0;
         foreach (var step in steps)
         {
             if (!Db2RowPredicateCompiler.TryGetTransparentIdentifierTypes(type, out var outerType, out var innerType))
+            {
                 throw new NotSupportedException($"MimironDb2 cannot traverse '{step}' on non-TransparentIdentifier type '{type.FullName}'.");
+            }
 
             if (step == "Outer")
             {
@@ -458,10 +562,14 @@ internal static class Db2TableEnumerator
 
         var combined = total > 0 ? new object?[total] : Array.Empty<object?>();
         if (outer.Length > 0)
+        {
             Array.Copy(outer, 0, combined, 0, outer.Length);
+        }
 
         if (inner is not null && innerLength > 0)
+        {
             Array.Copy(inner, 0, combined, offset, Math.Min(innerLength, inner.Length));
+        }
 
         // If inner is null (LeftJoin no match), keep the inner segment as all-null.
         return combined;
@@ -483,7 +591,9 @@ internal static class Db2TableEnumerator
 
         var body = keySelector.Body;
         while (body is UnaryExpression { NodeType: ExpressionType.Convert or ExpressionType.ConvertChecked } u)
+        {
             body = u.Operand;
+        }
 
         if (body is MethodCallExpression
             {
@@ -496,7 +606,9 @@ internal static class Db2TableEnumerator
         }
 
         if (body is not MemberExpression { Member: PropertyInfo prop })
+        {
             throw new NotSupportedException($"MimironDb2 join execution only supports simple property key selectors. Saw '{keySelector.Body}'.");
+        }
 
         return entityType.FindProperty(prop.Name)
             ?? throw new NotSupportedException($"MimironDb2 could not resolve join key property '{prop.Name}' on '{entityType.DisplayName()}'.");
@@ -564,7 +676,9 @@ internal static class Db2TableEnumerator
             {
                 var columnName = property.GetColumnName(storeObject) ?? property.GetColumnName() ?? property.Name;
                 if (!schema.TryGetFieldCaseInsensitive(columnName, out var fieldSchema))
+                {
                     continue;
+                }
 
                 var resultType = property.ClrType;
                 var readType = GetReadTypeForReadField(resultType);
@@ -584,7 +698,9 @@ internal static class Db2TableEnumerator
             ArgumentNullException.ThrowIfNull(resultType);
 
             if (resultType.IsArray)
+            {
                 return resultType;
+            }
 
             // For nullable properties, ReadField<T> expects the underlying non-nullable type.
             var unwrapped = Nullable.GetUnderlyingType(resultType);
@@ -602,7 +718,9 @@ internal static class Db2TableEnumerator
 
             Expression readCall = Expression.Call(file, readMethod, handle, Expression.Constant(fieldIndex));
             if (readType != resultType)
+            {
                 readCall = Expression.Convert(readCall, resultType);
+            }
 
             var boxed = Expression.Convert(readCall, typeof(object));
             return Expression.Lambda<Func<IDb2File, RowHandle, object?>>(boxed, file, handle).Compile();
@@ -611,13 +729,18 @@ internal static class Db2TableEnumerator
         private static string CreatePropertySetKey(IReadOnlyList<IProperty> orderedProperties)
         {
             if (orderedProperties.Count == 0)
+            {
                 return string.Empty;
+            }
 
             var sb = new StringBuilder(capacity: orderedProperties.Count * 4);
             for (var i = 0; i < orderedProperties.Count; i++)
             {
                 if (i != 0)
+                {
                     sb.Append(',');
+                }
+
                 sb.Append(orderedProperties[i].GetIndex());
             }
 

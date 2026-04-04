@@ -132,7 +132,9 @@ public sealed class QueryTranslationCharacterizationTests
         public IDbdFile Open(string tableName)
         {
             if (!string.Equals(tableName, nameof(TranslationEntity), StringComparison.Ordinal))
+            {
                 throw new InvalidOperationException($"Unexpected table name '{tableName}'.");
+            }
 
             return new TestDbdFile(new TestDbdBuildBlock(
                 buildLine: TestHelpers.WowVersion,

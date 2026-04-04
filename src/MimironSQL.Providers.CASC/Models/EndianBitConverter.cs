@@ -7,7 +7,9 @@ internal static class EndianBitConverter
     public static ulong ReadUIntBigEndian(ReadOnlySpan<byte> bytes)
     {
         if (bytes.Length is < 1 or > 8)
+        {
             throw new ArgumentOutOfRangeException(nameof(bytes));
+        }
 
         ulong v = 0;
         foreach (var b in bytes)

@@ -227,7 +227,9 @@ public sealed class IncludeFkGroupingCacheTests
             if (stream is NamedMemoryStream { TableName: var name })
             {
                 if (files.TryGetValue(name, out var file))
+                {
                     return file;
+                }
 
                 throw new InvalidOperationException($"No test file registered for table '{name}'.");
             }
@@ -295,19 +297,29 @@ public sealed class IncludeFkGroupingCacheTests
         public T ReadField<T>(RowHandle handle, int fieldIndex)
         {
             if (fieldIndex == Db2VirtualFieldIndex.Id)
+            {
                 return (T)Convert.ChangeType(handle.RowId, typeof(T));
+            }
 
             if (fieldIndex < 0)
+            {
                 throw new NotSupportedException($"Unsupported virtual field index {fieldIndex}.");
+            }
 
             if (!_physicalFields.TryGetValue((handle.RowId, fieldIndex), out var value))
+            {
                 return default!;
+            }
 
             if (value is null)
+            {
                 return default!;
+            }
 
             if (value is T typed)
+            {
                 return typed;
+            }
 
             return (T)Convert.ChangeType(value, typeof(T));
         }
@@ -322,7 +334,9 @@ public sealed class IncludeFkGroupingCacheTests
         public IDbdFile Open(string tableName)
         {
             if (files.TryGetValue(tableName, out var file))
+            {
                 return file;
+            }
 
             throw new InvalidOperationException($"No test DBD registered for table '{tableName}'.");
         }

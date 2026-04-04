@@ -44,6 +44,8 @@ public static class Wdc5FileLookupTracker
     {
         var state = _state.Value;
         if (state is not null)
+        {
             state.TotalTryGetRowByIdCalls++;
+        }
     }
 }

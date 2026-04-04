@@ -11,7 +11,9 @@ internal sealed class ProjectionBindingRemovingVisitor(ParameterExpression value
     protected override Expression VisitExtension(Expression node)
     {
         if (node is ProjectionBindingExpression)
+        {
             return _valueBufferParameter;
+        }
 
         return base.VisitExtension(node);
     }

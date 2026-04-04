@@ -457,7 +457,9 @@ public sealed class StringPredicatePushdownTests
             if (stream is NamedMemoryStream { TableName: var name })
             {
                 if (files.TryGetValue(name, out var file))
+                {
                     return file;
+                }
 
                 throw new InvalidOperationException($"No test file registered for table '{name}'.");
             }
@@ -535,10 +537,14 @@ public sealed class StringPredicatePushdownTests
             _readFieldCalls[fieldIndex] = GetReadFieldCalls(fieldIndex) + 1;
 
             if (fieldIndex == Db2VirtualFieldIndex.Id)
+            {
                 return (T)Convert.ChangeType(handle.RowId, typeof(T));
+            }
 
             if (!_rowsById.TryGetValue(handle.RowId, out var row))
+            {
                 return default!;
+            }
 
             object? value = fieldIndex switch
             {
@@ -548,10 +554,14 @@ public sealed class StringPredicatePushdownTests
             };
 
             if (value is null)
+            {
                 return default!;
+            }
 
             if (value is T typed)
+            {
                 return typed;
+            }
 
             return (T)Convert.ChangeType(value, typeof(T));
         }
@@ -618,10 +628,14 @@ public sealed class StringPredicatePushdownTests
             _readFieldCalls[fieldIndex] = GetReadFieldCalls(fieldIndex) + 1;
 
             if (fieldIndex == Db2VirtualFieldIndex.Id)
+            {
                 return (T)Convert.ChangeType(handle.RowId, typeof(T));
+            }
 
             if (!_rowsById.TryGetValue(handle.RowId, out var row))
+            {
                 return default!;
+            }
 
             object? value = fieldIndex switch
             {
@@ -632,10 +646,14 @@ public sealed class StringPredicatePushdownTests
             };
 
             if (value is null)
+            {
                 return default!;
+            }
 
             if (value is T typed)
+            {
                 return typed;
+            }
 
             return (T)Convert.ChangeType(value, typeof(T));
         }
@@ -654,7 +672,9 @@ public sealed class StringPredicatePushdownTests
         public IDbdFile Open(string tableName)
         {
             if (files.TryGetValue(tableName, out var file))
+            {
                 return file;
+            }
 
             throw new InvalidOperationException($"No test DBD registered for table '{tableName}'.");
         }

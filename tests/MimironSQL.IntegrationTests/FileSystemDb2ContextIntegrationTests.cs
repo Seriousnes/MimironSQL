@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 
+using MimironSQL.EntityFrameworkCore;
 using MimironSQL.IntegrationTests.Helpers;
 using MimironSQL.Providers;
 
@@ -8,21 +9,36 @@ using Shouldly;
 namespace MimironSQL.IntegrationTests;
 
 
-public class FileSystemTextFixture
+public sealed class FileSystemTextFixture : IDisposable
 {
     public WoWDb2Context Context { get; }
+
+    public string IndexCacheDirectory { get; }
 
     public FileSystemTextFixture()
     {
         var testDataDir = TestDataPaths.GetTestDataDirectory();
         Directory.Exists(testDataDir).ShouldBeTrue();
 
+        IndexCacheDirectory = TestHelpers.CreateCustomIndexCacheDirectory(nameof(FileSystemTextFixture));
+
         var optionsBuilder = new DbContextOptionsBuilder<WoWDb2Context>();
-        optionsBuilder.UseMimironDb2ForTests(o => o.UseFileSystem(
-            db2DirectoryPath: testDataDir,
-            dbdDefinitionsDirectory: Path.Combine(testDataDir, "definitions")));
+        optionsBuilder.UseMimironDb2ForTests(o =>
+        {
+            o.WithCustomIndexes(indexes => indexes.CacheDirectory = IndexCacheDirectory);
+            o.UseFileSystem(
+                db2DirectoryPath: testDataDir,
+                dbdDefinitionsDirectory: Path.Combine(testDataDir, "definitions"));
+        });
 
         Context = new WoWDb2Context(optionsBuilder.Options);
+        GC.KeepAlive(Context.Model);
+    }
+
+    public void Dispose()
+    {
+        Context.Dispose();
+        TestHelpers.DeleteDirectoryIfExists(IndexCacheDirectory);
     }
 }
 

@@ -16,7 +16,9 @@ internal static class NameNormalizer
     public static string NormalizeTypeName(string tableName)
     {
         if (string.IsNullOrWhiteSpace(tableName))
+        {
             return "_";
+        }
 
         // Preserve current behavior for already-CLR-safe names that don't need normalization.
         // If the name has underscores, we historically PascalCased it.
@@ -44,11 +46,16 @@ internal static class NameNormalizer
         void FlushToken()
         {
             if (token.Length == 0)
+            {
                 return;
+            }
 
             sb.Append(char.ToUpperInvariant(token[0]));
             if (token.Length > 1)
+            {
                 sb.Append(token.ToString(1, token.Length - 1));
+            }
+
             token.Clear();
         }
 
@@ -84,10 +91,14 @@ internal static class NameNormalizer
         FlushToken();
 
         if (sb.Length == 0)
+        {
             sb.Append('_');
+        }
 
         if (char.IsDigit(sb[0]))
+        {
             sb.Insert(0, '_');
+        }
 
         return sb.ToString();
     }
@@ -101,10 +112,14 @@ internal static class NameNormalizer
     {
         // Don't normalize Field_X_Y_Z style columns
         if (columnName.StartsWith("Field_", StringComparison.InvariantCultureIgnoreCase))
+        {
             return columnName;
+        }
 
         if (columnName.EndsWith("_lang", StringComparison.Ordinal))
+        {
             return ToPascalCase(columnName.Substring(0, columnName.Length - 5));
+        }
 
         return columnName.IndexOf('_') switch
         {
@@ -122,13 +137,17 @@ internal static class NameNormalizer
     public static string MakeUnique(string name, HashSet<string> used)
     {
         if (used.Add(name))
+        {
             return name;
+        }
 
         for (var i = 2; ; i++)
         {
             var candidate = name + i.ToString(CultureInfo.InvariantCulture);
             if (used.Add(candidate))
+            {
                 return candidate;
+            }
         }
     }
 
@@ -140,7 +159,9 @@ internal static class NameNormalizer
     public static string EscapeIdentifier(string identifier)
     {
         if (SyntaxFacts.GetKeywordKind(identifier) != SyntaxKind.None)
+        {
             return "@" + identifier;
+        }
 
         return identifier;
     }
@@ -149,7 +170,9 @@ internal static class NameNormalizer
     {
         var parts = value.Split(['_'], StringSplitOptions.RemoveEmptyEntries);
         if (parts.Length == 0)
+        {
             return value;
+        }
 
         var sb = new StringBuilder();
         foreach (var part in parts.Where(static p => p is { Length: > 0 }))
@@ -162,7 +185,9 @@ internal static class NameNormalizer
 
             sb.Append(char.ToUpperInvariant(part[0]));
             if (part.Length > 1)
+            {
                 sb.Append(part.Substring(1));
+            }
         }
 
         return sb.ToString();

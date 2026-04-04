@@ -40,13 +40,17 @@ public sealed partial class WowBuildIdentityProvider : IWowBuildIdentityProvider
     public static int? TryParseBuildNumber(string? version)
     {
         if (string.IsNullOrWhiteSpace(version))
+        {
             return null;
+        }
 
         // Example: "11.0.2.58712" -> 58712
         // Some variants include suffixes; find the last digit-run.
         var matches = BuildNumberRegex().Matches(version);
         if (matches.Count == 0)
+        {
             return null;
+        }
 
         var last = matches[^1].Value;
         return int.TryParse(last, out var n) ? n : null;

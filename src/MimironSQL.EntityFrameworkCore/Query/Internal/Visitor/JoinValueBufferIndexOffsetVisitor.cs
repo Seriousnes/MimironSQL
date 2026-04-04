@@ -11,16 +11,24 @@ internal sealed class JoinValueBufferIndexOffsetVisitor(IReadOnlyDictionary<IPro
     protected override Expression VisitMethodCall(MethodCallExpression node)
     {
         if (node.Method.Name != "ValueBufferTryReadValue" || node.Arguments.Count < 3)
+        {
             return base.VisitMethodCall(node);
+        }
 
         if (node.Arguments[1] is not ConstantExpression { Type: { } t, Value: int index } || t != typeof(int))
+        {
             return base.VisitMethodCall(node);
+        }
 
         if (node.Arguments[2] is not ConstantExpression { Value: IPropertyBase propertyBase })
+        {
             return base.VisitMethodCall(node);
+        }
 
         if (!_propertyOffsets.TryGetValue(propertyBase, out var offset) || offset == 0)
+        {
             return base.VisitMethodCall(node);
+        }
 
         var visitedObject = Visit(node.Object);
         var newArgs = new Expression[node.Arguments.Count];

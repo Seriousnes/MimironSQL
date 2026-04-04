@@ -25,7 +25,10 @@ internal sealed class CascIdxFile
     public static CascIdxFile Read(Stream stream)
     {
         ArgumentNullException.ThrowIfNull(stream);
-        if (!stream.CanRead) throw new ArgumentException("Stream must be readable", nameof(stream));
+        if (!stream.CanRead)
+        {
+            throw new ArgumentException("Stream must be readable", nameof(stream));
+        }
 
         Span<byte> headerPrefix = stackalloc byte[0x28];
         ReadExactly(stream, headerPrefix);
@@ -65,9 +68,14 @@ internal sealed class CascIdxFile
         };
 
         if (header.RecordSize <= 0)
+        {
             throw new InvalidDataException("Invalid record size specced by header.");
+        }
+
         if (entriesSize % header.RecordSize != 0)
+        {
             throw new InvalidDataException("EntriesSize is not a multiple of record size.");
+        }
 
         var entryCount = (int)(entriesSize / (uint)header.RecordSize);
         byte[] entriesBytes = new byte[entriesSize];
@@ -94,7 +102,9 @@ internal sealed class CascIdxFile
             var sizeBytes = record.Slice(header.Spec.Key + header.Spec.Offset, header.Spec.Size);
             uint size = 0;
             for (int b = 0; b < sizeBytes.Length; b++)
+            {
                 size |= (uint)sizeBytes[b] << (8 * b);
+            }
 
             entries[i] = new CascIdxEntry(key, archiveIndex, archiveOffset, size);
         }
@@ -108,7 +118,11 @@ internal sealed class CascIdxFile
         while (readTotal < buffer.Length)
         {
             int read = stream.Read(buffer[readTotal..]);
-            if (read <= 0) throw new EndOfStreamException();
+            if (read <= 0)
+            {
+                throw new EndOfStreamException();
+            }
+
             readTotal += read;
         }
     }
@@ -119,7 +133,11 @@ internal sealed class CascIdxFile
         while (readTotal < buffer.Length)
         {
             int read = stream.Read(buffer, readTotal, buffer.Length - readTotal);
-            if (read <= 0) throw new EndOfStreamException();
+            if (read <= 0)
+            {
+                throw new EndOfStreamException();
+            }
+
             readTotal += read;
         }
     }

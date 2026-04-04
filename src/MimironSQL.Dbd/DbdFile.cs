@@ -57,11 +57,15 @@ public sealed class DbdFile : IDbdFile
         {
             var rawLine = reader.ReadLine();
             if (rawLine is null)
+            {
                 continue;
+            }
 
             var line = StripComment(rawLine.AsSpan()).Trim();
             if (line is { Length: 0 })
+            {
                 continue;
+            }
 
             if (line.Equals("COLUMNS".AsSpan(), StringComparison.Ordinal))
             {
@@ -70,7 +74,9 @@ public sealed class DbdFile : IDbdFile
             }
 
             if (line.StartsWith("COMMENT".AsSpan(), StringComparison.Ordinal))
+            {
                 continue;
+            }
 
             if (line.StartsWith("LAYOUT ".AsSpan(), StringComparison.Ordinal))
             {
@@ -120,7 +126,10 @@ public sealed class DbdFile : IDbdFile
             if (inColumns)
             {
                 if (DbdColumnParser.TryParse(line.ToString(), out var name, out var column))
+                {
                     columnsByName[name] = column!;
+                }
+
                 continue;
             }
 
@@ -130,7 +139,9 @@ public sealed class DbdFile : IDbdFile
                 {
                     entriesStartedForActiveBuilds = true;
                     foreach (var b in activeBuilds)
+                    {
                         b.Entries.Add(entry!);
+                    }
                 }
             }
         }

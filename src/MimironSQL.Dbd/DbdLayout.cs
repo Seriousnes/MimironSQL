@@ -42,13 +42,17 @@ public sealed class DbdLayout : IDbdLayout
         // "LAYOUT 2273DFFF, 60BB6C3F"
         var rest = line.AsSpan("LAYOUT ".Length).Trim();
         if (rest is { Length: 0 })
+        {
             return new DbdLayout([]);
+        }
 
         var count = 1;
         foreach (var c in rest)
         {
             if (c == ',')
+            {
                 count++;
+            }
         }
 
         var hashes = new uint[count];
@@ -60,7 +64,9 @@ public sealed class DbdLayout : IDbdLayout
             hashes[index++] = uint.Parse(token.Trim().ToString(), NumberStyles.HexNumber, CultureInfo.InvariantCulture);
 
             if (comma < 0)
+            {
                 break;
+            }
 
             rest = rest.Slice(comma + 1);
         }

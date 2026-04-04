@@ -123,17 +123,25 @@ internal sealed class Db2ModelBinding(IModel efModel, Func<string, Db2TableSchem
             foreach (var property in efEntityType.GetProperties())
             {
                 if (property.PropertyInfo is not { } propInfo)
+                {
                     continue;
+                }
 
                 if (property.IsShadowProperty())
+                {
                     continue;
+                }
 
                 if (HasColumnAttribute(propInfo))
+                {
                     continue;
+                }
 
                 var columnName = property.GetColumnName() ?? property.Name;
                 if (string.Equals(columnName, propInfo.Name, StringComparison.Ordinal))
+                {
                     continue;
+                }
 
                 columnNameMappings[propInfo.Name] = columnName;
             }
@@ -168,19 +176,27 @@ internal sealed class Db2ModelBinding(IModel efModel, Func<string, Db2TableSchem
     {
         var sourceEntityEf = _efModel.FindEntityType(sourceClrType);
         if (sourceEntityEf is null)
+        {
             return null;
+        }
 
         var nav = sourceEntityEf.FindNavigation(navigationMember.Name);
         if (nav is null || nav.PropertyInfo is null)
+        {
             return null;
+        }
 
         if (nav.IsCollection)
+        {
             return null;
+        }
 
         var fk = nav.ForeignKey;
 
         if (fk.Properties.Count != 1 || fk.PrincipalKey.Properties.Count != 1)
+        {
             return null;
+        }
 
         var sourceClr = sourceClrType;
         var targetClr = nav.TargetEntityType.ClrType;
@@ -191,10 +207,14 @@ internal sealed class Db2ModelBinding(IModel efModel, Func<string, Db2TableSchem
             if (fk.DeclaringEntityType.ClrType == sourceClr)
             {
                 if (fk.Properties[0].PropertyInfo is not { } sourceFkProp)
+                {
                     return null;
+                }
 
                 if (fk.PrincipalKey.Properties[0].PropertyInfo is not { } principalKey)
+                {
                     return null;
+                }
 
                 var sourceEntity = GetEntityType(sourceClr);
                 var targetEntity = GetEntityType(targetClr);
@@ -220,10 +240,14 @@ internal sealed class Db2ModelBinding(IModel efModel, Func<string, Db2TableSchem
                 var dependentKey = dependentPk.Properties[0].PropertyInfo;
 
                 if (principalKey is null || dependentKey is null)
+                {
                     throw new KeyNotFoundException();
+                }
 
                 if (principalKey.PropertyType != dependentKey.PropertyType)
+                {
                     throw new KeyNotFoundException();
+                }
 
                 var sourceEntity = GetEntityType(sourceClr);
                 var targetEntity = GetEntityType(targetClr);
@@ -254,10 +278,14 @@ internal sealed class Db2ModelBinding(IModel efModel, Func<string, Db2TableSchem
         var sourceEntityEf = _efModel.FindEntityType(sourceClrType) ?? throw new KeyNotFoundException();
         var nav = sourceEntityEf.FindNavigation(navigationMember.Name);
         if (nav is null || nav.PropertyInfo is null)
+        {
             throw new KeyNotFoundException();
+        }
 
         if (!nav.IsCollection)
+        {
             throw new KeyNotFoundException();
+        }
 
         var targetClr = nav.TargetEntityType.ClrType;
 
@@ -296,15 +324,21 @@ internal sealed class Db2ModelBinding(IModel efModel, Func<string, Db2TableSchem
             var fk = nav.ForeignKey;
 
             if (fk.Properties.Count != 1 || fk.PrincipalKey.Properties.Count != 1)
+            {
                 throw new KeyNotFoundException();
+            }
 
             if (fk.Properties[0].PropertyInfo is not { } dependentFkMember)
+            {
                 throw new KeyNotFoundException();
+            }
 
             var principalKeyMember = fk.PrincipalKey.Properties[0].PropertyInfo ?? throw new KeyNotFoundException();
             var principalKeyType = principalKeyMember.GetMemberType();
             if (!principalKeyType.IsScalarType())
+            {
                 throw new NotSupportedException($"Principal key member '{sourceClrType.FullName}.{principalKeyMember.Name}' must be a scalar type.");
+            }
 
             var dependentEntity = GetEntityType(targetClr);
             var dependentFkFieldSchema = dependentEntity.ResolveFieldSchema(dependentFkMember, $"dependent FK member '{dependentFkMember.Name}' in collection navigation '{sourceClrType.FullName}.{nav.PropertyInfo.Name}'");
@@ -332,7 +366,9 @@ internal sealed class Db2ModelBinding(IModel efModel, Func<string, Db2TableSchem
     {
         var entityType = _efModel.FindEntityType(sourceClrType);
         if (entityType is null)
+        {
             return [];
+        }
 
         return [
             .. entityType.GetNavigations()
@@ -363,7 +399,9 @@ internal sealed class Db2ModelBinding(IModel efModel, Func<string, Db2TableSchem
     private static string ResolveColumnName(IReadOnlyDictionary<string, string> columnNameMappings, PropertyInfo property)
     {
         if (columnNameMappings.TryGetValue(property.Name, out var configured))
+        {
             return configured;
+        }
 
         var attr = property.GetCustomAttribute<ColumnAttribute>(inherit: false);
         return attr switch
@@ -378,10 +416,14 @@ internal sealed class Db2ModelBinding(IModel efModel, Func<string, Db2TableSchem
         foreach (var f in clrType.GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic))
         {
             if (f.GetCustomAttribute<ColumnAttribute>(inherit: false) is not null)
+            {
                 throw new NotSupportedException($"Column mapping attributes are only supported on public properties. Field '{clrType.FullName}.{f.Name}' is not a valid target.");
+            }
 
             if (f.GetCustomAttribute<ForeignKeyAttribute>(inherit: false) is not null)
+            {
                 throw new NotSupportedException($"Foreign key mapping attributes are only supported on public properties. Field '{clrType.FullName}.{f.Name}' is not a valid target.");
+            }
         }
 
         foreach (var p in clrType.GetProperties(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic))
@@ -389,7 +431,9 @@ internal sealed class Db2ModelBinding(IModel efModel, Func<string, Db2TableSchem
             if (p.GetCustomAttribute<ColumnAttribute>(inherit: false) is null)
             {
                 if (p.GetCustomAttribute<ForeignKeyAttribute>(inherit: false) is null)
+                {
                     continue;
+                }
 
                 if (p.GetMethod is not { IsPublic: true })
                 {
@@ -414,13 +458,19 @@ internal sealed class Db2ModelBinding(IModel efModel, Func<string, Db2TableSchem
     private static void ValidateCollectionNavigationMemberType(Type sourceClrType, MemberInfo navigationMember, Type targetClrType)
     {
         if (navigationMember is not PropertyInfo p)
+        {
             throw new NotSupportedException($"Collection navigation '{sourceClrType.FullName}.{navigationMember.Name}' must be a property.");
+        }
 
         if (p.GetMethod is not { IsPublic: true })
+        {
             throw new NotSupportedException($"Collection navigation '{sourceClrType.FullName}.{p.Name}' must have a public getter.");
+        }
 
         if (p.SetMethod is not { IsPublic: true })
+        {
             throw new NotSupportedException($"Collection navigation '{sourceClrType.FullName}.{p.Name}' must have a public setter.");
+        }
 
         var expectedType = typeof(ICollection<>).MakeGenericType(targetClrType);
         if (p.PropertyType != expectedType)
@@ -433,7 +483,9 @@ internal sealed class Db2ModelBinding(IModel efModel, Func<string, Db2TableSchem
     private static bool IsIntKeyEnumerableType(Type type)
     {
         if (!TryGetIEnumerableElementType(type, out var elementType) || elementType is null)
+        {
             return false;
+        }
 
         return IsIntKeyType(elementType);
     }
@@ -442,7 +494,9 @@ internal sealed class Db2ModelBinding(IModel efModel, Func<string, Db2TableSchem
     {
         var underlying = type.UnwrapNullable();
         if (underlying.IsEnum)
+        {
             underlying = Enum.GetUnderlyingType(underlying);
+        }
 
         return underlying == typeof(byte)
             || underlying == typeof(sbyte)
@@ -490,7 +544,9 @@ internal sealed class Db2ModelBinding(IModel efModel, Func<string, Db2TableSchem
         foreach (var m in members)
         {
             if (m is PropertyInfo { GetMethod.IsPublic: true } p)
+            {
                 return p;
+            }
         }
 
         return null;
@@ -499,7 +555,9 @@ internal sealed class Db2ModelBinding(IModel efModel, Func<string, Db2TableSchem
     private static MemberInfo CanonicalizeMember(Type sourceClrType, MemberInfo member)
     {
         if (member is PropertyInfo p)
+        {
             return sourceClrType.GetProperty(p.Name, BindingFlags.Instance | BindingFlags.Public) ?? member;
+        }
 
         return member;
     }

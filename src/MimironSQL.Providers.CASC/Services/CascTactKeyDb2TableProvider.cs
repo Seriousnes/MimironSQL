@@ -80,7 +80,9 @@ public sealed class CascTactKeyDb2TableProvider : ITactKeyProvider
         foreach (var (lookup, tactKeyId) in tactKeyIdByLookup)
         {
             if (keyByTactKeyId.TryGetValue(tactKeyId, out var key))
+            {
                 lookupToKey[lookup] = key;
+            }
         }
 
         return lookupToKey;
@@ -99,7 +101,9 @@ public sealed class CascTactKeyDb2TableProvider : ITactKeyProvider
             // ID is implicit (handle.RowId), 0: TACTID<u8>[8]
             var tactIdBytes = file.ReadField<byte[]>(handle, fieldIndex: 0);
             if (tactIdBytes.Length != 8)
+            {
                 continue;
+            }
 
             var lookup = BinaryPrimitives.ReadUInt64LittleEndian(tactIdBytes);
             map[lookup] = handle.RowId;
@@ -121,7 +125,9 @@ public sealed class CascTactKeyDb2TableProvider : ITactKeyProvider
             // ID is implicit (handle.RowId), 0: Key<u8>[16]
             var keyBytes = file.ReadField<byte[]>(handle, fieldIndex: 0);
             if (keyBytes.Length != 16)
+            {
                 continue;
+            }
 
             map[handle.RowId] = keyBytes;
         }

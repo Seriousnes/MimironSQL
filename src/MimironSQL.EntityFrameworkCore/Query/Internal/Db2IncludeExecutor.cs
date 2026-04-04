@@ -31,7 +31,10 @@ internal sealed class Db2IncludeExecutor
         {
             var r = results[i];
             if (r is null)
+            {
                 continue;
+            }
+
             knownEntities.Add((object)r);
         }
 
@@ -72,17 +75,23 @@ internal sealed class Db2IncludeExecutor
             for (var planIndex = 0; planIndex < includePlans.Length; planIndex++)
             {
                 if (executed[planIndex])
+                {
                     continue;
+                }
 
                 var plan = includePlans[planIndex];
 
                 var sources = knownEntities.Where(e => plan.SourceClrType.IsInstanceOfType(e)).ToArray();
                 if (sources.Length == 0)
+                {
                     continue;
+                }
 
                 var knownBefore = knownEntities.Count;
                 if (traceIncludes)
+                {
                     Console.WriteLine($"[MimironDb2] Executing IncludePlan[{planIndex}] on {sources.Length} source(s); knownEntities={knownBefore}");
+                }
 
                 if (plan.Navigation is ISkipNavigation skipNavigation)
                 {
@@ -91,7 +100,9 @@ internal sealed class Db2IncludeExecutor
                 else
                 {
                     if (plan.Navigation is not INavigation navigation)
+                    {
                         throw new NotSupportedException($"MimironDb2 Include navigation type '{plan.Navigation.GetType().FullName}' is not supported.");
+                    }
 
                     if (navigation.IsCollection)
                     {
@@ -104,7 +115,9 @@ internal sealed class Db2IncludeExecutor
                 }
 
                 if (traceIncludes)
+                {
                     Console.WriteLine($"[MimironDb2] Executed IncludePlan[{planIndex}]; knownEntities delta={knownEntities.Count - knownBefore}");
+                }
 
                 executed[planIndex] = true;
                 remaining--;
@@ -133,21 +146,29 @@ internal sealed class Db2IncludeExecutor
             ?.Value as string;
 
         if (string.IsNullOrWhiteSpace(fkArrayPropertyName))
+        {
             throw new NotSupportedException($"MimironDb2 could not resolve FK array property for skip navigation '{navigation.Name}'.");
+        }
 
         var sourceClrType = navigation.DeclaringEntityType.ClrType;
         var targetClrType = navigation.TargetEntityType.ClrType;
 
         var pk = navigation.TargetEntityType.FindPrimaryKey();
         if (pk is null || pk.Properties.Count != 1)
+        {
             throw new NotSupportedException($"MimironDb2 skip navigation '{navigation.Name}' target must have a single-column primary key.");
+        }
 
         var targetKeyType = pk.Properties[0].ClrType;
         if (Nullable.GetUnderlyingType(targetKeyType) is { } unwrapped)
+        {
             targetKeyType = unwrapped;
+        }
 
         if (targetKeyType != typeof(int))
+        {
             throw new NotSupportedException($"MimironDb2 skip navigation '{navigation.Name}' currently supports int keys only (saw '{targetKeyType.FullName}').");
+        }
 
         var fkGetter = GetOrCompileGetter(getterCache, sourceClrType, fkArrayPropertyName);
         var navSetter = GetOrCompileSetter(setterCache, sourceClrType, navigation.Name);
@@ -167,17 +188,23 @@ internal sealed class Db2IncludeExecutor
             }
 
             if (idsObj is not System.Collections.IEnumerable idsEnumerable)
+            {
                 throw new NotSupportedException($"MimironDb2 expected FK array '{fkArrayPropertyName}' to be IEnumerable, but got '{idsObj.GetType().FullName}'.");
+            }
 
             var tmp = new List<int>();
             foreach (var idObj in idsEnumerable)
             {
                 if (idObj is null)
+                {
                     continue;
+                }
 
                 var id = Convert.ToInt32(idObj);
                 if (id == 0)
+                {
                     continue;
+                }
 
                 tmp.Add(id);
                 allIds.Add(id);
@@ -189,7 +216,9 @@ internal sealed class Db2IncludeExecutor
         if (allIds.Count == 0)
         {
             if (traceIncludes)
+            {
                 Console.WriteLine($"[MimironDb2] Skip include '{navigation.DeclaringEntityType.DisplayName()}.{navigation.Name}': no FK IDs (fkArrayProperty='{fkArrayPropertyName}')");
+            }
 
             // Still mark empty collections as loaded.
             for (var i = 0; i < sources.Count; i++)
@@ -224,11 +253,15 @@ internal sealed class Db2IncludeExecutor
             {
                 var trackedEntity = entry.Entity;
                 if (trackedEntity is null || trackedEntity.GetType() != targetClrType)
+                {
                     continue;
+                }
 
                 var trackedIdObj = idGetter(trackedEntity);
                 if (trackedIdObj is null)
+                {
                     continue;
+                }
 
                 trackedById[Convert.ToInt32(trackedIdObj)] = trackedEntity;
             }
@@ -239,18 +272,25 @@ internal sealed class Db2IncludeExecutor
             var entity = loaded[i];
             var idObj = idGetter(entity);
             if (idObj is null)
+            {
                 continue;
+            }
 
             var id = Convert.ToInt32(idObj);
 
             if (byId.ContainsKey(id))
+            {
                 continue;
+            }
 
             if (trackedById is not null && trackedById.TryGetValue(id, out var tracked))
             {
                 byId[id] = tracked;
                 if (!knownEntities.Contains(tracked))
+                {
                     knownEntities.Add(tracked);
+                }
+
                 continue;
             }
 
@@ -266,7 +306,9 @@ internal sealed class Db2IncludeExecutor
             for (var j = 0; j < ids.Length; j++)
             {
                 if (byId.TryGetValue(ids[j], out var entity))
+                {
                     list.Add(entity);
+                }
             }
 
             navSetter(sources[i], list);
@@ -291,14 +333,20 @@ internal sealed class Db2IncludeExecutor
         var sourcePk = navigation.DeclaringEntityType.FindPrimaryKey();
         var targetPk = navigation.TargetEntityType.FindPrimaryKey();
         if (sourcePk is null || sourcePk.Properties.Count != 1 || targetPk is null || targetPk.Properties.Count != 1)
+        {
             throw new NotSupportedException($"MimironDb2 reference include '{navigation.Name}' requires single-column PKs.");
+        }
 
         var targetKeyType = targetPk.Properties[0].ClrType;
         if (Nullable.GetUnderlyingType(targetKeyType) is { } unwrapped)
+        {
             targetKeyType = unwrapped;
+        }
 
         if (targetKeyType != typeof(int))
+        {
             throw new NotSupportedException($"MimironDb2 reference include '{navigation.Name}' currently supports int keys only (saw '{targetKeyType.FullName}').");
+        }
 
         // Shared-PK fast path: principal -> dependent reference can be resolved by principal key.
         // For dependent -> principal references, read FK from dependent.
@@ -321,16 +369,24 @@ internal sealed class Db2IncludeExecutor
         {
             var keyObj = keyGetter(sources[i]);
             if (keyObj is null)
+            {
                 continue;
+            }
+
             var id = Convert.ToInt32(keyObj);
             if (id != 0)
+            {
                 ids.Add(id);
+            }
         }
 
         if (ids.Count == 0)
         {
             for (var i = 0; i < sources.Count; i++)
+            {
                 dbContext.Entry(sources[i]).Reference(navigation.Name).IsLoaded = true;
+            }
+
             return;
         }
 
@@ -347,11 +403,15 @@ internal sealed class Db2IncludeExecutor
             {
                 var entity = entry.Entity;
                 if (entity is null || entity.GetType() != targetClrType)
+                {
                     continue;
+                }
 
                 var idObj = targetIdGetter(entity);
                 if (idObj is null)
+                {
                     continue;
+                }
 
                 trackedById[Convert.ToInt32(idObj)] = entity;
             }
@@ -362,7 +422,9 @@ internal sealed class Db2IncludeExecutor
             var entity = loaded[i];
             var idObj = targetIdGetter(entity);
             if (idObj is null)
+            {
                 continue;
+            }
 
             var id = Convert.ToInt32(idObj);
 
@@ -423,7 +485,9 @@ internal sealed class Db2IncludeExecutor
 
             var sourcePk = navigation.DeclaringEntityType.FindPrimaryKey();
             if (sourcePk is null || sourcePk.Properties.Count != 1)
+            {
                 throw new NotSupportedException($"MimironDb2 collection include '{navigation.Name}' requires a single-column principal PK.");
+            }
 
             var principalIdGetter = GetOrCompileGetter(getterCache, sourceClrType, sourcePk.Properties[0].Name);
             var principalIds = new HashSet<int>();
@@ -431,10 +495,15 @@ internal sealed class Db2IncludeExecutor
             {
                 var idObj = principalIdGetter(sources[i]);
                 if (idObj is null)
+                {
                     continue;
+                }
+
                 var id = Convert.ToInt32(idObj);
                 if (id != 0)
+                {
                     principalIds.Add(id);
+                }
             }
 
             if (principalIds.Count == 0)
@@ -459,10 +528,14 @@ internal sealed class Db2IncludeExecutor
             var storeObject = StoreObjectIdentifier.Table(dependentTableName, schema: null);
             var fkColumnName = fkProperty.GetColumnName(storeObject) ?? fkProperty.GetColumnName() ?? fkProperty.Name;
             if (!dependentSchema.TryGetFieldCaseInsensitive(fkColumnName, out var fkField))
+            {
                 throw new NotSupportedException($"MimironDb2 could not resolve FK column '{fkColumnName}' for include '{navigation.Name}'.");
+            }
 
             if (traceIncludes)
+            {
                 Console.WriteLine($"[MimironDb2] Collection include '{navigation.DeclaringEntityType.DisplayName()}.{navigation.Name}': sources={sources.Count}, principalIds={principalIds.Count}, dependentTable={dependentTableName}, fkColumn={fkColumnName}, fkFieldIndex={fkField.ColumnStartIndex}");
+            }
 
             var cacheKey = (DependentTable: dependentTableName, ForeignKeyFieldIndex: fkField.ColumnStartIndex);
             if (!oneToManyCache.TryGetValue(cacheKey, out var entry))
@@ -474,7 +547,9 @@ internal sealed class Db2IncludeExecutor
             var lookup = entry.GetLookup(store, dependentSchema, modelBinding, entityFactory, fkGroupingCache, principalIds, targetClrType, knownEntities, dbContext, getterCache, setterCache);
 
             if (traceIncludes)
+            {
                 Console.WriteLine($"[MimironDb2] Collection include '{navigation.DeclaringEntityType.DisplayName()}.{navigation.Name}': lookup keys={lookup.Count}");
+            }
 
             var navSetter = GetOrCompileSetter(setterCache, sourceClrType, navigation.Name);
             var listFactory = GetOrCompileListFactory(listFactoryCache, targetClrType);
@@ -489,7 +564,9 @@ internal sealed class Db2IncludeExecutor
                 if (id != 0 && lookup.TryGetValue(id, out var dependents))
                 {
                     for (var j = 0; j < dependents.Count; j++)
+                    {
                         list.Add(dependents[j]);
+                    }
                 }
 
                 navSetter(source, list);
@@ -523,7 +600,9 @@ internal sealed class Db2IncludeExecutor
             Dictionary<(Type ClrType, string Name), Action<object, object?>> setterCache)
         {
             if (principalIds.Count == 0)
+            {
                 return [];
+            }
 
             var grouping = fkGroupingCache.GetOrBuild(_cacheKey, () => BuildFkGrouping(store, _dependentTableName, _cacheKey.ForeignKeyFieldIndex));
 
@@ -531,49 +610,69 @@ internal sealed class Db2IncludeExecutor
             foreach (var principalId in principalIds)
             {
                 if (_lookupByPrincipalId.ContainsKey(principalId))
+                {
                     continue;
+                }
 
                 if (!grouping.TryGetValue(principalId, out var rowIds))
+                {
                     continue;
+                }
 
                 for (var i = 0; i < rowIds.Length; i++)
                 {
                     var rowId = rowIds[i];
                     if (!_entitiesByRowId.ContainsKey(rowId))
+                    {
                         missingRowIds.Add(rowId);
+                    }
                 }
             }
 
             if (missingRowIds.Count > 0)
+            {
                 EnsureDependentsMaterialized(_entitiesByRowId, missingRowIds, store, _dependentTableName, dependentSchema, modelBinding, entityFactory, dependentClrType, dbContext, knownEntities, getterCache, setterCache);
+            }
 
             foreach (var principalId in principalIds)
             {
                 if (_lookupByPrincipalId.ContainsKey(principalId))
+                {
                     continue;
+                }
 
                 if (!grouping.TryGetValue(principalId, out var dependentRowIds))
+                {
                     continue;
+                }
 
                 if (dependentRowIds.Length == 0)
+                {
                     continue;
+                }
 
                 var list = new List<object>(capacity: dependentRowIds.Length);
                 for (var i = 0; i < dependentRowIds.Length; i++)
                 {
                     if (_entitiesByRowId.TryGetValue(dependentRowIds[i], out var entity))
+                    {
                         list.Add(entity);
+                    }
                 }
 
                 if (list.Count > 0)
+                {
                     _lookupByPrincipalId[principalId] = list;
+                }
             }
 
             var result = new Dictionary<int, List<object>>(capacity: principalIds.Count);
             foreach (var principalId in principalIds)
             {
                 if (_lookupByPrincipalId.TryGetValue(principalId, out var dependents))
+                {
                     result[principalId] = dependents;
+                }
             }
 
             return result;
@@ -595,7 +694,9 @@ internal sealed class Db2IncludeExecutor
         Dictionary<(Type ClrType, string Name), Action<object, object?>> setterCache)
     {
         if (rowIdsToLoad.Count == 0)
+        {
             return;
+        }
 
         var (file, _) = store.OpenTableWithSchema<RowHandle>(dependentTableName);
 
@@ -627,14 +728,20 @@ internal sealed class Db2IncludeExecutor
             {
                 var trackedEntity = entry.Entity;
                 if (trackedEntity is null || trackedEntity.GetType() != dependentClrType)
+                {
                     continue;
+                }
 
                 if (dependentIdGetter is null)
+                {
                     continue;
+                }
 
                 var idObj = dependentIdGetter(trackedEntity);
                 if (idObj is null)
+                {
                     continue;
+                }
 
                 trackedById[Convert.ToInt32(idObj)] = trackedEntity;
             }
@@ -644,20 +751,28 @@ internal sealed class Db2IncludeExecutor
         foreach (var rowId in rowIdsToLoad)
         {
             if (entitiesByRowId.ContainsKey(rowId))
+            {
                 continue;
+            }
 
             if (file.TryGetRowById(rowId, out var handle))
+            {
                 handles.Add(handle);
+            }
         }
 
         if (handles.Count == 0)
+        {
             return;
+        }
 
         handles.Sort(static (a, b) =>
         {
             var section = a.SectionIndex.CompareTo(b.SectionIndex);
             if (section != 0)
+            {
                 return section;
+            }
 
             return a.RowIndexInSection.CompareTo(b.RowIndexInSection);
         });
@@ -668,14 +783,18 @@ internal sealed class Db2IncludeExecutor
             var rowId = handle.RowId;
 
             if (entitiesByRowId.ContainsKey(rowId))
+            {
                 continue;
+            }
 
             object entity;
             if (trackedById is not null && trackedById.TryGetValue(rowId, out var tracked))
             {
                 entity = tracked;
                 if (!knownEntities.Contains(tracked))
+                {
                     knownEntities.Add(tracked);
+                }
             }
             else
             {
@@ -686,7 +805,9 @@ internal sealed class Db2IncludeExecutor
                     var idObj = dependentIdGetter(entity);
                     var id = idObj is null ? 0 : Convert.ToInt32(idObj);
                     if (id == 0)
+                    {
                         dependentIdSetter(entity, rowId);
+                    }
                 }
 
                 TrackIfNeeded(dbContext, entity);
@@ -711,7 +832,9 @@ internal sealed class Db2IncludeExecutor
         {
             var fk = file.ReadField<int>(handle, foreignKeyFieldIndex);
             if (fk == 0)
+            {
                 continue;
+            }
 
             if (!temp.TryGetValue(fk, out var list))
             {
@@ -723,11 +846,15 @@ internal sealed class Db2IncludeExecutor
         }
 
         if (temp.Count == 0)
+        {
             return new Dictionary<int, int[]>();
+        }
 
         var result = new Dictionary<int, int[]>(capacity: temp.Count);
         foreach (var (fk, list) in temp)
+        {
             result.Add(fk, [.. list]);
+        }
 
         return result;
     }
@@ -748,13 +875,17 @@ internal sealed class Db2IncludeExecutor
         var generic = method.MakeGenericMethod(entityClrType);
         var result = generic.Invoke(store, [tableName, ids, takeCount, modelBinding, entityFactory]);
         if (result is not System.Collections.IEnumerable e)
+        {
             return [];
+        }
 
         var list = new List<object>();
         foreach (var item in e)
         {
             if (item is not null)
+            {
                 list.Add(item);
+            }
         }
 
         return list;
@@ -763,7 +894,9 @@ internal sealed class Db2IncludeExecutor
     private static Func<object, object?> GetOrCompileGetter(Dictionary<(Type ClrType, string Name), Func<object, object?>> cache, Type clrType, string name)
     {
         if (cache.TryGetValue((clrType, name), out var existing))
+        {
             return existing;
+        }
 
         var property = clrType.GetProperty(name, BindingFlags.Instance | BindingFlags.Public)
             ?? throw new NotSupportedException($"Property '{clrType.FullName}.{name}' was not found.");
@@ -781,13 +914,17 @@ internal sealed class Db2IncludeExecutor
     private static Action<object, object?> GetOrCompileSetter(Dictionary<(Type ClrType, string Name), Action<object, object?>> cache, Type clrType, string name)
     {
         if (cache.TryGetValue((clrType, name), out var existing))
+        {
             return existing;
+        }
 
         var property = clrType.GetProperty(name, BindingFlags.Instance | BindingFlags.Public)
             ?? throw new NotSupportedException($"Property '{clrType.FullName}.{name}' was not found.");
 
         if (property.SetMethod is null)
+        {
             throw new NotSupportedException($"Property '{clrType.FullName}.{name}' must be writable for include fixup.");
+        }
 
         var obj = Expression.Parameter(typeof(object), "obj");
         var value = Expression.Parameter(typeof(object), "value");
@@ -803,7 +940,9 @@ internal sealed class Db2IncludeExecutor
     private static Func<System.Collections.IList> GetOrCompileListFactory(Dictionary<Type, Func<System.Collections.IList>> cache, Type elementType)
     {
         if (cache.TryGetValue(elementType, out var existing))
+        {
             return existing;
+        }
 
         var listType = typeof(List<>).MakeGenericType(elementType);
         var ctor = listType.GetConstructor(Type.EmptyTypes)
@@ -821,7 +960,9 @@ internal sealed class Db2IncludeExecutor
     {
         var entry = dbContext.Entry(entity);
         if (entry.State != EntityState.Detached)
+        {
             return;
+        }
 
         // These entities come from a read-only store. EF's key conventions frequently mark integer keys as
         // ValueGeneratedOnAdd, and EF treats default values (e.g. 0) as temporary, which triggers generation.
@@ -829,7 +970,9 @@ internal sealed class Db2IncludeExecutor
         if (entry.Metadata.FindPrimaryKey() is { } pk)
         {
             for (var i = 0; i < pk.Properties.Count; i++)
+            {
                 entry.Property(pk.Properties[i].Name).IsTemporary = false;
+            }
         }
 
         try

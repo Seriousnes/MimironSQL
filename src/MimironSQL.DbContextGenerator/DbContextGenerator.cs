@@ -43,7 +43,9 @@ public sealed class DbContextGenerator : IIncrementalGenerator
                 cancellationToken.ThrowIfCancellationRequested();
 
                 if (files.Length == 0)
+                {
                     return EnvResult.Missing;
+                }
 
                 AdditionalText? selected = null;
                 foreach (var f in files)
@@ -60,14 +62,20 @@ public sealed class DbContextGenerator : IIncrementalGenerator
 
                 var text = selected.GetText(cancellationToken);
                 if (text is null)
+                {
                     return EnvResult.Missing;
+                }
 
                 var value = TryReadEnvValue(text, "WOW_VERSION");
                 if (value is null)
+                {
                     return EnvResult.MissingWowVersion;
+                }
 
                 if (!WowVersion.TryParse(value, out var version))
+                {
                     return new EnvResult(EnvResultKind.InvalidWowVersion, null, value);
+                }
 
                 return new EnvResult(EnvResultKind.Ok, version, value);
             });
@@ -84,7 +92,9 @@ public sealed class DbContextGenerator : IIncrementalGenerator
                 cancellationToken.ThrowIfCancellationRequested();
 
                 if (files.Length == 0)
+                {
                     return FilterSet.Empty;
+                }
 
                 List<string> lines = [];
 
@@ -92,10 +102,14 @@ public sealed class DbContextGenerator : IIncrementalGenerator
                 {
                     var text = f.GetText(cancellationToken);
                     if (text is null)
+                    {
                         continue;
+                    }
 
                     foreach (var line in text.Lines.Select(static l => l.ToString()))
+                    {
                         lines.Add(line);
+                    }
                 }
 
                 return FilterSet.Create([.. lines]);
@@ -115,23 +129,33 @@ public sealed class DbContextGenerator : IIncrementalGenerator
 
                 var ((dbdFileText, env), filters) = input;
                 if (env.Kind != EnvResultKind.Ok || env.Version is null)
+                {
                     return null;
+                }
 
                 var sourceText = dbdFileText.GetText(cancellationToken);
                 if (sourceText is null)
+                {
                     return null;
+                }
 
                 var tableName = Path.GetFileNameWithoutExtension(dbdFileText.Path);
                 if (string.IsNullOrWhiteSpace(tableName))
+                {
                     return null;
+                }
 
                 if (!filters.IsAllowed(tableName))
+                {
                     return null;
+                }
 
                 var dbd = ParseDbd(sourceText);
 
                 if (!TrySelectBuildBlock(dbd, env.Version.Value, out var build))
+                {
                     return null;
+                }
 
                 var spec = EntitySpec.Create(tableName, dbd, build);
                 return spec;
@@ -142,7 +166,9 @@ public sealed class DbContextGenerator : IIncrementalGenerator
         context.RegisterSourceOutput(entitySpecsProvider.Collect(), static (spc, entities) =>
         {
             if (entities.Length == 0)
+            {
                 return;
+            }
 
             var byTableName = entities.ToDictionary(e => e.TableName, e => e, StringComparer.Ordinal);
 
@@ -173,27 +199,41 @@ public sealed class DbContextGenerator : IIncrementalGenerator
         context.RegisterSourceOutput(diagnosticsProvider, static (spc, status) =>
         {
             if (status.EntitiesGeneratedCount != 0)
+            {
                 return;
+            }
 
             var reasons = new List<string>(capacity: 3);
 
             if (status.Env.Kind == EnvResultKind.MissingEnv)
+            {
                 reasons.Add("no .env (or .env.local) file was provided via AdditionalFiles");
+            }
 
             if (status.Env.Kind == EnvResultKind.MissingWowVersion)
+            {
                 reasons.Add("WOW_VERSION is missing from .env");
+            }
 
             if (status.Env.Kind == EnvResultKind.InvalidWowVersion)
+            {
                 reasons.Add($"WOW_VERSION value '{status.Env.RawValue ?? string.Empty}' is invalid");
+            }
 
             if (status.DbdFilesCount == 0)
+            {
                 reasons.Add("no .dbd files were provided via AdditionalFiles");
+            }
 
             if (reasons.Count == 0 && status.Env.Kind == EnvResultKind.Ok && status.DbdFilesCount > 0)
+            {
                 reasons.Add($"no compatible BUILD blocks were found for WOW_VERSION={status.Env.RawValue}");
+            }
 
             if (reasons.Count == 0)
+            {
                 reasons.Add("inputs were present but no entities could be produced");
+            }
 
             var message = string.Join("; ", reasons);
             spc.ReportDiagnostic(Diagnostic.Create(NoSourcesGenerated, Location.None, message));
@@ -229,7 +269,9 @@ public sealed class DbContextGenerator : IIncrementalGenerator
         foreach (var raw in envText.Lines.Select(static l => l.ToString().Trim()))
         {
             if (raw.StartsWith(prefix, StringComparison.Ordinal))
+            {
                 return raw.Substring(prefix.Length).Trim();
+            }
         }
 
         return null;
@@ -258,12 +300,16 @@ public sealed class DbContextGenerator : IIncrementalGenerator
     private static IEnumerable<DbdBuildBlock> EnumerateBuildBlocks(DbdFile dbd)
     {
         foreach (var b in dbd.GlobalBuilds)
+        {
             yield return b;
+        }
 
         foreach (var layout in dbd.Layouts)
         {
             foreach (var b in layout.Builds)
+            {
                 yield return b;
+            }
         }
     }
 
@@ -272,14 +318,20 @@ public sealed class DbContextGenerator : IIncrementalGenerator
         best = default;
 
         if (string.IsNullOrWhiteSpace(buildLine))
+        {
             return false;
+        }
 
         var text = buildLine.Trim();
         if (text.StartsWith("BUILD ", StringComparison.Ordinal))
+        {
             text = text.Substring("BUILD ".Length).Trim();
+        }
 
         if (text.Length == 0)
+        {
             return false;
+        }
 
         var requestedEffective = requested.GetEffectiveUpperBound();
 
@@ -294,36 +346,53 @@ public sealed class DbContextGenerator : IIncrementalGenerator
                 var endText = token.Substring(dash + 1).Trim();
 
                 if (!WowVersion.TryParse(startText, out var start))
+                {
                     continue;
+                }
+
                 if (!WowVersion.TryParse(endText, out var end))
+                {
                     continue;
+                }
 
                 if (requestedEffective.CompareTo(start.GetEffectiveUpperBound()) < 0)
+                {
                     continue;
+                }
 
                 var candidate = requestedEffective.CompareTo(end.GetEffectiveUpperBound()) >= 0
                     ? end.GetEffectiveUpperBound()
                     : requestedEffective;
 
                 if (currentBest is null || candidate.CompareTo(currentBest.Value) > 0)
+                {
                     currentBest = candidate;
+                }
 
                 continue;
             }
 
             if (!WowVersion.TryParse(token, out var v))
+            {
                 continue;
+            }
 
             var candidateV = v.GetEffectiveUpperBound();
             if (candidateV.CompareTo(requestedEffective) > 0)
+            {
                 continue;
+            }
 
             if (currentBest is null || candidateV.CompareTo(currentBest.Value) > 0)
+            {
                 currentBest = candidateV;
+            }
         }
 
         if (currentBest is not { } found)
+        {
             return false;
+        }
 
         best = found;
         return true;
@@ -407,10 +476,14 @@ public sealed class DbContextGenerator : IIncrementalGenerator
             var navs = kvp.Value;
             var nav = navs[0];
             if (nav is null)
+            {
                 continue;
+            }
 
             if (!byTableName.TryGetValue(nav.TargetTableName, out var target))
+            {
                 continue;
+            }
 
             fkPropertyTypeByName[fkPropertyName] = nav.IsForeignKeyArray
                 ? $"{target.IdTypeName}[]"
@@ -432,7 +505,9 @@ public sealed class DbContextGenerator : IIncrementalGenerator
             sb.AppendLine();
 
             if (!navsByForeignKey.TryGetValue(p.PropertyName, out var navs))
+            {
                 continue;
+            }
 
             foreach (var nav in navs)
             {
@@ -467,7 +542,10 @@ public sealed class DbContextGenerator : IIncrementalGenerator
             .ToImmutableArray();
 
         if (includedNavigations.Any(static n => n.IsForeignKeyArray))
+        {
             sb.AppendLine("using MimironSQL.EntityFrameworkCore.Model;");
+        }
+
         sb.AppendLine();
         sb.AppendLine("namespace MimironSQL;");
         sb.AppendLine();
@@ -482,12 +560,16 @@ public sealed class DbContextGenerator : IIncrementalGenerator
         sb.AppendLine("        builder.Property(x => x.Id).ValueGeneratedNever();");
 
         if (!string.Equals(entity.IdColumnName, "ID", StringComparison.Ordinal))
+        {
             sb.AppendLine($"        builder.Property(x => x.Id).HasColumnName(\"{entity.IdColumnName.EscapeString()}\");");
+        }
 
         foreach (var p in entity.ScalarProperties)
         {
             if (p.ColumnName is null)
+            {
                 continue;
+            }
 
             sb.AppendLine($"        builder.Property(x => x.{p.PropertyName}).HasColumnName(\"{p.ColumnName.EscapeString()}\");");
         }
@@ -503,7 +585,9 @@ public sealed class DbContextGenerator : IIncrementalGenerator
             }
 
             if (!nav.IsCollection)
+            {
                 sb.AppendLine($"        builder.HasOne(x => x.{nav.PropertyName}).WithMany().HasForeignKey(x => x.{nav.ForeignKeyPropertyName});");
+            }
         }
 
         sb.AppendLine("        ConfigureNavigation(builder);");

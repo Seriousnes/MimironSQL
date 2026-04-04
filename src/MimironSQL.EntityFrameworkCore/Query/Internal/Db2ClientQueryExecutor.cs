@@ -29,7 +29,9 @@ internal static class Db2ClientQueryExecutor
         remaining = remaining < 0 ? -1 : Math.Max(0, remaining);
 
         if (remaining == 0)
+        {
             return [];
+        }
 
         var entityType = queryExpression.EntityType;
 
@@ -87,10 +89,14 @@ internal static class Db2ClientQueryExecutor
                 if (entityPredicates.Count > 0)
                 {
                     if (entity is null)
+                    {
                         continue;
+                    }
 
                     if (entityPredicates.Any(p => !p(queryContext, entity)))
+                    {
                         continue;
+                    }
                 }
 
                 try
@@ -105,11 +111,15 @@ internal static class Db2ClientQueryExecutor
                 if (resultPredicates.Count > 0)
                 {
                     if (result is null)
+                    {
                         continue;
+                    }
 
                     var boxed = (object)result;
                     if (resultPredicates.Any(p => !p(queryContext, boxed)))
+                    {
                         continue;
+                    }
                 }
 
                 rows.Add(new Row<TResult>(entity, result));
@@ -118,15 +128,21 @@ internal static class Db2ClientQueryExecutor
             IEnumerable<Row<TResult>> orderedRows = ApplyOrdering(queryContext, queryExpression, entityType.ClrType, resultClrTypeForOrdering, rows);
 
             if (offset > 0)
+            {
                 orderedRows = orderedRows.Skip(offset);
+            }
 
             if (remaining >= 0)
+            {
                 orderedRows = orderedRows.Take(remaining);
+            }
 
             var results = orderedRows.Select(static r => r.Result).ToList();
 
             if (includePlans is { Length: > 0 } && results.Count > 0)
+            {
                 new Db2IncludeExecutor().ExecuteIncludes(queryContext, includePlans, results);
+            }
 
             return results;
         }
@@ -137,7 +153,9 @@ internal static class Db2ClientQueryExecutor
         foreach (var valueBuffer in valueBuffers)
         {
             if (remaining == 0)
+            {
                 break;
+            }
 
             if (entityPredicates.Count > 0)
             {
@@ -152,10 +170,14 @@ internal static class Db2ClientQueryExecutor
                 }
 
                 if (entity is null)
+                {
                     continue;
+                }
 
                 if (entityPredicates.Any(p => !p(queryContext, entity)))
+                {
                     continue;
+                }
             }
 
             TResult result;
@@ -171,12 +193,16 @@ internal static class Db2ClientQueryExecutor
             if (resultPredicates.Count > 0)
             {
                 if (result is null)
+                {
                     continue;
+                }
 
                 var boxed = (object)result;
 
                 if (resultPredicates.Any(p => !p(queryContext, boxed)))
+                {
                     continue;
+                }
             }
 
             if (offsetRemaining > 0)
@@ -187,11 +213,15 @@ internal static class Db2ClientQueryExecutor
 
             resultsUnordered.Add(result);
             if (remaining > 0)
+            {
                 remaining--;
+            }
         }
 
         if (includePlans is { Length: > 0 } && resultsUnordered.Count > 0)
+        {
             new Db2IncludeExecutor().ExecuteIncludes(queryContext, includePlans, resultsUnordered);
+        }
 
         return resultsUnordered;
     }
@@ -243,10 +273,14 @@ internal static class Db2ClientQueryExecutor
         static OrderingTarget GetOrderingTarget(Type entityClrType, Type resultClrType, Type parameterType)
         {
             if (parameterType == entityClrType || parameterType.IsAssignableFrom(entityClrType))
+            {
                 return OrderingTarget.Entity;
+            }
 
             if (parameterType == resultClrType || parameterType == typeof(object) || parameterType.IsAssignableFrom(resultClrType))
+            {
                 return OrderingTarget.Result;
+            }
 
             throw new NotSupportedException(
                 $"MimironDb2 cannot apply ordering key selector with parameter type '{parameterType.FullName}' to entity '{entityClrType.FullName}' or result '{resultClrType.FullName}'.");
@@ -270,7 +304,9 @@ internal static class Db2ClientQueryExecutor
         ArgumentNullException.ThrowIfNull(keySelector);
 
         if (keySelector.Parameters.Count != 1)
+        {
             throw new NotSupportedException("MimironDb2 only supports single-parameter ordering key selectors during bootstrap execution.");
+        }
 
         var queryContextParameter = Expression.Parameter(typeof(QueryContext), "qc");
         var rowParameter = Expression.Parameter(typeof(Row<TResult>), "row");
@@ -350,25 +386,33 @@ internal static class Db2ClientQueryExecutor
         if (Db2RowPredicateCompiler.TryGetTransparentIdentifierTypes(expectedParameterType, out var outerType, out var innerType))
         {
             if (outerType != entityClrType)
+            {
                 throw new NotSupportedException($"MimironDb2 cannot apply TransparentIdentifier predicate with outer '{outerType.FullName}' to entity '{entityClrType.FullName}'.");
+            }
 
             var matching = entityType.GetNavigations()
                 .Where(n => !n.IsCollection && n.TargetEntityType.ClrType == innerType)
                 .ToArray();
 
             if (matching.Length == 0)
+            {
                 throw new NotSupportedException(
                     $"MimironDb2 cannot rewrite TransparentIdentifier predicate: no reference navigation from '{entityClrType.FullName}' to '{innerType.FullName}' was found.");
+            }
 
             if (matching.Length > 1)
+            {
                 throw new NotSupportedException(
                     $"MimironDb2 cannot rewrite TransparentIdentifier predicate: multiple reference navigations from '{entityClrType.FullName}' to '{innerType.FullName}' exist.");
+            }
 
             var navigation = matching[0];
 
             if (navigation.PropertyInfo is null)
+            {
                 throw new NotSupportedException(
                     $"MimironDb2 cannot rewrite TransparentIdentifier predicate: navigation '{navigation.Name}' has no PropertyInfo.");
+            }
 
             var transparentParameter = predicate.Parameters[0];
             var innerAccess = Expression.Property(entityParameter, navigation.PropertyInfo);
@@ -377,14 +421,18 @@ internal static class Db2ClientQueryExecutor
                 .Visit(predicate.Body);
 
             if (ParameterSearchVisitor.Contains(rewrittenBody, transparentParameter))
+            {
                 throw new NotSupportedException(
                     "MimironDb2 cannot rewrite TransparentIdentifier predicate: unsupported usage of the transparent identifier parameter.");
+            }
         }
         else
         {
             if (!expectedParameterType.IsAssignableFrom(entityClrType))
+            {
                 throw new NotSupportedException(
                     $"MimironDb2 cannot apply predicate expecting '{expectedParameterType.FullName}' to entity '{entityClrType.FullName}'.");
+            }
 
             rewrittenBody = new ParameterReplaceVisitor(predicate.Parameters[0], entityParameter).Visit(predicate.Body);
         }
@@ -428,7 +476,9 @@ internal static class Db2ClientQueryExecutor
         ArgumentNullException.ThrowIfNull(predicate);
 
         if (predicate.Parameters.Count != 1)
+        {
             throw new NotSupportedException("MimironDb2 only supports single-parameter predicates during bootstrap execution.");
+        }
 
         var queryContextParameter = Expression.Parameter(typeof(QueryContext), "qc");
         var parameterType = predicate.Parameters[0].Type;

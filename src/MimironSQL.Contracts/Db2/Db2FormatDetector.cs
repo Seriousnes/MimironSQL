@@ -16,7 +16,9 @@ public static class Db2FormatDetector
     public static Db2Format Detect(ReadOnlySpan<byte> headerBytes)
     {
         if (headerBytes is { Length: < 4 })
+        {
             return Db2Format.Unknown;
+        }
 
         var magic = BinaryPrimitives.ReadUInt32LittleEndian(headerBytes);
         return magic switch
@@ -38,7 +40,9 @@ public static class Db2FormatDetector
     {
         var format = Detect(headerBytes);
         if (format != Db2Format.Unknown)
+        {
             return format;
+        }
 
         var magicText = headerBytes is { Length: >= 4 } ? Encoding.ASCII.GetString([.. headerBytes.Slice(0, 4)]) : string.Empty;
         throw new InvalidDataException($"Unrecognized DB2 format magic '{magicText}'.");

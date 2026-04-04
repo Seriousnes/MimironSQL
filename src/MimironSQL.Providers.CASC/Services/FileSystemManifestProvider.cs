@@ -17,7 +17,9 @@ public sealed class FileSystemManifestProvider(CascDb2ProviderOptions options) :
     {
         var path = GetManifestPath();
         if (!File.Exists(path))
+        {
             throw new FileNotFoundException($"Manifest file not found: '{path}'.", path);
+        }
 
         return Task.CompletedTask;
     }
@@ -26,11 +28,15 @@ public sealed class FileSystemManifestProvider(CascDb2ProviderOptions options) :
     public async Task<int?> TryResolveDb2FileDataIdAsync(string db2NameOrPath, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(db2NameOrPath))
+        {
             return null;
+        }
 
         var tableName = NormalizeToTableName(db2NameOrPath);
         if (string.IsNullOrWhiteSpace(tableName))
+        {
             return null;
+        }
 
         var map = await GetDb2ByTableNameAsync(cancellationToken).ConfigureAwait(false);
         return map.TryGetValue(tableName, out var fdid) ? fdid : null;
@@ -39,13 +45,17 @@ public sealed class FileSystemManifestProvider(CascDb2ProviderOptions options) :
     private async Task<IReadOnlyDictionary<string, int>> GetDb2ByTableNameAsync(CancellationToken cancellationToken)
     {
         if (_db2ByTableName is not null)
+        {
             return _db2ByTableName;
+        }
 
         await _lock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             if (_db2ByTableName is not null)
+            {
                 return _db2ByTableName;
+            }
 
             await EnsureManifestExistsAsync(cancellationToken).ConfigureAwait(false);
 
@@ -59,10 +69,14 @@ public sealed class FileSystemManifestProvider(CascDb2ProviderOptions options) :
                 foreach (var element in doc.RootElement.EnumerateArray())
                 {
                     if (element.ValueKind != JsonValueKind.Object)
+                    {
                         continue;
+                    }
 
                     if (!TryReadEntry(element, out var table, out var fdid))
+                    {
                         continue;
+                    }
 
                     map[table] = fdid;
                 }
@@ -73,7 +87,9 @@ public sealed class FileSystemManifestProvider(CascDb2ProviderOptions options) :
                 {
                     var key = prop.Name.Trim();
                     if (key.Length == 0)
+                    {
                         continue;
+                    }
 
                     var value = prop.Value;
                     if (value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out var fdid))
@@ -83,7 +99,9 @@ public sealed class FileSystemManifestProvider(CascDb2ProviderOptions options) :
                     }
 
                     if (value.ValueKind == JsonValueKind.Object && TryReadEntry(value, out var table, out fdid))
+                    {
                         map[table] = fdid;
+                    }
                 }
             }
 
@@ -131,7 +149,9 @@ public sealed class FileSystemManifestProvider(CascDb2ProviderOptions options) :
     {
         value = string.Empty;
         if (!element.TryGetProperty(name, out var prop) || prop.ValueKind != JsonValueKind.String)
+        {
             return false;
+        }
 
         value = prop.GetString() ?? string.Empty;
         return value.Length > 0;
@@ -150,13 +170,17 @@ public sealed class FileSystemManifestProvider(CascDb2ProviderOptions options) :
         var value = db2NameOrPath.Trim();
 
         if (value.EndsWith(".db2", StringComparison.OrdinalIgnoreCase))
+        {
             value = value[..^4];
+        }
 
         var lastBackslash = value.LastIndexOf('\\');
         var lastSlash = value.LastIndexOf('/');
         var lastSep = Math.Max(lastBackslash, lastSlash);
         if (lastSep >= 0)
+        {
             value = value[(lastSep + 1)..];
+        }
 
         return value.Trim();
     }

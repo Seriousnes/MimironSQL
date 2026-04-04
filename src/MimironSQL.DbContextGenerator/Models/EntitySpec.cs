@@ -81,7 +81,9 @@ internal sealed class EntitySpec(
 
             string? mappedColumnName = null;
             if (!string.Equals(propertyName, columnName, StringComparison.Ordinal))
+            {
                 mappedColumnName = columnName;
+            }
 
             var escapedPropertyName = NameNormalizer.EscapeIdentifier(propertyName);
 
@@ -97,11 +99,15 @@ internal sealed class EntitySpec(
         foreach (var entry in build.Entries.Where(e => !ReferenceEquals(e, keyEntry) && !e.IsId))
         {
             if (entry.ReferencedTableName is not { Length: > 0 } targetTable)
+            {
                 continue;
+            }
 
             var columnName = entry.Name;
             if (!scalarPropertyNameByColumnName.TryGetValue(columnName, out var scalarProperty))
+            {
                 continue;
+            }
 
             var rawNavName = columnName.EndsWith("ID", StringComparison.Ordinal)
                 ? columnName.Substring(0, columnName.Length - 2)

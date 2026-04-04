@@ -21,15 +21,21 @@ public sealed class Salsa20Tests
     {
         var key = new byte[keySizeBytes];
         for (int i = 0; i < key.Length; i++)
+        {
             key[i] = (byte)i;
+        }
 
         var nonce = new byte[8];
         for (int i = 0; i < nonce.Length; i++)
+        {
             nonce[i] = (byte)(0xF0 + i);
+        }
 
         var plaintext = new byte[messageLength];
         for (int i = 0; i < plaintext.Length; i++)
+        {
             plaintext[i] = (byte)(0xA5 ^ i);
+        }
 
         var expected = Salsa20WithBouncyCastle(key, nonce, plaintext);
         var actual = Salsa20WithMimiron(key, nonce, plaintext);

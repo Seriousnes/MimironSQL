@@ -20,7 +20,9 @@ public sealed class CompositeTactKeyProvider : ITactKeyProvider
         _providers = providers.Where(static p => p is not null).ToArray();
 
         if (_providers.Length == 0)
+        {
             throw new ArgumentException("At least one provider is required.", nameof(providers));
+        }
     }
 
     /// <inheritdoc />
@@ -35,10 +37,14 @@ public sealed class CompositeTactKeyProvider : ITactKeyProvider
         foreach (var provider in _providers)
         {
             if (!provider.TryGetKey(tactKeyLookup, out key))
+            {
                 continue;
+            }
 
             if (!key.IsEmpty)
+            {
                 _cache.TryAdd(tactKeyLookup, key.ToArray());
+            }
 
             return true;
         }

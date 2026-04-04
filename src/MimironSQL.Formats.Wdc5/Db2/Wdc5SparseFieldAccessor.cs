@@ -22,20 +22,30 @@ internal ref struct Wdc5SparseFieldAccessor
         ArgumentNullException.ThrowIfNull(offsetTable);
 
         if (section.IsDecryptable)
+        {
             throw new NotSupportedException("Sparse field accessors do not support encrypted sections.");
+        }
 
         if (!file.Header.Flags.HasFlag(Db2Flags.Sparse))
+        {
             throw new NotSupportedException("Sparse field accessors require sparse WDC5 files.");
+        }
 
         if ((uint)fieldIndex >= (uint)file.Header.FieldsCount)
+        {
             throw new ArgumentOutOfRangeException(nameof(fieldIndex));
+        }
 
         if (section.RecordsData is null)
+        {
             throw new InvalidOperationException("Sparse field accessors require materialized section records.");
+        }
 
         var columnMeta = file.ColumnMeta[fieldIndex];
         if (columnMeta.CompressionType is CompressionType.PalletArray && columnMeta.Pallet.Cardinality is not 1)
+        {
             throw new NotSupportedException("Sparse field accessors only support scalar columns.");
+        }
 
         _file = file;
         _section = section;
@@ -64,7 +74,9 @@ internal ref struct Wdc5SparseFieldAccessor
     private Wdc5RowReader CreateReader(int rowIndex, out int sourceId)
     {
         if ((uint)rowIndex >= (uint)_section.NumRecords)
+        {
             throw new ArgumentOutOfRangeException(nameof(rowIndex));
+        }
 
         sourceId = _needsSourceId ? _file.GetSourceIdForAccessor(_section, rowIndex) : 0;
         var positionBits = _offsetTable.GetFieldBitPosition(rowIndex, _fieldIndex);

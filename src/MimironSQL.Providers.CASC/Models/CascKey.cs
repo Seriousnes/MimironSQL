@@ -24,7 +24,9 @@ internal readonly struct CascKey : IEquatable<CascKey>
     public CascKey(ReadOnlySpan<byte> bytes)
     {
         if (bytes.Length != Length)
+        {
             throw new ArgumentException($"Key must be {Length} bytes", nameof(bytes));
+        }
 
         _lo = BinaryPrimitives.ReadUInt64LittleEndian(bytes);
         _hi = BinaryPrimitives.ReadUInt64LittleEndian(bytes[8..]);
@@ -47,7 +49,11 @@ internal readonly struct CascKey : IEquatable<CascKey>
     /// <param name="destination">The destination span.</param>
     public void CopyTo(Span<byte> destination)
     {
-        if (destination.Length < Length) throw new ArgumentException("Destination too small", nameof(destination));
+        if (destination.Length < Length)
+        {
+            throw new ArgumentException("Destination too small", nameof(destination));
+        }
+
         BinaryPrimitives.WriteUInt64LittleEndian(destination, _lo);
         BinaryPrimitives.WriteUInt64LittleEndian(destination[8..], _hi);
     }

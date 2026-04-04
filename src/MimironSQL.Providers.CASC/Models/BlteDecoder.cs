@@ -32,14 +32,20 @@ internal static class BlteDecoder
         var optionsOrDefault = options ?? new BlteDecodeOptions();
 
         if (span.Length < 8)
+        {
             throw new InvalidDataException("BLTE buffer too small");
+        }
 
         if (span[0] != (byte)'B' || span[1] != (byte)'L' || span[2] != (byte)'T' || span[3] != (byte)'E')
+        {
             throw new InvalidDataException("Missing BLTE signature");
+        }
 
         var headerSize = BinaryPrimitives.ReadUInt32BigEndian(span[4..8]);
         if (headerSize != 0 && headerSize < 8)
+        {
             throw new InvalidDataException("Invalid BLTE headerSize");
+        }
 
         if (headerSize == 0)
         {
@@ -48,25 +54,35 @@ internal static class BlteDecoder
         }
 
         if (headerSize > span.Length)
+        {
             throw new InvalidDataException("BLTE header exceeds buffer length");
+        }
 
         var chunkInfo = span[8..(int)headerSize];
         if (chunkInfo.Length < 5)
+        {
             throw new InvalidDataException("BLTE chunk table too small");
+        }
 
         var tableFormat = chunkInfo[0];
         if (tableFormat is not (0x0F or 0x10))
+        {
             throw new InvalidDataException($"Unsupported BLTE chunk table format: 0x{tableFormat:X2}");
+        }
 
         var numBlocks = ReadUInt24BigEndian(chunkInfo.Slice(1, 3));
         if (numBlocks <= 0)
+        {
             throw new InvalidDataException("BLTE chunk table has zero blocks");
+        }
 
         int blockEntrySize = tableFormat == 0x0F ? 24 : 40;
         int tableHeaderSize = 4;
         int required = tableHeaderSize + (numBlocks * blockEntrySize);
         if (chunkInfo.Length < required)
+        {
             throw new InvalidDataException("BLTE chunk table truncated");
+        }
 
         // Parse chunk table once while computing total output size.
         // This avoids a second pass of repeated slicing and BigEndian reads.
@@ -78,14 +94,18 @@ internal static class BlteDecoder
         {
             uint rawSize = BinaryPrimitives.ReadUInt32BigEndian(chunkInfo.Slice(entryOffset, 4));
             if (rawSize == 0)
+            {
                 throw new InvalidDataException("BLTE rawSize is zero");
+            }
 
             uint logicalSize = BinaryPrimitives.ReadUInt32BigEndian(chunkInfo.Slice(entryOffset + 4, 4));
             blocks[i] = (rawSize, logicalSize);
 
             totalLogicalSize += logicalSize;
             if (totalLogicalSize > int.MaxValue)
+            {
                 throw new InvalidDataException("Decoded size too large");
+            }
 
             entryOffset += blockEntrySize;
         }
@@ -103,10 +123,14 @@ internal static class BlteDecoder
             int logicalSizeInt = checked((int)logicalSize);
 
             if (dstOffset + logicalSizeInt > output.Length)
+            {
                 throw new InvalidDataException("BLTE decoded data exceeds expected size");
+            }
 
             if (dataOffset + rawSizeInt > span.Length)
+            {
                 throw new InvalidDataException("BLTE data truncated");
+            }
 
             DecodeBlockInto(span.Slice(dataOffset, rawSizeInt), output.AsSpan(dstOffset, logicalSizeInt), logicalSize, emptyMd5, blockIndex: i, optionsOrDefault);
             dataOffset += rawSizeInt;
@@ -114,7 +138,9 @@ internal static class BlteDecoder
         }
 
         if (dstOffset != output.Length)
+        {
             throw new InvalidDataException("BLTE decoded size mismatch");
+        }
 
         return output;
     }
@@ -128,14 +154,18 @@ internal static class BlteDecoder
         var span = encodedBlock;
 
         if (span.Length < 1)
+        {
             throw new InvalidDataException("BLTE block too small");
+        }
 
         if (!expectedMd5.IsEmpty)
         {
             Span<byte> actual = stackalloc byte[16];
             MD5.HashData(span, actual);
             if (!actual.SequenceEqual(expectedMd5))
+            {
                 throw new InvalidDataException("BLTE block MD5 mismatch");
+            }
         }
 
         var mode = (char)span[0];
@@ -165,14 +195,18 @@ internal static class BlteDecoder
         BlteDecodeOptions options)
     {
         if (encodedBlock is { Length: < 1 })
+        {
             throw new InvalidDataException("BLTE block too small");
+        }
 
         if (!expectedMd5.IsEmpty)
         {
             Span<byte> actual = stackalloc byte[16];
             MD5.HashData(encodedBlock, actual);
             if (!actual.SequenceEqual(expectedMd5))
+            {
                 throw new InvalidDataException("BLTE block MD5 mismatch");
+            }
         }
 
         var mode = (char)encodedBlock[0];
@@ -189,7 +223,9 @@ internal static class BlteDecoder
             case 'N':
                 {
                     if (payload.Length != destination.Length)
+                    {
                         throw new InvalidDataException("BLTE uncompressed block size mismatch");
+                    }
 
                     payload.CopyTo(destination);
                     return;
@@ -217,15 +253,21 @@ internal static class BlteDecoder
         BlteDecodeOptions options)
     {
         if (!TryParseEncryptedBlock(payload, out var keyName, out var iv, out var type, out var encryptedData))
+        {
             throw new InvalidDataException("BLTE encrypted block payload was malformed.");
+        }
 
         if (type is not 'S')
+        {
             throw new NotSupportedException($"BLTE encrypted block type '{type}' is not supported (only 'S' salsa20 is supported).");
+        }
 
         if (!TryResolveTactKey(keyName, blockIndex, options, out var key, out var shouldSkip))
         {
             if (shouldSkip)
+            {
                 return [];
+            }
 
             throw new InvalidOperationException("Failed to resolve a TACT key for an encrypted BLTE block.");
         }
@@ -241,7 +283,9 @@ internal static class BlteDecoder
 
         var innerMode = (char)(decrypted.Length > 0 ? decrypted[0] : (byte)0);
         if (innerMode is 'E')
+        {
             throw new InvalidDataException("BLTE encrypted block decrypted to another encrypted block; this is not supported.");
+        }
 
         try
         {
@@ -263,10 +307,14 @@ internal static class BlteDecoder
         BlteDecodeOptions options)
     {
         if (!TryParseEncryptedBlock(payload, out var keyName, out var iv, out var type, out var encryptedData))
+        {
             throw new InvalidDataException("BLTE encrypted block payload was malformed.");
+        }
 
         if (type is not 'S')
+        {
             throw new NotSupportedException($"BLTE encrypted block type '{type}' is not supported (only 'S' salsa20 is supported).");
+        }
 
         if (!TryResolveTactKey(keyName, blockIndex, options, out var key, out var shouldSkip))
         {
@@ -290,7 +338,9 @@ internal static class BlteDecoder
 
         var innerMode = (char)(decrypted.Length > 0 ? decrypted[0] : (byte)0);
         if (innerMode is 'E')
+        {
             throw new InvalidDataException("BLTE encrypted block decrypted to another encrypted block; this is not supported.");
+        }
 
         try
         {
@@ -317,27 +367,37 @@ internal static class BlteDecoder
         encryptedData = default;
 
         if (payload.Length < 1)
+        {
             return false;
+        }
 
         var keyNameLength = payload[0];
         if (keyNameLength != 8)
+        {
             throw new InvalidDataException($"BLTE encrypted block key_name_length was {keyNameLength} (expected 8).");
+        }
 
         var keyNameStart = 1;
         var keyNameEnd = keyNameStart + keyNameLength;
         if (payload.Length < keyNameEnd + 1)
+        {
             return false;
+        }
 
         keyName = payload.Slice(keyNameStart, keyNameLength);
 
         var ivLength = payload[keyNameEnd];
         if (ivLength is not (4 or 8))
+        {
             throw new InvalidDataException($"BLTE encrypted block IV_length was {ivLength} (expected 4 or 8).");
+        }
 
         var ivStart = keyNameEnd + 1;
         var ivEnd = ivStart + ivLength;
         if (payload.Length < ivEnd + 1)
+        {
             return false;
+        }
 
         iv = payload.Slice(ivStart, ivLength);
         type = (char)payload[ivEnd];
@@ -376,7 +436,9 @@ internal static class BlteDecoder
         ulong lookupLe = BinaryPrimitives.ReadUInt64LittleEndian(keyName);
 
         if (tactKeyProvider.TryGetKey(lookupBe, out key) || tactKeyProvider.TryGetKey(lookupLe, out key))
+        {
             return true;
+        }
 
         if (!options.ThrowOnEncryptedBlockWithoutKey)
         {
@@ -397,7 +459,9 @@ internal static class BlteDecoder
         nonce.Clear();
 
         if (iv.Length is not (4 or 8))
+        {
             throw new ArgumentOutOfRangeException(nameof(iv), $"BLTE encrypted IV must be 4 or 8 bytes, but was {iv.Length}.");
+        }
 
         // CascLib behavior:
         // - If IV is 4 bytes, pad to 8 by appending zeros.
@@ -420,19 +484,27 @@ internal static class BlteDecoder
         if (logicalSizeHint is { } hint)
         {
             if (hint > int.MaxValue)
+            {
                 throw new InvalidDataException("Decoded size too large");
+            }
 
             var output = new byte[(int)hint];
             var status = decompressor.Decompress(payload, output, out int bytesWritten, out _);
 
             if (status == OperationStatus.DestinationTooSmall)
+            {
                 throw new InvalidDataException("BLTE zlib produced more data than expected");
+            }
 
             if (status != OperationStatus.Done)
+            {
                 throw new InvalidDataException("BLTE zlib decoded size mismatch");
+            }
 
             if (bytesWritten == output.Length)
+            {
                 return output;
+            }
 
             var trimmed = new byte[bytesWritten];
             output.AsSpan(0, bytesWritten).CopyTo(trimmed);
@@ -462,7 +534,9 @@ internal static class BlteDecoder
                 }
 
                 if (status != OperationStatus.Done)
+                {
                     throw new InvalidDataException("BLTE zlib decoded size mismatch");
+                }
 
                 var output = new byte[bytesWritten];
                 dest[..bytesWritten].CopyTo(output);
@@ -472,7 +546,9 @@ internal static class BlteDecoder
         finally
         {
             if (rented is not null)
+            {
                 ArrayPool<byte>.Shared.Return(rented);
+            }
         }
     }
 
@@ -483,10 +559,14 @@ internal static class BlteDecoder
         var status = decompressor.Decompress(payload, destination, out int bytesWritten, out _);
 
         if (status == OperationStatus.DestinationTooSmall)
+        {
             throw new InvalidDataException("BLTE zlib produced more data than expected");
+        }
 
         if (status != OperationStatus.Done || bytesWritten != destination.Length)
+        {
             throw new InvalidDataException("BLTE zlib decoded size mismatch");
+        }
 
         // Preserve previous behavior: do not reject trailing bytes in the compressed payload.
     }
@@ -494,15 +574,21 @@ internal static class BlteDecoder
     private static byte[] DecodeLz4Hc(ReadOnlySpan<byte> payload, uint? logicalSizeHint)
     {
         if (payload.Length < 1 + 8 + 1)
+        {
             throw new InvalidDataException("BLTE LZ4HC payload too small");
+        }
 
         byte headerVersion = payload[0];
         if (headerVersion != 1)
+        {
             throw new InvalidDataException($"Unsupported BLTE LZ4HC header version: {headerVersion}");
+        }
 
         ulong decodedSize64 = BinaryPrimitives.ReadUInt64BigEndian(payload[1..9]);
         if (decodedSize64 > int.MaxValue)
+        {
             throw new InvalidDataException("Decoded size too large");
+        }
 
         int decodedSize = (int)decodedSize64;
         if (logicalSizeHint is { } hint && hint != decodedSize64)
@@ -512,7 +598,9 @@ internal static class BlteDecoder
 
         int blockShift = payload[9];
         if (blockShift is < 5 or > 16)
+        {
             throw new InvalidDataException($"Invalid BLTE LZ4HC blockShift: {blockShift}");
+        }
 
         int blockSize = 1 << blockShift;
         var output = new byte[decodedSize];
@@ -522,15 +610,21 @@ internal static class BlteDecoder
         while (dstOffset < decodedSize)
         {
             if (srcOffset + 4 > payload.Length)
+            {
                 throw new InvalidDataException("BLTE LZ4HC truncated (missing block size)");
+            }
 
             int compressedSize = BinaryPrimitives.ReadInt32BigEndian(payload.Slice(srcOffset, 4));
             srcOffset += 4;
             if (compressedSize <= 0)
+            {
                 throw new InvalidDataException("BLTE LZ4HC invalid compressed block size");
+            }
 
             if (srcOffset + compressedSize > payload.Length)
+            {
                 throw new InvalidDataException("BLTE LZ4HC truncated (missing block bytes)");
+            }
 
             int expectedOut = Math.Min(blockSize, decodedSize - dstOffset);
             var src = payload.Slice(srcOffset, compressedSize);
@@ -538,7 +632,9 @@ internal static class BlteDecoder
 
             int written = LZ4Codec.Decode(src, output.AsSpan(dstOffset, expectedOut));
             if (written != expectedOut)
+            {
                 throw new InvalidDataException("BLTE LZ4HC block decoded size mismatch");
+            }
 
             dstOffset += written;
         }
@@ -549,15 +645,21 @@ internal static class BlteDecoder
     private static void DecodeLz4HcInto(ReadOnlySpan<byte> payload, Span<byte> destination, uint logicalSizeHint)
     {
         if (payload.Length < 1 + 8 + 1)
+        {
             throw new InvalidDataException("BLTE LZ4HC payload too small");
+        }
 
         byte headerVersion = payload[0];
         if (headerVersion != 1)
+        {
             throw new InvalidDataException($"Unsupported BLTE LZ4HC header version: {headerVersion}");
+        }
 
         ulong decodedSize64 = BinaryPrimitives.ReadUInt64BigEndian(payload[1..9]);
         if (decodedSize64 > int.MaxValue)
+        {
             throw new InvalidDataException("Decoded size too large");
+        }
 
         if (decodedSize64 != logicalSizeHint)
         {
@@ -567,11 +669,15 @@ internal static class BlteDecoder
 
         int decodedSize = (int)decodedSize64;
         if (destination.Length != decodedSize)
+        {
             throw new InvalidDataException("BLTE LZ4HC destination size mismatch");
+        }
 
         int blockShift = payload[9];
         if (blockShift is < 5 or > 16)
+        {
             throw new InvalidDataException($"Invalid BLTE LZ4HC blockShift: {blockShift}");
+        }
 
         int blockSize = 1 << blockShift;
 
@@ -580,15 +686,21 @@ internal static class BlteDecoder
         while (dstOffset < decodedSize)
         {
             if (srcOffset + 4 > payload.Length)
+            {
                 throw new InvalidDataException("BLTE LZ4HC truncated (missing block size)");
+            }
 
             int compressedSize = BinaryPrimitives.ReadInt32BigEndian(payload.Slice(srcOffset, 4));
             srcOffset += 4;
             if (compressedSize <= 0)
+            {
                 throw new InvalidDataException("BLTE LZ4HC invalid compressed block size");
+            }
 
             if (srcOffset + compressedSize > payload.Length)
+            {
                 throw new InvalidDataException("BLTE LZ4HC truncated (missing block bytes)");
+            }
 
             int expectedOut = Math.Min(blockSize, decodedSize - dstOffset);
             var src = payload.Slice(srcOffset, compressedSize);
@@ -596,7 +708,9 @@ internal static class BlteDecoder
 
             int written = LZ4Codec.Decode(src, destination.Slice(dstOffset, expectedOut));
             if (written != expectedOut)
+            {
                 throw new InvalidDataException("BLTE LZ4HC block decoded size mismatch");
+            }
 
             dstOffset += written;
         }
@@ -604,7 +718,11 @@ internal static class BlteDecoder
 
     private static int ReadUInt24BigEndian(ReadOnlySpan<byte> bytes)
     {
-        if (bytes.Length < 3) throw new ArgumentException("Need 3 bytes", nameof(bytes));
+        if (bytes.Length < 3)
+        {
+            throw new ArgumentException("Need 3 bytes", nameof(bytes));
+        }
+
         return (bytes[0] << 16) | (bytes[1] << 8) | bytes[2];
     }
 }

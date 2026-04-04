@@ -66,7 +66,9 @@ internal sealed class Db2QueryExpression(IEntityType entityType) : Expression
         ArgumentNullException.ThrowIfNull(limit);
 
         if (limit.Type != typeof(int))
+        {
             throw new ArgumentException("Limit expression must be of type int.", nameof(limit));
+        }
 
         if (Limit is null)
         {
@@ -86,7 +88,9 @@ internal sealed class Db2QueryExpression(IEntityType entityType) : Expression
         ArgumentNullException.ThrowIfNull(offset);
 
         if (offset.Type != typeof(int))
+        {
             throw new ArgumentException("Offset expression must be of type int.", nameof(offset));
+        }
 
         Offset = Offset is null
             ? offset

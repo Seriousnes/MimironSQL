@@ -16,10 +16,14 @@ internal sealed class TransparentIdentifierRewritingVisitor(
         if (node.Expression == _transparentParameter)
         {
             if (node.Member.Name == "Outer")
+            {
                 return _outerReplacement;
+            }
 
             if (node.Member.Name == "Inner")
+            {
                 return _innerReplacement;
+            }
         }
 
         return base.VisitMember(node);

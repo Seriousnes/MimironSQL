@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 
+using MimironSQL.EntityFrameworkCore;
 using MimironSQL.IntegrationTests.Helpers;
 using MimironSQL.Providers;
 
@@ -10,31 +11,7 @@ namespace MimironSQL.IntegrationTests;
 public sealed class CascDb2ContextIntegrationLocalTests(CascDb2ContextIntegrationLocalTestsFixture fixture) : IClassFixture<CascDb2ContextIntegrationLocalTestsFixture>
 {
     private WoWDb2Context context => fixture.Context;
-
-    //[LocalCascFact]
-    //public void Can_query_db2context_using_casc_db2_provider()
-    //{
-    //    var query = context.Map
-    //        .Include(x => x.MapChallengeModes)
-    //            .ThenInclude(x => x.FirstRewardQuest)
-    //        .Include(x => x.MapChallengeModes)
-    //            .ThenInclude(x => x.RewardQuest)
-    //        .Where(x => x.MapChallengeModes.Any(m => m.FirstRewardQuestID.Any(q => q > 0) || m.RewardQuestID.Any(q => q > 0)))
-    //        .Take(10);
-
-    //    var expressionText = query.Expression.ToString();
-    //    var results = query.ToList();
-
-    //    //using var s = new ShouldlyScope();
-    //    //s.Run(() =>
-    //    //{
-    //    results.Count.ShouldBeGreaterThan(0);
-    //    results.Any(x => x.Id > 0).ShouldBeTrue();
-    //    results.Any(x => !string.IsNullOrWhiteSpace(x.Directory)).ShouldBeTrue();
-    //    results.All(x => x.MapChallengeModes.Any(m => m.FirstRewardQuest.Count > 0 || m.RewardQuest.Count > 0)).ShouldBeTrue();
-    //    //});        
-    //}
-
+   
     [LocalCascFact]
     public void Can_include_multiple_levels_of_navigation_properties()
     {
@@ -93,9 +70,12 @@ public sealed class CascDb2ContextIntegrationLocalTests(CascDb2ContextIntegratio
     }
 }
 
-public class CascDb2ContextIntegrationLocalTestsFixture
+public sealed class CascDb2ContextIntegrationLocalTestsFixture : IDisposable
 {
     public WoWDb2Context Context;
+
+    public string IndexCacheDirectory { get; }
+
     public CascDb2ContextIntegrationLocalTestsFixture()
     {
         LocalEnvLocal.TryGetWowInstallRoot(out var wowInstallRoot).ShouldBeTrue();
@@ -110,8 +90,11 @@ public class CascDb2ContextIntegrationLocalTestsFixture
         var tactKeyFilePath = Path.Combine(testDataDir, "WoW.txt");
         File.Exists(tactKeyFilePath).ShouldBeTrue();
 
+        IndexCacheDirectory = TestHelpers.CreateCustomIndexCacheDirectory(nameof(CascDb2ContextIntegrationLocalTestsFixture));
+
         var optionsBuilder = new DbContextOptionsBuilder<WoWDb2Context>();
         optionsBuilder.UseMimironDb2ForTests(o => o
+            .WithCustomIndexes(indexes => indexes.CacheDirectory = IndexCacheDirectory)
                 .UseCasc()
                 .WithWowInstallRoot(wowInstallRoot)
                 .WithDbdDefinitions(Path.Combine(testDataDir, "definitions"))
@@ -121,5 +104,11 @@ public class CascDb2ContextIntegrationLocalTestsFixture
 
         Context = new WoWDb2Context(optionsBuilder.Options);
         GC.KeepAlive(Context.Model); // Force model creation
+    }
+
+    public void Dispose()
+    {
+        Context.Dispose();
+        TestHelpers.DeleteDirectoryIfExists(IndexCacheDirectory);
     }
 }

@@ -282,7 +282,9 @@ public sealed class OrderingAndPaginationTests(OrderingAndPaginationTests.Fixtur
                 if (stream is NamedMemoryStream { TableName: var name })
                 {
                     if (files.TryGetValue(name, out var file))
+                    {
                         return file;
+                    }
 
                     throw new InvalidOperationException($"No test file registered for table '{name}'.");
                 }
@@ -331,18 +333,24 @@ public sealed class OrderingAndPaginationTests(OrderingAndPaginationTests.Fixtur
             public T ReadField<T>(RowHandle handle, int fieldIndex)
             {
                 if (fieldIndex == Db2VirtualFieldIndex.Id)
+                {
                     return (T)Convert.ChangeType(handle.RowId, typeof(T));
+                }
 
                 if (fieldIndex == 0)
                 {
                     if (!_namesByRowId.TryGetValue(handle.RowId, out var name))
+                    {
                         return default!;
+                    }
 
                     return (T)Convert.ChangeType(name, typeof(T));
                 }
 
                 if (fieldIndex < 0)
+                {
                     throw new NotSupportedException($"Unsupported virtual field index {fieldIndex}.");
+                }
 
                 return default!;
             }
@@ -369,7 +377,9 @@ public sealed class OrderingAndPaginationTests(OrderingAndPaginationTests.Fixtur
             public IDbdFile Open(string tableName)
             {
                 if (files.TryGetValue(tableName, out var file))
+                {
                     return file;
+                }
 
                 throw new InvalidOperationException($"No test DBD registered for table '{tableName}'.");
             }

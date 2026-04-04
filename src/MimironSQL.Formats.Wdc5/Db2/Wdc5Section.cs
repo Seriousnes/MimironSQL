@@ -107,10 +107,14 @@ public sealed class Wdc5Section
     public static int[] BuildSparseRecordStartBits(SparseEntry[] entries, int sectionFileOffset, int recordDataSizeBytes)
     {
         if (entries is { Length: 0 })
+        {
             return [];
+        }
 
         if (recordDataSizeBytes < 0)
+        {
             throw new InvalidDataException("Sparse record data size is negative.");
+        }
 
         // Some files appear to store sparse records contiguously and leave the Offset column unused (0).
         // Other files may provide meaningful absolute offsets; support both but fail loudly on inconsistent data.
@@ -137,7 +141,9 @@ public sealed class Wdc5Section
 
             var totalBytes = (bitPosition + 7) >> 3;
             if (totalBytes > recordDataSizeBytes)
+            {
                 throw new InvalidDataException("Sparse entry sizes exceed available record data.");
+            }
 
             return starts;
         }
@@ -147,14 +153,20 @@ public sealed class Wdc5Section
         {
             var startBytes = entries[i].Offset - sectionFileOffset;
             if (startBytes < 0 || startBytes > recordDataSizeBytes)
+            {
                 throw new InvalidDataException("Sparse entry offset is outside the section record data.");
+            }
 
             if (startBytes < previousStartBytes)
+            {
                 throw new InvalidDataException("Sparse entry offsets are not sorted.");
+            }
 
             var endBytes = startBytes + entries[i].Size;
             if (endBytes < startBytes || endBytes > recordDataSizeBytes)
+            {
                 throw new InvalidDataException("Sparse entry extends outside the section record data.");
+            }
 
             starts[i] = checked((int)startBytes * 8);
             previousStartBytes = startBytes;

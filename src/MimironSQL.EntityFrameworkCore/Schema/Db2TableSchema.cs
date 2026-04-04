@@ -41,7 +41,9 @@ internal sealed class Db2TableSchema(
     public bool TryGetFieldCaseInsensitive(string name, out Db2FieldSchema field)
     {
         if (TryGetField(name, out field))
+        {
             return true;
+        }
 
         var caseInsensitiveMatch = Fields.FirstOrDefault(f => string.Equals(f.Name, name, StringComparison.OrdinalIgnoreCase));
         if (!caseInsensitiveMatch.Equals(default))

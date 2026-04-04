@@ -27,7 +27,9 @@ internal ref struct Wdc5RowReader(ReadOnlySpan<byte> bytes, int positionBits)
         var value = raw >> bitShift;
 
         if (numBits != 64)
+        {
             value &= (1UL << numBits) - 1;
+        }
 
         PositionBits += numBits;
         return value;
@@ -48,7 +50,10 @@ internal ref struct Wdc5RowReader(ReadOnlySpan<byte> bytes, int positionBits)
         uint ch;
         List<byte> bytes = new(0x20);
         while ((ch = ReadUInt32(8)) != 0)
+        {
             bytes.Add((byte)ch);
+        }
+
         return Encoding.UTF8.GetString([.. bytes]);
     }
 
@@ -56,7 +61,9 @@ internal ref struct Wdc5RowReader(ReadOnlySpan<byte> bytes, int positionBits)
     {
         var remaining = buffer[startIndex..];
         if (remaining.Length >= 8)
+        {
             return BinaryPrimitives.ReadUInt64LittleEndian(remaining);
+        }
 
         Span<byte> tmp = stackalloc byte[8];
         remaining.CopyTo(tmp);

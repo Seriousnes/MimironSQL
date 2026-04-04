@@ -31,7 +31,9 @@ internal static class CascPath
         // Canonicalize DBFilesClient prefix casing.
         const string prefix = "DBFilesClient\\";
         if (!normalized.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+        {
             throw new ArgumentException("DB2 paths must start with 'DBFilesClient\\\\'.", nameof(path));
+        }
 
         return prefix + normalized[prefix.Length..];
     }

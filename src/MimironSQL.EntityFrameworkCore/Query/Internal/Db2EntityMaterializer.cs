@@ -53,10 +53,14 @@ internal sealed class Db2EntityMaterializer<TEntity>
             {
                 var elementType = memberType.GetElementType()!;
                 if (elementType == typeof(string))
+                {
                     continue;
+                }
 
                 if (TryCreateArrayAssign(entity, file, handle, property, field, elementType, out var assign))
+                {
                     assigns.Add(assign);
+                }
 
                 continue;
             }
@@ -70,10 +74,14 @@ internal sealed class Db2EntityMaterializer<TEntity>
             // If the schema describes an array-valued field, do not fall back to scalar binding for
             // collection-like CLR members we don't explicitly support (only T[] and ICollection<T> are supported).
             if (field.ElementCount > 1 && typeof(IEnumerable).IsAssignableFrom(memberType))
+            {
                 continue;
+            }
 
             if (TryCreateScalarAssign(entity, file, handle, property, field, memberType, out var scalarAssign))
+            {
                 assigns.Add(scalarAssign);
+            }
         }
 
         Expression body = assigns.Count == 0 ? Expression.Empty() : Expression.Block(assigns);
@@ -162,7 +170,9 @@ internal sealed class Db2EntityMaterializer<TEntity>
         // EF primary keys for DB2 entities map to the DB2 row ID. Even when DBD declares an ID field,
         // the most reliable source for EF tracking is the RowHandle.RowId.
         if (field.IsId && TryCreateRowIdAssign(entity, handle, property, memberType, out assign))
+        {
             return true;
+        }
 
         if (memberType == typeof(string) && field.IsVirtual)
         {
@@ -195,7 +205,9 @@ internal sealed class Db2EntityMaterializer<TEntity>
         };
 
         if (value is null)
+        {
             return false;
+        }
 
         switch (property.SetMethod)
         {

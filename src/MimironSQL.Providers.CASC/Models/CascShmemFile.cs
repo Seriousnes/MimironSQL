@@ -25,7 +25,10 @@ internal sealed class CascShmemFile
     public static CascShmemFile Read(Stream stream)
     {
         ArgumentNullException.ThrowIfNull(stream);
-        if (!stream.CanRead) throw new ArgumentException("Stream must be readable", nameof(stream));
+        if (!stream.CanRead)
+        {
+            throw new ArgumentException("Stream must be readable", nameof(stream));
+        }
 
         // First block header (264 bytes): uint32 blockType, uint32 nextBlock, char[0x100] dataPath
         Span<byte> header = stackalloc byte[0x108];
@@ -35,11 +38,17 @@ internal sealed class CascShmemFile
         var nextBlock = BinaryPrimitives.ReadUInt32LittleEndian(header[4..8]);
 
         if (blockType is not (4u or 5u))
+        {
             throw new InvalidDataException($"Unexpected shmem block type: {blockType}");
+        }
 
         var dataPathRaw = header[8..(8 + 0x100)];
         int zero = dataPathRaw.IndexOf((byte)0);
-        if (zero < 0) zero = dataPathRaw.Length;
+        if (zero < 0)
+        {
+            zero = dataPathRaw.Length;
+        }
+
         var dataPath = System.Text.Encoding.UTF8.GetString(dataPathRaw[..zero]);
 
         // The remainder until nextBlock contains:
@@ -50,7 +59,9 @@ internal sealed class CascShmemFile
 
         var remaining = (int)nextBlock - header.Length;
         if (remaining < 0)
+        {
             throw new InvalidDataException("Invalid NextBlock in shmem.");
+        }
 
         byte[] rest = new byte[remaining];
         ReadExactly(stream, rest);
@@ -81,7 +92,11 @@ internal sealed class CascShmemFile
         while (readTotal < buffer.Length)
         {
             int read = stream.Read(buffer[readTotal..]);
-            if (read <= 0) throw new EndOfStreamException();
+            if (read <= 0)
+            {
+                throw new EndOfStreamException();
+            }
+
             readTotal += read;
         }
     }
@@ -92,7 +107,11 @@ internal sealed class CascShmemFile
         while (readTotal < buffer.Length)
         {
             int read = stream.Read(buffer, readTotal, buffer.Length - readTotal);
-            if (read <= 0) throw new EndOfStreamException();
+            if (read <= 0)
+            {
+                throw new EndOfStreamException();
+            }
+
             readTotal += read;
         }
     }

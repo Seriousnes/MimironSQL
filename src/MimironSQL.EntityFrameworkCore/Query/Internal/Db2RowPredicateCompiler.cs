@@ -9,6 +9,7 @@ using MimironSQL.Db2;
 using MimironSQL.Formats;
 using MimironSQL.EntityFrameworkCore.Query.Internal.Visitor;
 using MimironSQL.EntityFrameworkCore.Schema;
+using MimironSQL.Formats.Wdc5.Index;
 
 namespace MimironSQL.EntityFrameworkCore.Query.Internal;
 
@@ -35,14 +36,22 @@ internal static class Db2RowPredicateCompiler
     internal static IEnumerable<Expression> SplitAndAlso(Expression expression)
     {
         while (expression is UnaryExpression { NodeType: ExpressionType.Convert or ExpressionType.ConvertChecked } u)
+        {
             expression = u.Operand;
+        }
 
         if (expression is BinaryExpression { NodeType: ExpressionType.AndAlso, Left: var left, Right: var right })
         {
             foreach (var l in SplitAndAlso(left))
+            {
                 yield return l;
+            }
+
             foreach (var r in SplitAndAlso(right))
+            {
                 yield return r;
+            }
+
             yield break;
         }
 
@@ -56,7 +65,9 @@ internal static class Db2RowPredicateCompiler
         IReadOnlyList<LambdaExpression> predicates)
     {
         if (predicates.Count == 0)
+        {
             return null;
+        }
 
         var entityClrType = entityType.ClrType;
 
@@ -71,15 +82,21 @@ internal static class Db2RowPredicateCompiler
         foreach (var predicate in predicates)
         {
             if (predicate.Parameters.Count != 1)
+            {
                 continue;
+            }
 
             var expectedParameterType = predicate.Parameters[0].Type;
             if (TryGetTransparentIdentifierTypes(expectedParameterType, out _, out _))
+            {
                 continue;
+            }
 
             // Only push down predicates which target the root entity instance.
             if (!expectedParameterType.IsAssignableFrom(entityClrType))
+            {
                 continue;
+            }
 
             var entityAsExpected = expectedParameterType == entityClrType
                 ? (Expression)entityParameter
@@ -107,11 +124,15 @@ internal static class Db2RowPredicateCompiler
         }
 
         if (translatedConjuncts.Count == 0)
+        {
             return null;
+        }
 
         Expression combined = translatedConjuncts[0];
         for (var i = 1; i < translatedConjuncts.Count; i++)
+        {
             combined = Expression.AndAlso(combined, translatedConjuncts[i]);
+        }
 
         var lambda = Expression.Lambda<Func<QueryContext, IDb2File, RowHandle, bool>>(
             combined,
@@ -136,15 +157,21 @@ internal static class Db2RowPredicateCompiler
         translated = null!;
 
         while (expression is UnaryExpression { NodeType: ExpressionType.Convert or ExpressionType.ConvertChecked } u)
+        {
             expression = u.Operand;
+        }
 
         if (expression.Type != typeof(bool))
+        {
             return false;
+        }
 
         if (expression is UnaryExpression { NodeType: ExpressionType.Not, Operand: var operand })
         {
             if (!TryTranslateConjunct(entityType, storeObject, schema, entityParameter, queryContextParameter, fileParameter, handleParameter, operand, out var inner))
+            {
                 return false;
+            }
 
             translated = Expression.Not(inner);
             return true;
@@ -155,10 +182,14 @@ internal static class Db2RowPredicateCompiler
             if (b.NodeType is ExpressionType.AndAlso or ExpressionType.OrElse)
             {
                 if (!TryTranslateConjunct(entityType, storeObject, schema, entityParameter, queryContextParameter, fileParameter, handleParameter, b.Left, out var left))
+                {
                     return false;
+                }
 
                 if (!TryTranslateConjunct(entityType, storeObject, schema, entityParameter, queryContextParameter, fileParameter, handleParameter, b.Right, out var right))
+                {
                     return false;
+                }
 
                 translated = b.NodeType == ExpressionType.AndAlso
                     ? Expression.AndAlso(left, right)
@@ -230,24 +261,34 @@ internal static class Db2RowPredicateCompiler
             }
 
             if (valuesExpression is null || itemExpression is null)
+            {
                 return false;
+            }
 
             // Avoid accidentally treating string.Contains(string) as an IN-list.
             if (valuesExpression.Type == typeof(string))
+            {
                 return false;
+            }
 
             if (ParameterSearchVisitor.Contains(valuesExpression, entityParameter))
+            {
                 return false;
+            }
 
             if (!TryTranslateFieldAccess(entityType, storeObject, schema, entityParameter, fileParameter, handleParameter, itemExpression, out var itemTranslated))
+            {
                 return false;
+            }
 
             var itemType = itemTranslated.Type;
 
             // Require that values is IEnumerable<T> (or can be converted to it).
             var enumerableOfItem = typeof(IEnumerable<>).MakeGenericType(itemType);
             if (!enumerableOfItem.IsAssignableFrom(valuesExpression.Type))
+            {
                 return false;
+            }
 
             var contains = typeof(Enumerable)
                 .GetMethods(BindingFlags.Public | BindingFlags.Static)
@@ -320,23 +361,35 @@ internal static class Db2RowPredicateCompiler
 
         // Only instance methods on string.
         if (call.Object is null)
+        {
             return false;
+        }
 
         if (call.Method.DeclaringType != typeof(string))
+        {
             return false;
+        }
 
         if (call.Method.Name is not (nameof(string.StartsWith) or nameof(string.EndsWith) or nameof(string.Contains)))
+        {
             return false;
+        }
 
         if (call.Arguments.Count is < 1 or > 2)
+        {
             return false;
+        }
 
         if (!TryTranslateFieldAccess(entityType, storeObject, schema, entityParameter, fileParameter, handleParameter, call.Object, out var receiverTranslated))
+        {
             return false;
+        }
 
         var valueArgument = call.Arguments[0];
         if (!TryTranslateStringMethodArgument(valueArgument, entityParameter, queryContextParameter, out var valueTranslated))
+        {
             return false;
+        }
 
         if (call.Arguments.Count == 1)
         {
@@ -345,10 +398,14 @@ internal static class Db2RowPredicateCompiler
         }
 
         if (!TryGetConstantStringComparison(call.Arguments[1], out var comparison))
+        {
             return false;
+        }
 
         if (comparison is not (StringComparison.Ordinal or StringComparison.OrdinalIgnoreCase))
+        {
             return false;
+        }
 
         translated = Expression.Call(receiverTranslated, call.Method, valueTranslated, Expression.Constant(comparison));
         return true;
@@ -364,10 +421,14 @@ internal static class Db2RowPredicateCompiler
         translated = null!;
 
         if (argument.Type != typeof(string))
+        {
             return false;
+        }
 
         if (ParameterSearchVisitor.Contains(argument, entityParameter))
+        {
             return false;
+        }
 
         if (IsConstantOrCapturedString(argument, queryContextParameter))
         {
@@ -381,14 +442,20 @@ internal static class Db2RowPredicateCompiler
     private static bool IsConstantOrCapturedString(Expression expression, ParameterExpression queryContextParameter)
     {
         while (expression is UnaryExpression { NodeType: ExpressionType.Convert or ExpressionType.ConvertChecked } u)
+        {
             expression = u.Operand;
+        }
 
         if (expression is ConstantExpression)
+        {
             return true;
+        }
 
         // Captured variable: closure field/property access ("new <>c__DisplayClass" instance constant).
         if (expression is MemberExpression { Expression: ConstantExpression })
+        {
             return true;
+        }
 
         // Compiled query parameter / captured value: QueryParameterRemovingVisitor rewrites these into a
         // call to a private helper which reads from QueryContext at runtime.
@@ -405,7 +472,9 @@ internal static class Db2RowPredicateCompiler
     private static bool TryGetConstantStringComparison(Expression expression, out StringComparison comparison)
     {
         while (expression is UnaryExpression { NodeType: ExpressionType.Convert or ExpressionType.ConvertChecked } u)
+        {
             expression = u.Operand;
+        }
 
         if (expression is ConstantExpression { Value: StringComparison sc })
         {
@@ -430,20 +499,28 @@ internal static class Db2RowPredicateCompiler
         translated = null!;
 
         while (expression is UnaryExpression { NodeType: ExpressionType.Convert or ExpressionType.ConvertChecked } u)
+        {
             expression = u.Operand;
+        }
 
         string? propertyName = null;
 
         if (expression is MemberExpression { Expression: var instance, Member: PropertyInfo pi })
         {
             if (instance is null || !IsEntityInstance(instance, entityParameter))
+            {
                 return false;
+            }
+
             propertyName = pi.Name;
         }
         else if (expression is MemberExpression { Expression: var instance2, Member: FieldInfo fi })
         {
             if (instance2 is null || !IsEntityInstance(instance2, entityParameter))
+            {
                 return false;
+            }
+
             propertyName = fi.Name;
         }
         else if (expression is MethodCallExpression
@@ -459,15 +536,21 @@ internal static class Db2RowPredicateCompiler
         }
 
         if (string.IsNullOrWhiteSpace(propertyName))
+        {
             return false;
+        }
 
         var property = entityType.FindProperty(propertyName);
         if (property is null)
+        {
             return false;
+        }
 
         var columnName = property.GetColumnName(storeObject) ?? property.GetColumnName() ?? property.Name;
         if (!schema.TryGetFieldCaseInsensitive(columnName, out var fieldSchema))
+        {
             return false;
+        }
 
         var resultType = property.ClrType;
         var readType = GetReadTypeForReadField(resultType);
@@ -478,7 +561,9 @@ internal static class Db2RowPredicateCompiler
 
         Expression readCall = Expression.Call(fileParameter, readMethod, handleParameter, Expression.Constant(fieldSchema.ColumnStartIndex));
         if (readType != resultType)
+        {
             readCall = Expression.Convert(readCall, resultType);
+        }
 
         translated = readCall;
         return true;
@@ -486,7 +571,9 @@ internal static class Db2RowPredicateCompiler
         static bool IsEntityInstance(Expression instance, ParameterExpression entityParameter)
         {
             while (instance is UnaryExpression { NodeType: ExpressionType.Convert or ExpressionType.ConvertChecked } u)
+            {
                 instance = u.Operand;
+            }
 
             return instance == entityParameter;
         }
@@ -497,7 +584,9 @@ internal static class Db2RowPredicateCompiler
         ArgumentNullException.ThrowIfNull(resultType);
 
         if (resultType.IsArray)
+        {
             return resultType;
+        }
 
         var unwrapped = Nullable.GetUnderlyingType(resultType);
         return unwrapped ?? resultType;
@@ -515,29 +604,41 @@ internal static class Db2RowPredicateCompiler
         keyType = null!;
 
         if (predicates.Count != 1)
+        {
             return false;
+        }
 
         var pk = entityType.FindPrimaryKey();
         if (pk is null || pk.Properties.Count != 1)
+        {
             return false;
+        }
 
         var keyProperty = pk.Properties[0];
         var storeObject = StoreObjectIdentifier.Table(tableName, schema: null);
         var keyColumnName = keyProperty.GetColumnName(storeObject) ?? keyProperty.GetColumnName() ?? keyProperty.Name;
         if (!schema.TryGetFieldCaseInsensitive(keyColumnName, out var keyField) || keyField.ColumnStartIndex != Db2VirtualFieldIndex.Id)
+        {
             return false;
+        }
 
         var predicate = predicates[0];
         if (predicate.Parameters.Count != 1)
+        {
             return false;
+        }
 
         var entityClrType = entityType.ClrType;
         var expectedParameterType = predicate.Parameters[0].Type;
         if (TryGetTransparentIdentifierTypes(expectedParameterType, out _, out _))
+        {
             return false;
+        }
 
         if (!expectedParameterType.IsAssignableFrom(entityClrType))
+        {
             return false;
+        }
 
         var entityParameter = Expression.Parameter(entityClrType, "e");
         var entityAsExpected = expectedParameterType == entityClrType
@@ -550,38 +651,54 @@ internal static class Db2RowPredicateCompiler
 
         var conjuncts = SplitAndAlso(rewrittenBody!).ToArray();
         if (conjuncts.Length != 1)
+        {
             return false;
+        }
 
         var only = conjuncts[0];
         while (only is UnaryExpression { NodeType: ExpressionType.Convert or ExpressionType.ConvertChecked } u)
+        {
             only = u.Operand;
+        }
 
         if (only is not BinaryExpression { NodeType: ExpressionType.Equal, Left: var left, Right: var right })
+        {
             return false;
+        }
 
         var matchedLeft = TryMatchPropertyAccess(entityType, entityParameter, left, out var leftProperty);
         var matchedRight = !matchedLeft && TryMatchPropertyAccess(entityType, entityParameter, right, out leftProperty);
 
         if (!matchedLeft && !matchedRight)
+        {
             return false;
+        }
 
         if (!ReferenceEquals(leftProperty, keyProperty))
+        {
             return false;
+        }
 
         var valueSide = matchedLeft ? right : left;
 
         if (ParameterSearchVisitor.Contains(valueSide, entityParameter))
+        {
             return false;
+        }
 
         keyType = GetReadTypeForReadField(keyProperty.ClrType);
 
         // Compile a qc -> keyValue accessor. Use the PK type (or underlying for nullable).
         Expression value = valueSide;
         while (value is UnaryExpression { NodeType: ExpressionType.Convert or ExpressionType.ConvertChecked } uu)
+        {
             value = uu.Operand;
+        }
 
         if (value.Type != keyType)
+        {
             value = Expression.Convert(value, keyType);
+        }
 
         var boxed = Expression.Convert(value, typeof(object));
         var lambda = Expression.Lambda<Func<QueryContext, object?>>(boxed, queryContextParameter);
@@ -593,7 +710,9 @@ internal static class Db2RowPredicateCompiler
             property = null;
 
             while (expression is UnaryExpression { NodeType: ExpressionType.Convert or ExpressionType.ConvertChecked } u)
+            {
                 expression = u.Operand;
+            }
 
             if (expression is MemberExpression { Expression: { } instance, Member: PropertyInfo p } && IsEntityInstance(instance, entityParameter))
             {
@@ -619,10 +738,191 @@ internal static class Db2RowPredicateCompiler
             static bool IsEntityInstance(Expression instance, ParameterExpression entityParameter)
             {
                 while (instance is UnaryExpression { NodeType: ExpressionType.Convert or ExpressionType.ConvertChecked } u)
+                {
                     instance = u.Operand;
+                }
 
                 return instance == entityParameter;
             }
+        }
+    }
+
+    internal static bool TryGetSingleScalarFieldIndexHint(
+        IEntityType entityType,
+        string tableName,
+        Db2TableSchema schema,
+        IReadOnlyList<LambdaExpression> predicates,
+        out Db2FieldSchema fieldSchema,
+        out Func<QueryContext, object?> getValue)
+    {
+        fieldSchema = default;
+        getValue = null!;
+
+        if (predicates.Count == 0)
+        {
+            return false;
+        }
+
+        var entityClrType = entityType.ClrType;
+        var storeObject = StoreObjectIdentifier.Table(tableName, schema: null);
+        var queryContextParameter = Expression.Parameter(typeof(QueryContext), "qc");
+        var entityParameter = Expression.Parameter(entityClrType, "e");
+
+        foreach (var predicate in predicates)
+        {
+            if (predicate.Parameters.Count != 1)
+            {
+                continue;
+            }
+
+            var expectedParamType = predicate.Parameters[0].Type;
+            if (TryGetTransparentIdentifierTypes(expectedParamType, out _, out _))
+            {
+                continue;
+            }
+
+            if (!expectedParamType.IsAssignableFrom(entityClrType))
+            {
+                continue;
+            }
+
+            var entityAsExpected = expectedParamType == entityClrType
+                ? (Expression)entityParameter
+                : Expression.Convert(entityParameter, expectedParamType);
+
+            var rewrittenBody = new ParameterReplaceVisitor(predicate.Parameters[0], entityAsExpected).Visit(predicate.Body);
+            rewrittenBody = new QueryParameterRemovingVisitor(queryContextParameter).Visit(rewrittenBody!);
+
+            foreach (var conjunct in SplitAndAlso(rewrittenBody!))
+            {
+                var expr = conjunct;
+                while (expr is UnaryExpression { NodeType: ExpressionType.Convert or ExpressionType.ConvertChecked } u)
+                {
+                    expr = u.Operand;
+                }
+
+                if (expr is not BinaryExpression { NodeType: ExpressionType.Equal, Left: var left, Right: var right })
+                {
+                    continue;
+                }
+
+                Expression? valExpr;
+                Type? propClrType;
+
+                if (TryMatchIndexablePropertyAccess(entityType, storeObject, schema, entityParameter, left, out var leftField, out propClrType)
+                    && !ParameterSearchVisitor.Contains(right, entityParameter))
+                {
+                    fieldSchema = leftField;
+                    valExpr = right;
+                }
+                else if (TryMatchIndexablePropertyAccess(entityType, storeObject, schema, entityParameter, right, out var rightField, out propClrType)
+                    && !ParameterSearchVisitor.Contains(left, entityParameter))
+                {
+                    fieldSchema = rightField;
+                    valExpr = left;
+                }
+                else
+                {
+                    continue;
+                }
+
+                if (valExpr is ConstantExpression { Value: null })
+                {
+                    continue;
+                }
+
+                var convertedVal = valExpr!.Type != propClrType
+                    ? Expression.Convert(valExpr, propClrType!)
+                    : valExpr;
+
+                var boxedValue = Expression.Convert(convertedVal, typeof(object));
+                var lambda = Expression.Lambda<Func<QueryContext, object?>>(boxedValue, queryContextParameter);
+                getValue = lambda.Compile();
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool TryMatchIndexablePropertyAccess(
+        IEntityType entityType,
+        StoreObjectIdentifier storeObject,
+        Db2TableSchema schema,
+        ParameterExpression entityParameter,
+        Expression expression,
+        out Db2FieldSchema fieldSchema,
+        out Type? clrType)
+    {
+        fieldSchema = default;
+        clrType = null;
+
+        while (expression is UnaryExpression { NodeType: ExpressionType.Convert or ExpressionType.ConvertChecked } u)
+        {
+            expression = u.Operand;
+        }
+
+        string? propertyName = null;
+
+        if (expression is MemberExpression { Expression: var instance, Member: PropertyInfo pi })
+        {
+            if (instance is null || !IsEntityInstanceHint(instance, entityParameter))
+            {
+                return false;
+            }
+
+            propertyName = pi.Name;
+        }
+        else if (expression is MethodCallExpression
+            {
+                Method.DeclaringType: var decl2,
+                Method.Name: nameof(EF.Property),
+                Arguments: [var inst2, ConstantExpression { Value: string s2 }]
+            }
+            && decl2 == typeof(EF)
+            && IsEntityInstanceHint(inst2, entityParameter))
+        {
+            propertyName = s2;
+        }
+
+        if (propertyName is null)
+        {
+            return false;
+        }
+
+        var property = entityType.FindProperty(propertyName);
+        if (property is null)
+        {
+            return false;
+        }
+
+        var columnName = property.GetColumnName(storeObject) ?? property.GetColumnName() ?? property.Name;
+        if (!schema.TryGetFieldCaseInsensitive(columnName, out fieldSchema))
+        {
+            return false;
+        }
+
+        if (fieldSchema.IsId || fieldSchema.IsVirtual || fieldSchema.IsRelation)
+        {
+            return false;
+        }
+
+        if (fieldSchema.ValueType is not (Db2ValueType.Int64 or Db2ValueType.UInt64 or Db2ValueType.Single))
+        {
+            return false;
+        }
+
+        clrType = GetReadTypeForReadField(property.ClrType);
+        return true;
+
+        static bool IsEntityInstanceHint(Expression instance, ParameterExpression entityParameter)
+        {
+            while (instance is UnaryExpression { NodeType: ExpressionType.Convert or ExpressionType.ConvertChecked } u)
+            {
+                instance = u.Operand;
+            }
+
+            return instance == entityParameter;
         }
     }
 }

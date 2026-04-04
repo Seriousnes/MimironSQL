@@ -364,7 +364,9 @@ public sealed class ShapedQueryExecutionCharacterizationTests
             if (stream is NamedMemoryStream { TableName: var name })
             {
                 if (files.TryGetValue(name, out var file))
+                {
                     return file;
+                }
 
                 throw new InvalidOperationException($"No test file registered for table '{name}'.");
             }
@@ -463,22 +465,34 @@ public sealed class ShapedQueryExecutionCharacterizationTests
             _readFieldCalls[fieldIndex] = GetReadFieldCalls(fieldIndex) + 1;
 
             if (_throwOnReadTypes.Contains(typeof(T)))
+            {
                 throw new NotSupportedException(_throwMessage ?? $"Unsupported scalar type {typeof(T).FullName}.");
+            }
 
             if (fieldIndex == Db2VirtualFieldIndex.Id)
+            {
                 return (T)Convert.ChangeType(handle.RowId, typeof(T));
+            }
 
             if (fieldIndex < 0)
+            {
                 throw new NotSupportedException($"Unsupported virtual field index {fieldIndex}.");
+            }
 
             if (!_physicalFields.TryGetValue(fieldIndex, out var value))
+            {
                 return default!;
+            }
 
             if (value is null)
+            {
                 return default!;
+            }
 
             if (value is T typed)
+            {
                 return typed;
+            }
 
             return (T)Convert.ChangeType(value, typeof(T));
         }
@@ -493,7 +507,9 @@ public sealed class ShapedQueryExecutionCharacterizationTests
         public IDbdFile Open(string tableName)
         {
             if (files.TryGetValue(tableName, out var file))
+            {
                 return file;
+            }
 
             throw new InvalidOperationException($"No test DBD registered for table '{tableName}'.");
         }

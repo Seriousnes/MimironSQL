@@ -18,7 +18,9 @@ public static class MimironDb2Wdc5Extensions
         ArgumentNullException.ThrowIfNull(configure);
 
         if (builder is not MimironDb2DbContextOptionsBuilder concreteBuilder)
+        {
             throw new NotSupportedException("ConfigureWdc5 must be called inside UseMimironDb2(...).");
+        }
 
         var options = new Wdc5FormatOptions();
         configure(options);

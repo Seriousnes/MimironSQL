@@ -26,7 +26,9 @@ public sealed class Salsa20 : IDisposable
     public Salsa20(ReadOnlySpan<byte> key, ReadOnlySpan<byte> nonce)
     {
         if (nonce.Length != 8)
+        {
             throw new ArgumentException("Nonce must be 8 bytes", nameof(nonce));
+        }
 
         // Initialize based on key size (16 or 32 bytes)
         switch (key.Length)
@@ -83,7 +85,9 @@ public sealed class Salsa20 : IDisposable
     public void Transform(ReadOnlySpan<byte> source, Span<byte> destination)
     {
         if (destination.Length < source.Length)
+        {
             throw new ArgumentException("Destination buffer is too small.", nameof(destination));
+        }
 
         // Use stackalloc to avoid GC pressure for the keystream block
         Span<byte> keyStreamBlock = stackalloc byte[BlockSizeBytes];

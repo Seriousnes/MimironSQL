@@ -37,11 +37,15 @@ public static class MimironDb2SharedPrimaryKeyOneToOneExtensions
 
         var principalKey = typeof(TPrincipal).GetProperty(nameof(Db2Entity<>.Id), BindingFlags.Instance | BindingFlags.Public);
         if (principalKey is null || principalKey.GetMethod is not { IsPublic: true })
+        {
             throw new NotSupportedException($"Shared primary key one-to-one requires a public '{nameof(Db2Entity<>.Id)}' property on principal type '{typeof(TPrincipal).FullName}'.");
+        }
 
         var dependentKey = typeof(TDependent).GetProperty(nameof(Db2Entity<>.Id), BindingFlags.Instance | BindingFlags.Public);
         if (dependentKey is null || dependentKey.GetMethod is not { IsPublic: true })
+        {
             throw new NotSupportedException($"Shared primary key one-to-one requires a public '{nameof(Db2Entity<>.Id)}' property on dependent type '{typeof(TDependent).FullName}'.");
+        }
 
         if (principalKey.PropertyType != dependentKey.PropertyType)
         {
@@ -61,17 +65,25 @@ public static class MimironDb2SharedPrimaryKeyOneToOneExtensions
     private static PropertyInfo GetMember(LambdaExpression expression)
     {
         if (expression.Parameters is not { Count: 1 })
+        {
             throw new NotSupportedException("Key selector must have exactly one parameter.");
+        }
 
         var body = expression.Body;
         if (body is UnaryExpression { NodeType: ExpressionType.Convert or ExpressionType.ConvertChecked } u)
+        {
             body = u.Operand;
+        }
 
         if (body is not MemberExpression { Member: PropertyInfo p })
+        {
             throw new NotSupportedException("Key selector must target a property (e.g., x => x.Id).");
+        }
 
         if (p.GetMethod is not { IsPublic: true })
+        {
             throw new NotSupportedException($"Key member '{p.DeclaringType?.FullName}.{p.Name}' must have a public getter.");
+        }
 
         return p;
     }

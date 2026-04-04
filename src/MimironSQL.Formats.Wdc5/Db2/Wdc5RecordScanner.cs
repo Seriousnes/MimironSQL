@@ -25,7 +25,9 @@ internal sealed class Wdc5RecordScanner
         ArgumentNullException.ThrowIfNull(results);
 
         if ((uint)fieldIndex >= (uint)_file.Header.FieldsCount)
+        {
             throw new ArgumentOutOfRangeException(nameof(fieldIndex));
+        }
 
         ref readonly var fieldMeta = ref _file.FieldMeta[fieldIndex];
         ref readonly var columnMeta = ref _file.ColumnMeta[fieldIndex];
@@ -91,7 +93,9 @@ internal sealed class Wdc5RecordScanner
                 {
                     var rowId = _file.GetSourceIdForAccessor(section, rowIndex);
                     if (commonData.ContainsKey(rowId))
+                    {
                         continue;
+                    }
 
                     results.Add(new RowHandle(sectionIndex, rowIndex, rowId));
                 }
@@ -103,10 +107,14 @@ internal sealed class Wdc5RecordScanner
         foreach (var entry in commonData)
         {
             if (entry.Value != expectedRaw)
+            {
                 continue;
+            }
 
             if (_file.TryGetRowHandle(entry.Key, out var handle))
+            {
                 results.Add(handle);
+            }
         }
     }
 
@@ -118,7 +126,9 @@ internal sealed class Wdc5RecordScanner
             for (var rowIndex = 0; rowIndex < section.NumRecords; rowIndex++)
             {
                 if (accessor.ReadScalarRaw(rowIndex) != expectedRaw)
+                {
                     continue;
+                }
 
                 results.Add(new RowHandle(sectionIndex, rowIndex, _file.GetSourceIdForAccessor(section, rowIndex)));
             }
@@ -136,7 +146,9 @@ internal sealed class Wdc5RecordScanner
         for (var rowIndex = 0; rowIndex < section.NumRecords; rowIndex++)
         {
             if (denseAccessor.ReadScalarRaw(rowIndex) != expectedRaw)
+            {
                 continue;
+            }
 
             results.Add(new RowHandle(sectionIndex, rowIndex, _file.GetSourceIdForAccessor(section, rowIndex)));
         }
@@ -146,7 +158,9 @@ internal sealed class Wdc5RecordScanner
     {
         var records = section.RecordsData;
         if (records is null)
+        {
             return;
+        }
 
         Span<byte> needleBuffer = stackalloc byte[8];
         var byteWidth = fieldBitWidth >> 3;
@@ -161,7 +175,9 @@ internal sealed class Wdc5RecordScanner
         {
             var relativeIndex = records.AsSpan(searchOffset).IndexOf(needle);
             if (relativeIndex < 0)
+            {
                 break;
+            }
 
             var matchOffset = searchOffset + relativeIndex;
             var positionInRecord = matchOffset % recordSize;
@@ -185,7 +201,9 @@ internal sealed class Wdc5RecordScanner
             for (var rowIndex = 0; rowIndex < section.NumRecords; rowIndex++)
             {
                 if (accessor.ReadScalarRaw(rowIndex) != expectedRaw)
+                {
                     continue;
+                }
 
                 results.Add(new RowHandle(sectionIndex, rowIndex, _file.GetSourceIdForAccessor(section, rowIndex)));
             }
@@ -197,7 +215,9 @@ internal sealed class Wdc5RecordScanner
         for (var rowIndex = 0; rowIndex < section.NumRecords; rowIndex++)
         {
             if (accessor2.ReadScalarRaw(rowIndex) != expectedRaw)
+            {
                 continue;
+            }
 
             results.Add(new RowHandle(sectionIndex, rowIndex, _file.GetSourceIdForAccessor(section, rowIndex)));
         }
@@ -223,7 +243,9 @@ internal sealed class Wdc5RecordScanner
             {
                 var reader = new Wdc5RowReader(records, positionBits: offsetTable.GetFieldBitPosition(rowIndex, fieldIndex));
                 if (!ArrayReaderMatches(ref reader, fieldMeta, columnMeta, fieldBitWidth, expectedRaw, _file.PalletData[fieldIndex]))
+                {
                     continue;
+                }
 
                 results.Add(new RowHandle(sectionIndex, rowIndex, _file.GetSourceIdForAccessor(section, rowIndex)));
             }
@@ -238,7 +260,9 @@ internal sealed class Wdc5RecordScanner
         {
             var reader = new Wdc5RowReader(denseRecords, positionBits: (rowIndex * _file.Header.RecordSize * 8) + columnMeta.RecordOffset);
             if (!ArrayReaderMatches(ref reader, fieldMeta, columnMeta, fieldBitWidth, expectedRaw, _file.PalletData[fieldIndex]))
+            {
                 continue;
+            }
 
             results.Add(new RowHandle(sectionIndex, rowIndex, _file.GetSourceIdForAccessor(section, rowIndex)));
         }
@@ -254,7 +278,9 @@ internal sealed class Wdc5RecordScanner
                     for (var i = 0; i < elementCount; i++)
                     {
                         if (reader.ReadUInt64(fieldBitWidth) == expectedRaw)
+                        {
                             return true;
+                        }
                     }
 
                     return false;
@@ -269,7 +295,9 @@ internal sealed class Wdc5RecordScanner
                     for (var i = 0; i < columnMeta.Pallet.Cardinality; i++)
                     {
                         if (palletData[baseIndex + i] == expected32)
+                        {
                             return true;
+                        }
                     }
 
                     return false;
@@ -286,7 +314,9 @@ internal sealed class Wdc5RecordScanner
         {
             var handle = new RowHandle(sectionIndex, rowIndex, _file.GetSourceIdForAccessor(section, rowIndex));
             if (!HandleMatches(handle, fieldIndex, value, isArrayField))
+            {
                 continue;
+            }
 
             results.Add(handle);
         }
@@ -295,13 +325,17 @@ internal sealed class Wdc5RecordScanner
     private bool HandleMatches<T>(RowHandle handle, int fieldIndex, T value, bool isArrayField) where T : unmanaged
     {
         if (!isArrayField)
+        {
             return EqualityComparer<T>.Default.Equals(_file.ReadField<T>(handle, fieldIndex), value);
+        }
 
         var values = _file.ReadField<T[]>(handle, fieldIndex);
         for (var i = 0; i < values.Length; i++)
         {
             if (EqualityComparer<T>.Default.Equals(values[i], value))
+            {
                 return true;
+            }
         }
 
         return false;
@@ -313,10 +347,14 @@ internal sealed class Wdc5RecordScanner
     private static bool IsArrayField<T>(FieldMetaData fieldMeta, ColumnMetaData columnMeta, int fieldBitWidth) where T : unmanaged
     {
         if (columnMeta.CompressionType == CompressionType.PalletArray && columnMeta.Pallet.Cardinality != 1)
+        {
             return true;
+        }
 
         if (columnMeta.CompressionType != CompressionType.None)
+        {
             return false;
+        }
 
         return columnMeta.Size > fieldBitWidth && columnMeta.Size >= Unsafe.SizeOf<T>() * 8;
     }
@@ -417,7 +455,9 @@ internal sealed class Wdc5RecordScanner
     private static ulong MaskBits(ulong value, int fieldBitWidth)
     {
         if (fieldBitWidth >= 64)
+        {
             return value;
+        }
 
         return value & ((1UL << fieldBitWidth) - 1);
     }
@@ -425,7 +465,9 @@ internal sealed class Wdc5RecordScanner
     private static void WriteLittleEndian(ulong value, Span<byte> destination)
     {
         for (var i = 0; i < destination.Length; i++)
+        {
             destination[i] = (byte)(value >> (8 * i));
+        }
     }
 
 }

@@ -39,16 +39,22 @@ public static class ServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
 
         if (options is null && configuration is null)
+        {
             throw new ArgumentException("Either options or configuration must be provided.");
+        }
 
         var bound = options ?? BindOptions(configuration!);
 
         if (string.IsNullOrWhiteSpace(bound.WowInstallRoot))
+        {
             throw new InvalidOperationException("WoW install root is required. Configure 'Casc:WowInstallRoot'.");
+        }
 
         var hasManifestProvider = services.Any(x => x.ServiceType == typeof(IManifestProvider));
         if (!hasManifestProvider && string.IsNullOrWhiteSpace(bound.ManifestDirectory))
+        {
             throw new ArgumentException("Manifest directory is required. Configure 'Casc:ManifestDirectory'.", options is null ? nameof(configuration) : nameof(options));
+        }
 
         services.TryAddSingleton(bound);
 
@@ -58,7 +64,9 @@ public static class ServiceCollectionExtensions
             if (!string.IsNullOrWhiteSpace(bound.TactKeyFilePath))
             {
                 if (!File.Exists(bound.TactKeyFilePath))
+                {
                     throw new FileNotFoundException($"TACT key file not found: '{bound.TactKeyFilePath}'.", bound.TactKeyFilePath);
+                }
 
                 services.TryAddSingleton<FileSystemTactKeyProvider>(_ => new FileSystemTactKeyProvider(new FileSystemTactKeyProviderOptions(bound.TactKeyFilePath)));
             }
@@ -73,7 +81,9 @@ public static class ServiceCollectionExtensions
                 var providers = new List<ITactKeyProvider>(capacity: 2);
 
                 if (sp.GetService<FileSystemTactKeyProvider>() is { } file)
+                {
                     providers.Add(file);
+                }
 
                 providers.Add(sp.GetRequiredService<CascTactKeyDb2TableProvider>());
 

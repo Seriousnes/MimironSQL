@@ -39,10 +39,14 @@ internal static class Db2ForeignKeyArrayModelRewriter
             foreach (var navigation in navigations)
             {
                 if (!Db2ForeignKeyArrayAnnotations.TryGetForeignKeyArrayPropertyName(navigation, out var foreignKeyArrayPropertyName))
+                {
                     continue;
+                }
 
                 if (!navigation.IsCollection)
+                {
                     continue;
+                }
 
                 RewriteOne(modelBuilder, entityType, navigation, foreignKeyArrayPropertyName, modeling);
             }
@@ -63,9 +67,14 @@ internal static class Db2ForeignKeyArrayModelRewriter
         var targetPk = navigation.TargetEntityType.FindPrimaryKey();
 
         if (principalPk is null || principalPk.Properties.Count != 1)
+        {
             throw new NotSupportedException($"Entity '{principalEntityType.DisplayName()}' must have a single-column primary key to use HasForeignKeyArray.");
+        }
+
         if (targetPk is null || targetPk.Properties.Count != 1)
+        {
             throw new NotSupportedException($"Entity '{navigation.TargetEntityType.DisplayName()}' must have a single-column primary key to use HasForeignKeyArray.");
+        }
 
         var principalKeyType = principalPk.Properties[0].ClrType;
         var targetKeyType = targetPk.Properties[0].ClrType;
@@ -74,14 +83,20 @@ internal static class Db2ForeignKeyArrayModelRewriter
             ?? throw new NotSupportedException($"FK array property '{principalClrType.FullName}.{foreignKeyArrayPropertyName}' was not found.");
 
         if (!TryGetIEnumerableElementType(fkArrayProperty.PropertyType, out var elementType) || elementType is null)
+        {
             throw new NotSupportedException($"FK array property '{principalClrType.FullName}.{foreignKeyArrayPropertyName}' must be an IEnumerable<T>.");
+        }
 
         if (!IsIntegerLike(elementType))
+        {
             throw new NotSupportedException($"FK array property '{principalClrType.FullName}.{foreignKeyArrayPropertyName}' must be an integer-like element type.");
+        }
 
         if (!IsCompatibleIntegerLikeKey(elementType, targetKeyType))
+        {
             throw new NotSupportedException(
                 $"FK array element type '{elementType.FullName}' does not match target PK type '{targetKeyType.FullName}' for navigation '{principalClrType.FullName}.{navigation.Name}'.");
+        }
 
         // Remove the original relationship so the navigation can be remapped as a skip navigation.
         var originalFk = navigation.ForeignKey;
@@ -150,7 +165,9 @@ internal static class Db2ForeignKeyArrayModelRewriter
         });
 
         if (candidate is null)
+        {
             throw new NotSupportedException("EF Core UsingEntity overload for CLR join entity was not found.");
+        }
 
         Microsoft.EntityFrameworkCore.Metadata.Builders.ReferenceCollectionBuilder ConfigureRight(Microsoft.EntityFrameworkCore.Metadata.Builders.EntityTypeBuilder r)
             => r.HasOne(targetClrType).WithMany().HasForeignKey(rightFkName);
@@ -189,7 +206,9 @@ internal static class Db2ForeignKeyArrayModelRewriter
     {
         type = type.UnwrapNullable();
         if (type.IsEnum)
+        {
             type = Enum.GetUnderlyingType(type);
+        }
 
         return type == typeof(byte)
             || type == typeof(sbyte)
@@ -207,9 +226,14 @@ internal static class Db2ForeignKeyArrayModelRewriter
         targetKeyType = targetKeyType.UnwrapNullable();
 
         if (elementType.IsEnum)
+        {
             elementType = Enum.GetUnderlyingType(elementType);
+        }
+
         if (targetKeyType.IsEnum)
+        {
             targetKeyType = Enum.GetUnderlyingType(targetKeyType);
+        }
 
         return elementType == targetKeyType;
     }

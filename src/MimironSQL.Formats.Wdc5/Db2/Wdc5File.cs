@@ -119,7 +119,9 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
     {
         ArgumentNullException.ThrowIfNull(stream);
         if (!stream.CanSeek)
+        {
             throw new NotSupportedException("WDC5 parsing requires a seekable Stream.");
+        }
 
         Options = options ?? new Wdc5FileOptions();
 
@@ -132,7 +134,9 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
         _stream.Position = 0;
 
         if (_reader.BaseStream.Length is < HeaderSize)
+        {
             throw new InvalidDataException("DB2 file is too small to be valid.");
+        }
 
         var magic = _reader.ReadUInt32();
         if (magic is not Wdc5Magic)
@@ -212,7 +216,9 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
 
         var fieldMeta = new FieldMetaData[fieldsCount];
         for (var i = 0; i < fieldsCount; i++)
+        {
             fieldMeta[i] = new FieldMetaData(_reader.ReadInt16(), _reader.ReadInt16());
+        }
 
         var columnMeta = new ColumnMetaData[fieldsCount];
         var metaBytes = _reader.ReadBytes(Unsafe.SizeOf<ColumnMetaData>() * fieldsCount);
@@ -281,7 +287,9 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
 
                 ReadOnlyMemory<byte> tactKey = ReadOnlyMemory<byte>.Empty;
                 if (section is { TactKeyLookup: not 0 } && Options.TactKeyProvider is not null)
+                {
                     Options.TactKeyProvider.TryGetKey(section.TactKeyLookup, out tactKey);
+                }
 
                 byte[]? recordsData = null;
                 int recordDataSizeBytes;
@@ -297,7 +305,9 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
                         if (section.StringTableSize > 0)
                         {
                             if (denseStringWriteOffset + section.StringTableSize > denseStringTableBytes.Length)
+                            {
                                 throw new InvalidDataException("WDC5 dense string table overflow: section string table exceeds declared size.");
+                            }
 
                             ReadExactly(_reader, denseStringTableBytes, start: denseStringWriteOffset, count: section.StringTableSize);
                             denseStringWriteOffset += section.StringTableSize;
@@ -307,7 +317,9 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
                     {
                         _reader.BaseStream.Position += recordDataSizeBytes;
                         if (section.StringTableSize > 0)
+                        {
                             _reader.BaseStream.Position += section.StringTableSize;
+                        }
                     }
                 }
                 else
@@ -320,13 +332,17 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
                         ReadExactly(_reader, recordsData, recordDataSizeBytes);
 
                         if (_reader.BaseStream.Position != section.OffsetRecordsEndOffset)
+                        {
                             throw new InvalidDataException("WDC5 sparse section parsing desynced: expected OffsetRecordsEndOffset.");
+                        }
                     }
                     else
                     {
                         _reader.BaseStream.Position += recordDataSizeBytes;
                         if (_reader.BaseStream.Position != section.OffsetRecordsEndOffset)
+                        {
                             throw new InvalidDataException("WDC5 sparse section parsing desynced: expected OffsetRecordsEndOffset.");
+                        }
                     }
                 }
 
@@ -343,7 +359,9 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
                 // index data
                 var indexData = ReadInt32Array(_reader, section.IndexDataSize / 4);
                 if (indexData is { Length: > 0 } && indexData.All(x => x == 0))
+                {
                     indexData = [.. Enumerable.Range(minIndex + previousRecordCount, section.NumRecords)];
+                }
 
                 // copy table
                 var copyData = new Dictionary<int, int>();
@@ -354,21 +372,28 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
                         var destinationRowId = _reader.ReadInt32();
                         var sourceRowId = _reader.ReadInt32();
                         if (destinationRowId != sourceRowId)
+                        {
                             copyData[destinationRowId] = sourceRowId;
+                        }
                     }
                 }
 
                 // offset map / sparse entries
                 SparseEntry[] sparseEntries = [];
                 if (section is { OffsetMapIDCount: > 0 })
+                {
                     sparseEntries = ReadStructArray<SparseEntry>(_reader, section.OffsetMapIDCount);
+                }
 
                 // secondary key sparse index data (not fully surfaced yet)
                 if (section is { OffsetMapIDCount: > 0 } && flags.HasFlag(Db2Flags.SecondaryKey))
                 {
                     var sparseIndexData = ReadInt32Array(_reader, section.OffsetMapIDCount);
                     if (section is { IndexDataSize: > 0 } && indexData.Length != sparseIndexData.Length)
+                    {
                         throw new InvalidDataException("WDC5 sparse index data length mismatch.");
+                    }
+
                     indexData = sparseIndexData;
                 }
 
@@ -393,7 +418,10 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
                 {
                     var sparseIndexData = ReadInt32Array(_reader, section.OffsetMapIDCount);
                     if (section is { IndexDataSize: > 0 } && indexData.Length != sparseIndexData.Length)
+                    {
                         throw new InvalidDataException("WDC5 sparse index data length mismatch.");
+                    }
+
                     indexData = sparseIndexData;
                 }
 
@@ -424,7 +452,9 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
                     {
                         parsedSection.SparseOffsetTable = new Lazy<Wdc5SparseOffsetTable>(() => BuildSparseOffsetTable(parsedSection), isThreadSafe: true);
                         if (Options.EagerSparseOffsetTable)
+                        {
                             _ = parsedSection.SparseOffsetTable.Value;
+                        }
                     }
 
                     parsedSections.Add(parsedSection);
@@ -436,7 +466,9 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
             }
 
             if (previousRecordBlobSizeBytes < 0)
+            {
                 throw new InvalidDataException("WDC5 record blob size overflow.");
+            }
 
             recordsBlobSizeBytes = previousRecordBlobSizeBytes;
         }
@@ -452,16 +484,22 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
         RecordsBlobSizeBytes = recordsBlobSizeBytes;
 
         if (recordsCount > 0 && parsedSections is { Count: 0 })
+        {
             throw new NotSupportedException("All WDC5 sections are encrypted or unreadable (missing TACT keys or placeholder section data).");
+        }
     }
 
     internal Wdc5FieldAccessor CreateFieldAccessor(int sectionIndex, int fieldIndex)
     {
         if ((uint)sectionIndex >= (uint)ParsedSections.Count)
+        {
             throw new ArgumentOutOfRangeException(nameof(sectionIndex));
+        }
 
         if (Header.Flags.HasFlag(Db2Flags.Sparse))
+        {
             throw new NotSupportedException("Use CreateSparseFieldAccessor for sparse WDC5 files.");
+        }
 
         var section = ParsedSections[sectionIndex];
         EnsureSectionRecordsMaterialized(section);
@@ -471,23 +509,47 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
     internal Wdc5SparseFieldAccessor CreateSparseFieldAccessor(int sectionIndex, int fieldIndex)
     {
         if ((uint)sectionIndex >= (uint)ParsedSections.Count)
+        {
             throw new ArgumentOutOfRangeException(nameof(sectionIndex));
+        }
 
         if (!Header.Flags.HasFlag(Db2Flags.Sparse))
+        {
             throw new NotSupportedException("Sparse field accessors require sparse WDC5 files.");
+        }
 
         var section = ParsedSections[sectionIndex];
         EnsureSectionRecordsMaterialized(section);
         return new Wdc5SparseFieldAccessor(this, section, fieldIndex, GetOrCreateSparseOffsetTable(section));
     }
 
+    internal RowHandle GetRowHandle(int sectionIndex, int rowIndexInSection)
+    {
+        if ((uint)sectionIndex >= (uint)ParsedSections.Count)
+        {
+            throw new ArgumentOutOfRangeException(nameof(sectionIndex));
+        }
+
+        var section = ParsedSections[sectionIndex];
+        if ((uint)rowIndexInSection >= (uint)section.NumRecords)
+        {
+            throw new ArgumentOutOfRangeException(nameof(rowIndexInSection));
+        }
+
+        return new RowHandle(sectionIndex, rowIndexInSection, GetSourceIdForAccessor(section, rowIndexInSection));
+    }
+
     internal int GetSourceIdForAccessor(Wdc5Section section, int rowIndex)
     {
         if ((uint)rowIndex >= (uint)section.NumRecords)
+        {
             throw new ArgumentOutOfRangeException(nameof(rowIndex));
+        }
 
         if (section.IndexData is { Length: not 0 })
+        {
             return section.IndexData[rowIndex];
+        }
 
         EnsureSectionRecordsMaterialized(section);
         var reader = CreateReaderAtRowStart(section, rowIndex, out _, out _, out _);
@@ -497,7 +559,9 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
     internal void EnsureSectionRecordsMaterialized(Wdc5Section section)
     {
         if (section.RecordsData is not null)
+        {
             return;
+        }
 
         var recordsData = new byte[checked(section.RecordDataSizeBytes + 8)];
         _reader.BaseStream.Position = section.Header.FileOffset;
@@ -540,7 +604,10 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
         {
             var read = reader.Read(buffer, start + totalRead, count - totalRead);
             if (read <= 0)
+            {
                 throw new EndOfStreamException("Unexpected end of stream while reading WDC5 section data.");
+            }
+
             totalRead += read;
         }
     }
@@ -599,7 +666,9 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
 
         // Preserve "copy table wins" behavior without materializing a global copy map.
         if (TryResolveCopySourceId(key, out var sourceId))
+        {
             key = sourceId;
+        }
 
         if (_idIndex is not null)
         {
@@ -658,14 +727,20 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
         }
 
         if ((uint)fieldIndex >= (uint)Header.FieldsCount)
+        {
             throw new ArgumentOutOfRangeException(nameof(fieldIndex));
+        }
 
         if ((uint)row.SectionIndex >= (uint)ParsedSections.Count)
+        {
             throw new ArgumentException("Invalid section index in RowHandle.", nameof(row));
+        }
 
         var section = ParsedSections[row.SectionIndex];
         if ((uint)row.RowIndexInSection >= (uint)section.NumRecords)
+        {
             throw new ArgumentException("Invalid row index in RowHandle.", nameof(row));
+        }
 
         var globalRowIndex = section.FirstGlobalRecordIndex + row.RowIndexInSection;
 
@@ -686,7 +761,9 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
         var stringIndex = recordOffset + fieldStartBytes + offset;
 
         if (stringIndex < 0)
+        {
             stringIndex = 0;
+        }
 
         if (stringIndex < section.StringTableBaseOffset)
         {
@@ -709,11 +786,15 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
     private void EnsureDenseStringTableMaterialized()
     {
         if (!_denseStringTableBytes.IsEmpty || Header.StringTableSize <= 0)
+        {
             return;
+        }
 
         // Dense string table scanning is only meaningful for non-sparse files.
         if (Header.Flags.HasFlag(Db2Flags.Sparse))
+        {
             return;
+        }
 
         var denseStringTableBytes = new byte[Header.StringTableSize];
         var denseStringWriteOffset = 0;
@@ -725,10 +806,14 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
         {
             var section = Sections[i];
             if (section.StringTableSize <= 0)
+            {
                 continue;
+            }
 
             if (denseStringWriteOffset + section.StringTableSize > denseStringTableBytes.Length)
+            {
                 throw new InvalidDataException("WDC5 dense string table overflow: section string table exceeds declared size.");
+            }
 
             var recordDataSizeBytes = checked(section.NumRecords * Header.RecordSize);
             var stringTableOffset = checked((long)section.FileOffset + recordDataSizeBytes);
@@ -759,10 +844,14 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
 
         // If any parsed section already has record bytes, assume fully materialized.
         if (ParsedSections is { Count: > 0 } && ParsedSections[0].RecordsData is not null)
+        {
             return;
+        }
 
         if (Options.RecordLoadingMode == Wdc5RecordLoadingMode.Eager)
+        {
             return;
+        }
 
         var denseStringTableBytes = Header.StringTableSize > 0 ? new byte[Header.StringTableSize] : [];
         var denseStringWriteOffset = 0;
@@ -782,7 +871,9 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
                 if (section.Header.StringTableSize > 0)
                 {
                     if (denseStringWriteOffset + section.Header.StringTableSize > denseStringTableBytes.Length)
+                    {
                         throw new InvalidDataException("WDC5 dense string table overflow: section string table exceeds declared size.");
+                    }
 
                     ReadExactly(_reader, denseStringTableBytes, start: denseStringWriteOffset, count: section.Header.StringTableSize);
                     denseStringWriteOffset += section.Header.StringTableSize;
@@ -797,7 +888,9 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
                 ReadExactly(_reader, recordsData, recordDataSizeBytes);
 
                 if (_reader.BaseStream.Position != section.Header.OffsetRecordsEndOffset)
+                {
                     throw new InvalidDataException("WDC5 sparse section parsing desynced: expected OffsetRecordsEndOffset.");
+                }
 
                 section.RecordsData = recordsData;
             }
@@ -812,7 +905,9 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
         {
             var section = ParsedSections[sectionIndex];
             if (section.CopyData.TryGetValue(destinationId, out sourceId))
+            {
                 return true;
+            }
         }
 
         sourceId = 0;
@@ -832,7 +927,9 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
                 for (var rowIndex = 0; rowIndex < section.NumRecords; rowIndex++)
                 {
                     if (indexData[rowIndex] != id)
+                    {
                         continue;
+                    }
 
                     location = (sectionIndex, rowIndex, section.FirstGlobalRecordIndex + rowIndex);
                     return true;
@@ -845,7 +942,9 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
             for (var rowIndex = 0; rowIndex < section.NumRecords; rowIndex++)
             {
                 if (GetVirtualIdForIndexing(sectionIndex, section, rowIndex) != id)
+                {
                     continue;
+                }
 
                 location = (sectionIndex, rowIndex, section.FirstGlobalRecordIndex + rowIndex);
                 return true;
@@ -859,7 +958,9 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
     private void EnsureIdIndexBuilt()
     {
         if (_idIndex is not null)
+        {
             return;
+        }
 
         var idIndex = new Dictionary<int, (int SectionIndex, int RowIndexInSection, int GlobalRecordIndex)>(capacity: Header.RecordsCount);
 
@@ -875,7 +976,9 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
                 {
                     var id = indexData[rowIndex];
                     if (id != -1)
+                    {
                         idIndex.TryAdd(id, (sectionIndex, rowIndex, section.FirstGlobalRecordIndex + rowIndex));
+                    }
                 }
 
                 continue;
@@ -886,7 +989,9 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
             {
                 var id = GetVirtualIdForIndexing(sectionIndex, section, rowIndex);
                 if (id != -1)
+                {
                     idIndex.TryAdd(id, (sectionIndex, rowIndex, section.FirstGlobalRecordIndex + rowIndex));
+                }
             }
         }
 
@@ -896,10 +1001,14 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
     private int GetVirtualIdForIndexing(int sectionIndex, Wdc5Section section, int rowIndex)
     {
         if (Header.IdFieldIndex >= Header.FieldsCount)
+        {
             return section.FirstGlobalRecordIndex + rowIndex;
+        }
 
         if (section.IndexData is { Length: not 0 })
+        {
             return section.IndexData[rowIndex];
+        }
 
         // Read just this row's bytes and decode up to the ID field.
         var rowBytes = GetRowBytesFromStream(sectionIndex, section, rowIndex, out _, out var rowStartBitOffset);
@@ -913,10 +1022,14 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
             var commonData = CommonData[i];
 
             if (columnMeta is { CompressionType: CompressionType.Common })
+            {
                 throw new NotSupportedException("Decoding ID from record bits is not supported for Common-compressed ID fields.");
+            }
 
             if (i == Header.IdFieldIndex)
+            {
                 return Wdc5FieldDecoder.ReadScalar<int>(id: 0, ref tmp, fieldMeta, columnMeta, palletData, commonData);
+            }
 
             Wdc5FieldDecoder.ReadScalar<uint>(id: 0, ref tmp, fieldMeta, columnMeta, palletData, commonData);
         }
@@ -926,7 +1039,9 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
     private Wdc5RowReader CreateReaderAtRowStart(Wdc5Section section, int rowIndex, out ReadOnlySpan<byte> recordBytes, out int rowStartByte, out int rowSizeBytes)
     {
         if (section.RecordsData is null)
+        {
             throw new InvalidOperationException("Record bytes are not materialized for this section.");
+        }
 
         if (!Header.Flags.HasFlag(Db2Flags.Sparse))
         {
@@ -937,14 +1052,18 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
         }
 
         if (section.SparseRecordStartBits is { Length: 0 })
+        {
             throw new InvalidDataException("Sparse WDC5 section missing SparseRecordStartBits.");
+        }
 
         var startBits = section.SparseRecordStartBits[rowIndex];
         var startBytes = startBits >> 3;
         var sizeBytes = (int)section.SparseEntries[rowIndex].Size;
         var endExclusive = (long)startBytes + sizeBytes;
         if (startBytes < 0 || endExclusive < 0 || endExclusive > section.RecordsData.Length)
+        {
             throw new InvalidDataException("Sparse WDC5 row points outside section record data.");
+        }
 
         recordBytes = section.RecordsData;
         rowStartByte = startBytes;
@@ -956,11 +1075,15 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
     {
         // A) Prefer IndexData when present.
         if (section.IndexData is { Length: not 0 })
+        {
             return section.IndexData[rowIndex];
+        }
 
         // Fallback: decode the physical ID field from record bits.
         if (Header.IdFieldIndex >= Header.FieldsCount)
+        {
             return section.FirstGlobalRecordIndex + rowIndex;
+        }
 
         var tmp = readerAtStart;
         for (var i = 0; i <= Header.IdFieldIndex; i++)
@@ -971,10 +1094,14 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
             var commonData = CommonData[i];
 
             if (columnMeta is { CompressionType: CompressionType.Common })
+            {
                 throw new NotSupportedException("Decoding ID from record bits is not supported for Common-compressed ID fields.");
+            }
 
             if (i == Header.IdFieldIndex)
+            {
                 return Wdc5FieldDecoder.ReadScalar<int>(id: 0, ref tmp, fieldMeta, columnMeta, palletData, commonData);
+            }
 
             Wdc5FieldDecoder.ReadScalar<uint>(id: 0, ref tmp, fieldMeta, columnMeta, palletData, commonData);
         }
@@ -985,7 +1112,9 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
     private static int[] ReadInt32Array(BinaryReader reader, int count)
     {
         if (count <= 0)
+        {
             return [];
+        }
 
         var bytes = reader.ReadBytes(count * 4);
         return [.. MemoryMarshal.Cast<byte, int>(bytes)];
@@ -994,7 +1123,9 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
     private static T[] ReadStructArray<T>(BinaryReader reader, int count) where T : unmanaged
     {
         if (count <= 0)
+        {
             return [];
+        }
 
         var size = Unsafe.SizeOf<T>();
         var bytes = reader.ReadBytes(count * size);
@@ -1005,11 +1136,15 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
     public T ReadField<T>(RowHandle handle, int fieldIndex)
     {
         if ((uint)handle.SectionIndex >= (uint)ParsedSections.Count)
+        {
             throw new ArgumentException("Invalid section index in RowHandle.", nameof(handle));
+        }
 
         var section = ParsedSections[handle.SectionIndex];
         if ((uint)handle.RowIndexInSection >= (uint)section.NumRecords)
+        {
             throw new ArgumentException("Invalid row index in RowHandle.", nameof(handle));
+        }
 
         Wdc5RowReader readerAtStart;
         ReadOnlySpan<byte> recordBytes;
@@ -1100,7 +1235,9 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
         }
 
         if (section.SparseEntries is { Length: 0 } || section.SparseRecordStartBits is { Length: 0 })
+        {
             throw new InvalidDataException("Sparse WDC5 section missing sparse metadata.");
+        }
 
         var entry = section.SparseEntries[rowIndexInSection];
         var startBits = section.SparseRecordStartBits[rowIndexInSection];
@@ -1127,7 +1264,9 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
     {
         var required = checked(rowSizeBytes + 8);
         if (_cachedRowBytes is null || _cachedRowBytes.Length < required)
+        {
             _cachedRowBytes = new byte[required];
+        }
     }
 
     private static void ReadExactly(Stream stream, byte[] buffer, int start, int count)
@@ -1137,7 +1276,10 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
         {
             var read = stream.Read(buffer, start + totalRead, count - totalRead);
             if (read <= 0)
+            {
                 throw new EndOfStreamException("Unexpected end of stream while reading WDC5 row bytes.");
+            }
+
             totalRead += read;
         }
     }
@@ -1157,7 +1299,9 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
         var type = typeof(T);
 
         if (type.IsEnum)
+        {
             return (T)ReadFieldBoxedFromPrepared(section, rowIndexInSection, readerAtStart, recordBytes, rowEndExclusive, globalRowIndex, sourceId, destinationId, parentRelationId, Enum.GetUnderlyingType(type), fieldIndex);
+        }
 
         if (fieldIndex < 0)
         {
@@ -1170,7 +1314,9 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
         }
 
         if ((uint)fieldIndex >= (uint)Header.FieldsCount)
+        {
             throw new ArgumentOutOfRangeException(nameof(fieldIndex));
+        }
 
         if (type == typeof(string))
         {
@@ -1186,7 +1332,10 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
                 var floats = ReadArray<float>(readerAtStart, fieldIndex);
                 var doubles = new double[floats.Length];
                 for (var i = 0; i < floats.Length; i++)
+                {
                     doubles[i] = floats[i];
+                }
+
                 return Unsafe.As<double[], T>(ref doubles);
             }
 
@@ -1205,7 +1354,10 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
     private static T CastVirtualField<T>(int value)
     {
         if (typeof(T) == typeof(int))
+        {
             return Unsafe.As<int, T>(ref value);
+        }
+
         if (typeof(T) == typeof(uint))
         {
             var u = unchecked((uint)value);
@@ -1313,14 +1465,20 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
     public void ReadAllFields(RowHandle handle, Span<object> values)
     {
         if (values.Length < Header.FieldsCount + 2)
+        {
             throw new ArgumentException($"Values span must have at least {Header.FieldsCount + 2} elements.");
+        }
 
         if ((uint)handle.SectionIndex >= (uint)ParsedSections.Count)
+        {
             throw new ArgumentException("Invalid section index in RowHandle.", nameof(handle));
+        }
 
         var section = ParsedSections[handle.SectionIndex];
         if ((uint)handle.RowIndexInSection >= (uint)section.NumRecords)
+        {
             throw new ArgumentException("Invalid row index in RowHandle.", nameof(handle));
+        }
 
         Wdc5RowReader readerAtStart;
         ReadOnlySpan<byte> recordBytes;
@@ -1361,7 +1519,9 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
             values[1] = ReadFieldBoxedFromPrepared(section, handle.RowIndexInSection, decryptedReaderAtStart, decrypted.Bytes, rowEndExclusive: rowSizeBytes, globalRowIndex, sourceId, destinationId, parentRelationId, type: typeof(int), fieldIndex: Db2VirtualFieldIndex.ParentRelation);
 
             for (var i = 0; i < Header.FieldsCount; i++)
+            {
                 values[i + 2] = ReadFieldBoxedFromPrepared(section, handle.RowIndexInSection, decryptedReaderAtStart, decrypted.Bytes, rowEndExclusive: rowSizeBytes, globalRowIndex, sourceId, destinationId, parentRelationId, type: typeof(object), fieldIndex: i);
+            }
 
             return;
         }
@@ -1371,17 +1531,23 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
         values[1] = ReadFieldBoxedFromPrepared(section, handle.RowIndexInSection, readerAtStart, recordBytes, rowEndExclusive, globalRowIndex, sourceId, destinationId, parentRelationId, type: typeof(int), fieldIndex: Db2VirtualFieldIndex.ParentRelation);
 
         for (var i = 0; i < Header.FieldsCount; i++)
+        {
             values[i + 2] = ReadFieldBoxedFromPrepared(section, handle.RowIndexInSection, readerAtStart, recordBytes, rowEndExclusive, globalRowIndex, sourceId, destinationId, parentRelationId, type: typeof(object), fieldIndex: i);
+        }
     }
 
     private object ReadFieldBoxed(RowHandle handle, Type type, int fieldIndex)
     {
         if ((uint)handle.SectionIndex >= (uint)ParsedSections.Count)
+        {
             throw new ArgumentException("Invalid section index in RowHandle.", nameof(handle));
+        }
 
         var section = ParsedSections[handle.SectionIndex];
         if ((uint)handle.RowIndexInSection >= (uint)section.NumRecords)
+        {
             throw new ArgumentException("Invalid row index in RowHandle.", nameof(handle));
+        }
 
         Wdc5RowReader readerAtStart;
         ReadOnlySpan<byte> recordBytes;
@@ -1438,7 +1604,9 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
         int fieldIndex)
     {
         if (type.IsEnum)
+        {
             type = Enum.GetUnderlyingType(type);
+        }
 
         if (fieldIndex < 0)
         {
@@ -1451,7 +1619,9 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
         }
 
         if ((uint)fieldIndex >= (uint)Header.FieldsCount)
+        {
             throw new ArgumentOutOfRangeException(nameof(fieldIndex));
+        }
 
         if (type == typeof(string))
         {
@@ -1479,7 +1649,10 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
                 var floats = ReadArray<float>(readerAtStart, fieldIndex);
                 var doubles = new double[floats.Length];
                 for (var i = 0; i < floats.Length; i++)
+                {
                     doubles[i] = floats[i];
+                }
+
                 return doubles;
             }
 
@@ -1497,25 +1670,54 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
     private static object ReadScalarBoxed(Type type, int id, ref Wdc5RowReader reader, FieldMetaData fieldMeta, ColumnMetaData columnMeta, uint[] palletData, Dictionary<int, uint> commonData)
     {
         if (type == typeof(byte))
+        {
             return Wdc5FieldDecoder.ReadScalar<byte>(id, ref reader, fieldMeta, columnMeta, palletData, commonData);
+        }
+
         if (type == typeof(sbyte))
+        {
             return Wdc5FieldDecoder.ReadScalar<sbyte>(id, ref reader, fieldMeta, columnMeta, palletData, commonData);
+        }
+
         if (type == typeof(short))
+        {
             return Wdc5FieldDecoder.ReadScalar<short>(id, ref reader, fieldMeta, columnMeta, palletData, commonData);
+        }
+
         if (type == typeof(ushort))
+        {
             return Wdc5FieldDecoder.ReadScalar<ushort>(id, ref reader, fieldMeta, columnMeta, palletData, commonData);
+        }
+
         if (type == typeof(int))
+        {
             return Wdc5FieldDecoder.ReadScalar<int>(id, ref reader, fieldMeta, columnMeta, palletData, commonData);
+        }
+
         if (type == typeof(uint))
+        {
             return Wdc5FieldDecoder.ReadScalar<uint>(id, ref reader, fieldMeta, columnMeta, palletData, commonData);
+        }
+
         if (type == typeof(long))
+        {
             return Wdc5FieldDecoder.ReadScalar<long>(id, ref reader, fieldMeta, columnMeta, palletData, commonData);
+        }
+
         if (type == typeof(ulong))
+        {
             return Wdc5FieldDecoder.ReadScalar<ulong>(id, ref reader, fieldMeta, columnMeta, palletData, commonData);
+        }
+
         if (type == typeof(float))
+        {
             return Wdc5FieldDecoder.ReadScalar<float>(id, ref reader, fieldMeta, columnMeta, palletData, commonData);
+        }
+
         if (type == typeof(double))
+        {
             return (double)Wdc5FieldDecoder.ReadScalar<float>(id, ref reader, fieldMeta, columnMeta, palletData, commonData);
+        }
 
         throw new NotSupportedException($"Unsupported scalar type {type.FullName}.");
     }
@@ -1523,23 +1725,49 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
     private object GetArrayBoxed(Wdc5RowReader readerAtStart, Type elementType, int fieldIndex)
     {
         if (elementType == typeof(byte))
+        {
             return ReadArray<byte>(readerAtStart, fieldIndex);
+        }
+
         if (elementType == typeof(sbyte))
+        {
             return ReadArray<sbyte>(readerAtStart, fieldIndex);
+        }
+
         if (elementType == typeof(short))
+        {
             return ReadArray<short>(readerAtStart, fieldIndex);
+        }
+
         if (elementType == typeof(ushort))
+        {
             return ReadArray<ushort>(readerAtStart, fieldIndex);
+        }
+
         if (elementType == typeof(int))
+        {
             return ReadArray<int>(readerAtStart, fieldIndex);
+        }
+
         if (elementType == typeof(uint))
+        {
             return ReadArray<uint>(readerAtStart, fieldIndex);
+        }
+
         if (elementType == typeof(long))
+        {
             return ReadArray<long>(readerAtStart, fieldIndex);
+        }
+
         if (elementType == typeof(ulong))
+        {
             return ReadArray<ulong>(readerAtStart, fieldIndex);
+        }
+
         if (elementType == typeof(float))
+        {
             return ReadArray<float>(readerAtStart, fieldIndex);
+        }
 
         throw new NotSupportedException($"Unsupported array element type {elementType.FullName}.");
     }
@@ -1547,7 +1775,9 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
     private T[] ReadArray<T>(Wdc5RowReader readerAtStart, int fieldIndex) where T : unmanaged
     {
         if ((uint)fieldIndex >= (uint)Header.FieldsCount)
+        {
             throw new ArgumentOutOfRangeException(nameof(fieldIndex));
+        }
 
         var localReader2 = MoveToFieldStart(fieldIndex, readerAtStart);
         ref readonly var fieldMeta2 = ref FieldMeta[fieldIndex];
@@ -1565,7 +1795,10 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
     private bool TryGetString(Wdc5Section section, int rowIndexInSection, int globalRowIndex, Wdc5RowReader readerAtStart, ReadOnlySpan<byte> recordBytes, int rowEndExclusive, int id, int fieldIndex, out string value)
     {
         if ((uint)fieldIndex >= (uint)Header.FieldsCount)
+        {
             throw new ArgumentOutOfRangeException(nameof(fieldIndex));
+        }
+
         return TryGetDenseString(section, globalRowIndex, readerAtStart, id, fieldIndex, out value) ||
                TryGetInlineString(section, rowIndexInSection, readerAtStart, recordBytes, rowEndExclusive, id, fieldIndex, out value);
     }
@@ -1579,7 +1812,9 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
         }
 
         if ((uint)fieldIndex >= (uint)Header.FieldsCount)
+        {
             throw new ArgumentOutOfRangeException(nameof(fieldIndex));
+        }
 
         var localReader2 = MoveToFieldStart(fieldIndex, readerAtStart);
         ref readonly var fieldMeta2 = ref FieldMeta[fieldIndex];
@@ -1607,7 +1842,9 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
         var stringIndex = recordOffset + fieldStartBytes + offset;
 
         if (stringIndex < 0)
+        {
             stringIndex = 0;
+        }
 
         if (stringIndex < section.StringTableBaseOffset)
         {
@@ -1623,7 +1860,9 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
         }
 
         if (!DenseStringTableBytes.IsEmpty)
+        {
             return TryReadNullTerminatedUtf8(DenseStringTableBytes.Span, startIndex: (int)stringIndex, endExclusive: sectionEndExclusive, out value);
+        }
 
         var fileOffset = checked((long)section.Header.FileOffset + section.RecordDataSizeBytes + (stringIndex - section.StringTableBaseOffset));
         var sectionStringsEnd = checked((long)section.Header.FileOffset + section.RecordDataSizeBytes + section.Header.StringTableSize);
@@ -1639,7 +1878,9 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
         }
 
         if ((uint)fieldIndex >= (uint)Header.FieldsCount)
+        {
             throw new ArgumentOutOfRangeException(nameof(fieldIndex));
+        }
 
         int fieldStart2;
         if (!section.IsDecryptable)
@@ -1650,13 +1891,17 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
         {
             var localReader2 = readerAtStart;
             for (var i = 0; i < fieldIndex; i++)
+            {
                 SkipSparseField(ref localReader2, i, recordBytes, rowEndExclusive, id);
+            }
 
             fieldStart2 = localReader2.PositionBits >> 3;
         }
 
         if (fieldStart2 >= 0 && fieldStart2 < rowEndExclusive && TryReadNullTerminatedUtf8(recordBytes, startIndex: fieldStart2, endExclusive: rowEndExclusive, out value))
+        {
             return true;
+        }
 
         value = string.Empty;
         return false;
@@ -1673,7 +1918,9 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
                 {
                     var bitSize = 32 - fieldMeta.Bits;
                     if (bitSize <= 0)
+                    {
                         bitSize = columnMeta.Immediate.BitWidth;
+                    }
 
                     if (bitSize == 32)
                     {
@@ -1748,7 +1995,9 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
             var remaining = (int)Math.Min(tmp.Length, endExclusive - stream.Position);
             var read = stream.Read(tmp[..remaining]);
             if (read <= 0)
+            {
                 break;
+            }
 
             var slice = tmp[..read];
             var terminatorIndex = slice.IndexOf((byte)0);
@@ -1790,7 +2039,9 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
     {
         var bitSize = 32 - fieldMeta.Bits;
         if (bitSize <= 0)
+        {
             bitSize = columnMeta.Immediate.BitWidth;
+        }
 
         var elementCount = columnMeta.Size / (Unsafe.SizeOf<T>() * 8);
         var array = new T[elementCount];
@@ -1830,10 +2081,14 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
         public void Dispose()
         {
             if (_buffer is null)
+            {
                 return;
+            }
 
             if (_clearLength > 0 && _clearLength <= _buffer.Length)
+            {
                 Array.Clear(_buffer, 0, _clearLength);
+            }
 
             ArrayPool<byte>.Shared.Return(_buffer);
         }
@@ -1842,20 +2097,30 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
     private static DecryptedRowLease DecryptRowBytes(Wdc5Section section, int rowStartByte, int rowSizeBytes, int nonceId)
     {
         if (!section.IsDecryptable)
+        {
             throw new InvalidOperationException("Section is not decryptable.");
+        }
 
         if (rowStartByte < 0)
+        {
             throw new InvalidDataException("Row start byte is negative.");
+        }
 
         if (rowSizeBytes < 0)
+        {
             throw new InvalidDataException("Row size is negative.");
+        }
 
         if (section.RecordsData is null)
+        {
             throw new InvalidOperationException("Record bytes are not materialized for this section.");
+        }
 
         var endExclusive = (long)rowStartByte + rowSizeBytes;
         if (endExclusive < 0 || endExclusive > section.RecordsData.Length)
+        {
             throw new InvalidDataException("Encrypted WDC5 row points outside section record data.");
+        }
 
         var ciphertext = section.RecordsData.AsSpan(rowStartByte, rowSizeBytes);
         return DecryptRowBytes(ciphertext, nonceId, section.TactKey.Span);
@@ -1865,7 +2130,9 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
     {
         var rowSizeBytes = ciphertext.Length;
         if (rowSizeBytes < 0)
+        {
             throw new InvalidDataException("Row size is negative.");
+        }
 
         var buffer = ArrayPool<byte>.Shared.Rent(rowSizeBytes + 8);
         var dst = buffer.AsSpan(0, rowSizeBytes);

@@ -50,7 +50,9 @@ internal static class TestHelpers
     {
         var env = Environment.GetEnvironmentVariable("WOW_VERSION");
         if (!string.IsNullOrWhiteSpace(env))
+        {
             return env.Trim();
+        }
 
         return DefaultWowVersion;
     }

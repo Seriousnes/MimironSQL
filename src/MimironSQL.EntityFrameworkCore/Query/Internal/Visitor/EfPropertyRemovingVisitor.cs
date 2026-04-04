@@ -23,7 +23,9 @@ internal sealed class EfPropertyRemovingVisitor(ParameterExpression queryContext
             var propertyName = Visit(node.Arguments[1]);
 
             if (propertyName.Type != typeof(string))
+            {
                 propertyName = Expression.Convert(propertyName, typeof(string));
+            }
 
             return Expression.Call(
                 EvaluateEfPropertyMethodInfo.MakeGenericMethod(propertyType),
@@ -51,11 +53,15 @@ internal sealed class EfPropertyRemovingVisitor(ParameterExpression queryContext
 
         var p = t.GetProperty(propertyName, InstanceAnyVisibility);
         if (p is not null)
+        {
             return (TProperty?)p.GetValue(entity);
+        }
 
         var f = t.GetField(propertyName, InstanceAnyVisibility);
         if (f is not null)
+        {
             return (TProperty?)f.GetValue(entity);
+        }
 
         // Shadow property fallback: use EF Core's entry APIs.
         var dbContext = GetDbContext(queryContext);
@@ -71,7 +77,9 @@ internal sealed class EfPropertyRemovingVisitor(ParameterExpression queryContext
         var t = queryContext.GetType();
         var contextProperty = t.GetProperty("Context", InstanceAnyVisibility);
         if (contextProperty?.GetValue(queryContext) is DbContext dbContext)
+        {
             return dbContext;
+        }
 
         throw new NotSupportedException(
             $"MimironDb2 could not read DbContext from QueryContext type '{t.FullName}' while evaluating EF.Property().");

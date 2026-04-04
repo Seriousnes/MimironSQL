@@ -91,13 +91,22 @@ internal readonly struct WowVersion(int major, int minor, int patch, int build, 
     public int CompareTo(WowVersion other)
     {
         var major = Major.CompareTo(other.Major);
-        if (major != 0) return major;
+        if (major != 0)
+        {
+            return major;
+        }
 
         var minor = Minor.CompareTo(other.Minor);
-        if (minor != 0) return minor;
+        if (minor != 0)
+        {
+            return minor;
+        }
 
         var patch = Patch.CompareTo(other.Patch);
-        if (patch != 0) return patch;
+        if (patch != 0)
+        {
+            return patch;
+        }
 
         return Build.CompareTo(other.Build);
     }

@@ -10,7 +10,9 @@ internal static class TypeExtensions
         type = type.UnwrapNullable();
 
         if (type.IsEnum)
+        {
             return true;
+        }
 
         return type.IsPrimitive
             || type == typeof(string)

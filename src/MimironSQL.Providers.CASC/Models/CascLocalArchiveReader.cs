@@ -18,7 +18,9 @@ internal sealed partial class CascLocalArchiveReader
     {
         ArgumentNullException.ThrowIfNull(dataDataDirectory);
         if (!Directory.Exists(dataDataDirectory))
+        {
             throw new DirectoryNotFoundException(dataDataDirectory);
+        }
 
         _dataDataDirectory = dataDataDirectory;
         _activeIdxPathByBucket = SelectActiveIdxPathsByBucket(dataDataDirectory);
@@ -31,11 +33,15 @@ internal sealed partial class CascLocalArchiveReader
 
         var bucket = CascBucket.GetBucketIndex(keyBytes);
         if (TryGetIdx(bucket) is { } idx && TryFindEntry(idx, keyBytes, out entry))
+        {
             return true;
+        }
 
         var crossBucket = CascBucket.GetBucketIndexCrossReference(keyBytes);
         if (TryGetIdx(crossBucket) is { } crossIdx && TryFindEntry(crossIdx, keyBytes, out entry))
+        {
             return true;
+        }
 
         entry = default;
         return false;
@@ -44,7 +50,9 @@ internal sealed partial class CascLocalArchiveReader
     private CascIdxFile? TryGetIdx(byte bucket)
     {
         if (!_activeIdxPathByBucket.TryGetValue(bucket, out var path))
+        {
             return null;
+        }
 
         var lazy = IdxByPathCache.GetOrAdd(path, static p => new Lazy<CascIdxFile>(() => ReadIdx(p)));
         return lazy.Value;
@@ -59,11 +67,15 @@ internal sealed partial class CascLocalArchiveReader
     public async Task<byte[]> ReadBlteBytesAsync(CascKey ekey, CancellationToken cancellationToken = default)
     {
         if (!TryGetEncodedLocation(ekey, out var entry))
+        {
             throw new KeyNotFoundException($"EKey not found in local .idx journals: {ekey}");
+        }
 
         var dataPath = Path.Combine(_dataDataDirectory, $"data.{entry.ArchiveIndex:D3}");
         if (!File.Exists(dataPath))
+        {
             throw new FileNotFoundException("CASC data archive not found", dataPath);
+        }
 
         await using var fs = new FileStream(
             dataPath,
@@ -83,7 +95,9 @@ internal sealed partial class CascLocalArchiveReader
 
         int blteSize = checked((int)entry.Size);
         if (blteSize <= 0)
+        {
             throw new InvalidDataException("Invalid encoded size.");
+        }
 
         bool isBlteAtOffset = sig[0] == (byte)'B' && sig[1] == (byte)'L' && sig[2] == (byte)'T' && sig[3] == (byte)'E';
         if (isBlteAtOffset)
@@ -117,11 +131,15 @@ internal sealed partial class CascLocalArchiveReader
             }
 
             if (blteOffset < 0)
+            {
                 throw new InvalidDataException("Unable to locate BLTE signature within archive record.");
+            }
 
             int blteLen = blteSize - blteOffset;
             if (blteLen <= 0)
+            {
                 throw new InvalidDataException("Invalid BLTE length.");
+            }
 
             var blteBytes = new byte[blteLen];
             fs.Seek(entry.Offset + blteOffset, SeekOrigin.Begin);
@@ -138,7 +156,9 @@ internal sealed partial class CascLocalArchiveReader
     {
         var keyLen = idx.Header.Spec.Key;
         if (keyLen <= 0 || keyLen > CascKey.Length)
+        {
             throw new InvalidDataException("Unsupported idx key prefix length.");
+        }
 
         var prefix = ekeyBytes[..keyLen];
         var entries = idx.Entries;
@@ -157,9 +177,13 @@ internal sealed partial class CascLocalArchiveReader
             }
 
             if (cmp < 0)
+            {
                 hi = mid - 1;
+            }
             else
+            {
                 lo = mid + 1;
+            }
         }
 
         entry = default;
@@ -173,7 +197,9 @@ internal sealed partial class CascLocalArchiveReader
         {
             int diff = a[i] - b[i];
             if (diff != 0)
+            {
                 return diff;
+            }
         }
         return a.Length - b.Length;
     }
@@ -189,14 +215,20 @@ internal sealed partial class CascLocalArchiveReader
         {
             var fileName = Path.GetFileNameWithoutExtension(path);
             if (fileName.Length != 10)
+            {
                 continue;
+            }
 
             var m = IdxNameRegex.Match(fileName);
             if (!m.Success)
+            {
                 continue;
+            }
 
             if (!byte.TryParse(m.Groups["bucket"].Value, System.Globalization.NumberStyles.HexNumber, null, out var bucket))
+            {
                 continue;
+            }
 
             uint? version = uint.TryParse(m.Groups["version"].Value, System.Globalization.NumberStyles.HexNumber, null, out var v)
                 ? v
@@ -215,7 +247,9 @@ internal sealed partial class CascLocalArchiveReader
         for (byte bucket = 0; bucket < 16; bucket++)
         {
             if (!candidatesByBucket.TryGetValue(bucket, out var list) || list.Count == 0)
+            {
                 continue;
+            }
 
             if (shmemVersions is not null && shmemVersions.Length == 16)
             {
@@ -242,7 +276,9 @@ internal sealed partial class CascLocalArchiveReader
     private static uint[]? TryReadShmemVersions(string shmemPath)
     {
         if (!File.Exists(shmemPath))
+        {
             return null;
+        }
 
         CascShmemFile shmem;
         try
@@ -256,11 +292,15 @@ internal sealed partial class CascLocalArchiveReader
         }
 
         if (shmem.IdxVersions.Count != 16)
+        {
             return null;
+        }
 
         var versions = new uint[16];
         for (int i = 0; i < versions.Length; i++)
+        {
             versions[i] = shmem.IdxVersions[i];
+        }
 
         return versions;
     }

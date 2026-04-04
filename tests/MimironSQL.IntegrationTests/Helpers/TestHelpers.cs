@@ -27,11 +27,38 @@ internal static class TestHelpers
         return optionsBuilder;
     }
 
+    public static string CreateCustomIndexCacheDirectory(string scope)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(scope);
+
+        var path = Path.Combine(
+            Path.GetTempPath(),
+            "MimironSQL.IntegrationTests",
+            "custom-indexes",
+            scope,
+            Guid.NewGuid().ToString("N"));
+
+        Directory.CreateDirectory(path);
+        return path;
+    }
+
+    public static void DeleteDirectoryIfExists(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path) || !Directory.Exists(path))
+        {
+            return;
+        }
+
+        Directory.Delete(path, recursive: true);
+    }
+
     private static string ResolveWowVersion()
     {
         var env = Environment.GetEnvironmentVariable("WOW_VERSION");
         if (!string.IsNullOrWhiteSpace(env))
+        {
             return env.Trim();
+        }
 
         var repoRoot = FindRepoRoot();
         var envPath = Path.Combine(repoRoot, "tests", "MimironSQL.IntegrationTests", ".env");
@@ -46,22 +73,32 @@ internal static class TestHelpers
         {
             var line = rawLine.Trim();
             if (line.Length == 0 || line.StartsWith('#'))
+            {
                 continue;
+            }
 
             var equals = line.IndexOf('=');
             if (equals <= 0)
+            {
                 continue;
+            }
 
             var key = line[..equals].Trim();
             if (!string.Equals(key, "WOW_VERSION", StringComparison.OrdinalIgnoreCase))
+            {
                 continue;
+            }
 
             var value = line[(equals + 1)..].Trim();
             if (value.Length >= 2 && value[0] == '"' && value[^1] == '"')
+            {
                 value = value[1..^1];
+            }
 
             if (string.IsNullOrWhiteSpace(value))
+            {
                 break;
+            }
 
             return value;
         }
@@ -77,7 +114,9 @@ internal static class TestHelpers
         for (var i = 0; i < 20 && dir is not null; i++)
         {
             if (File.Exists(Path.Combine(dir.FullName, "MimironSQL.slnx")))
+            {
                 return dir.FullName;
+            }
 
             dir = dir.Parent;
         }

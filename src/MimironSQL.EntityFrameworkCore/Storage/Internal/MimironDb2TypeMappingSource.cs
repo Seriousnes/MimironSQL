@@ -8,7 +8,9 @@ internal sealed class MimironDb2TypeMappingSource(TypeMappingSourceDependencies 
     {
         var clrType = mappingInfo.ClrType;
         if (clrType is null)
+        {
             return null;
+        }
 
         var jsonValueReaderWriter = Dependencies.JsonValueReaderWriterSource.FindReaderWriter(clrType);
 

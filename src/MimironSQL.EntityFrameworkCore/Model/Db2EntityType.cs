@@ -43,7 +43,9 @@ internal sealed class Db2EntityType(
     internal Db2FieldSchema ResolveFieldSchema(MemberInfo member, string context)
     {
         if (!TryResolveFieldSchema(member, out var fieldSchema))
+        {
             throw new NotSupportedException($"Field mapping for member '{ClrType.FullName}.{member.Name}' could not be resolved in schema '{Schema.TableName}' ({context}).");
+        }
 
         return fieldSchema;
     }
@@ -51,7 +53,9 @@ internal sealed class Db2EntityType(
     private string ResolveColumnName(PropertyInfo property)
     {
         if (_columnNameMappings.TryGetValue(property.Name, out var configured))
+        {
             return configured;
+        }
 
         var attr = property.GetCustomAttribute<ColumnAttribute>(inherit: false);
         return attr switch
@@ -68,7 +72,9 @@ internal sealed class Db2EntityType(
 
         var idFieldSchema = schema.Fields.FirstOrDefault(f => f.IsId);
         if (idFieldSchema.Equals(default) || string.IsNullOrWhiteSpace(idFieldSchema.Name))
+        {
             throw new NotSupportedException($"Id field was not found in schema '{schema.TableName}'.");
+        }
 
         return new Db2EntityType(
             clrType: ClrType,

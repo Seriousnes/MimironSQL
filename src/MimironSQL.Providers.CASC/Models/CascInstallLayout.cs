@@ -35,7 +35,9 @@ internal static class CascInstallLayoutDetector
     {
         ArgumentNullException.ThrowIfNull(installRoot);
         if (!Directory.Exists(installRoot))
+        {
             throw new DirectoryNotFoundException(installRoot);
+        }
 
         // .build.info may live in shared-storage root (installRoot) or inside flavor dir.
         var buildInfoCandidates = new[]
@@ -51,13 +53,17 @@ internal static class CascInstallLayoutDetector
         {
             var dirName = Path.GetFileName(candidateDir);
             if (string.IsNullOrWhiteSpace(dirName) || !dirName.StartsWith('_'))
+            {
                 continue;
+            }
 
             var dataDir = Path.Combine(candidateDir, "Data");
             var dataDataDir = Path.Combine(dataDir, "data");
             var dataConfigDir = Path.Combine(dataDir, "config");
             if (!Directory.Exists(dataDataDir) || !Directory.Exists(dataConfigDir))
+            {
                 continue;
+            }
 
             var flavorInfo = Path.Combine(candidateDir, ".flavor.info");
             var product = File.Exists(flavorInfo) ? CascFlavorInfo.ReadProduct(flavorInfo) : "wow";

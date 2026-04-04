@@ -12,7 +12,9 @@ internal static class Wdc5FieldDecoder
                 {
                     var bitSize = 32 - fieldMeta.Bits;
                     if (bitSize <= 0)
+                    {
                         bitSize = columnMeta.Immediate.BitWidth;
+                    }
 
                     return reader.ReadUInt64(bitSize);
                 }
@@ -23,7 +25,9 @@ internal static class Wdc5FieldDecoder
             case CompressionType.Common:
                 {
                     if (commonData.TryGetValue(id, out var value))
+                    {
                         return value;
+                    }
 
                     return columnMeta.Common.DefaultValue;
                 }
@@ -55,7 +59,9 @@ internal static class Wdc5FieldDecoder
                 {
                     var bitSize = 32 - fieldMeta.Bits;
                     if (bitSize <= 0)
+                    {
                         bitSize = columnMeta.Immediate.BitWidth;
+                    }
 
                     var raw = reader.ReadUInt64(bitSize);
                     return Wdc5Value.UnsafeRead<T>(raw);
@@ -73,7 +79,10 @@ internal static class Wdc5FieldDecoder
             case CompressionType.Common:
                 {
                     if (commonData.TryGetValue(id, out var value))
+                    {
                         return Wdc5Value.UnsafeRead32<T>(value);
+                    }
+
                     return Wdc5Value.UnsafeRead32<T>(columnMeta.Common.DefaultValue);
                 }
             case CompressionType.Pallet:

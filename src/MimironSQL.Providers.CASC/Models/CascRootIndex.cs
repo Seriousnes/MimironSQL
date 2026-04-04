@@ -32,19 +32,27 @@ internal sealed class CascRootIndex
     public static CascRootIndex Parse(ReadOnlySpan<byte> decodedRootFile)
     {
         if (decodedRootFile.Length < 4)
+        {
             throw new InvalidDataException("ROOT file too small.");
+        }
 
         // Modern WoW ROOT begins with TSFM. Some older tooling/documentation references MFST,
         // but the on-disk signature for WoW is typically TSFM.
         if (LooksLikeMfstHeader(decodedRootFile))
+        {
             return ParseMfst(decodedRootFile);
+        }
 
         if (decodedRootFile.Length >= 4 && TagEquals(decodedRootFile[..4], "TVFS"))
+        {
             throw new NotSupportedException("TVFS ROOT format detected. This provider currently supports only TSFM/MFST ROOT parsing.");
+        }
 
         // Fallback for nonstandard/older layouts where the TSFM/MFST payload is embedded in a chunk stream.
         if (TryExtractMfstChunk(decodedRootFile, out var mfstBytes))
+        {
             return ParseMfst(mfstBytes);
+        }
 
         var preview = PreviewHex(decodedRootFile, 64);
         var sig = decodedRootFile.Length >= 4
@@ -64,7 +72,9 @@ internal sealed class CascRootIndex
     private static int IndexOfTag(ReadOnlySpan<byte> span, string tag)
     {
         if (tag.Length != 4)
+        {
             throw new ArgumentException("Tag must be 4 chars.", nameof(tag));
+        }
 
         for (int i = 0; i + 4 <= span.Length; i++)
         {
@@ -72,7 +82,9 @@ internal sealed class CascRootIndex
                 span[i + 1] == (byte)tag[1] &&
                 span[i + 2] == (byte)tag[2] &&
                 span[i + 3] == (byte)tag[3])
+            {
                 return i;
+            }
         }
 
         return -1;
@@ -97,7 +109,9 @@ internal sealed class CascRootIndex
             offset += 8;
 
             if (size > int.MaxValue || offset + (int)size > decodedRootFile.Length)
+            {
                 break;
+            }
 
             var payload = decodedRootFile.Slice(offset, (int)size);
             offset += (int)size;
@@ -143,7 +157,9 @@ internal sealed class CascRootIndex
         int offset = 0;
 
         if (!LooksLikeMfstHeader(mfst))
+        {
             throw new InvalidDataException("TSFM header signature not found.");
+        }
 
         offset += 4; // Signature
 
@@ -185,12 +201,16 @@ internal sealed class CascRootIndex
         if (offset == 4)
         {
             if (mfst.Length < 12)
+            {
                 throw new InvalidDataException("TSFM header too small.");
+            }
 
             uint totalFiles = BinaryPrimitives.ReadUInt32LittleEndian(mfst.Slice(4, 4));
             uint filesWithNameHash = BinaryPrimitives.ReadUInt32LittleEndian(mfst.Slice(8, 4));
             if (filesWithNameHash > totalFiles)
+            {
                 throw new InvalidDataException("Invalid TSFM header (named files exceed total files).");
+            }
 
             rootVersion = 0;
             totalFilesHint = totalFiles;
@@ -205,16 +225,22 @@ internal sealed class CascRootIndex
         while (offset < mfst.Length)
         {
             if (offset + 4 > mfst.Length)
+            {
                 break;
+            }
 
             uint numberOfFiles = BinaryPrimitives.ReadUInt32LittleEndian(mfst.Slice(offset, 4));
             offset += 4;
 
             if (numberOfFiles == 0)
+            {
                 continue;
+            }
 
             if (numberOfFiles > int.MaxValue)
+            {
                 break;
+            }
 
             int recordCount = (int)numberOfFiles;
 
@@ -226,7 +252,9 @@ internal sealed class CascRootIndex
                 // Packed group header (build 58221+):
                 // [u32 NumberOfFiles][u32 LocaleFlags][u32 Flags1][u32 Flags2][u8 Flags3]
                 if (offset + 13 > mfst.Length)
+                {
                     break;
+                }
 
                 locale = BinaryPrimitives.ReadUInt32LittleEndian(mfst.Slice(offset, 4));
                 uint flags1 = BinaryPrimitives.ReadUInt32LittleEndian(mfst.Slice(offset + 4, 4));
@@ -240,7 +268,9 @@ internal sealed class CascRootIndex
             {
                 // Legacy group header: [u32 ContentFlags][u32 LocaleFlags]
                 if (offset + 8 > mfst.Length)
+                {
                     break;
+                }
 
                 flags = BinaryPrimitives.ReadUInt32LittleEndian(mfst.Slice(offset, 4));
                 locale = BinaryPrimitives.ReadUInt32LittleEndian(mfst.Slice(offset + 4, 4));
@@ -250,7 +280,9 @@ internal sealed class CascRootIndex
             // FileDataId delta array.
             long deltasBytes = (long)recordCount * 4;
             if (offset + deltasBytes > mfst.Length)
+            {
                 break;
+            }
 
             var deltas = mfst.Slice(offset, (int)deltasBytes);
             offset += (int)deltasBytes;
@@ -258,7 +290,9 @@ internal sealed class CascRootIndex
             // Content keys.
             long ckeyBytes = (long)recordCount * CascKey.Length;
             if (offset + ckeyBytes > mfst.Length)
+            {
                 break;
+            }
 
             var contentKeys = mfst.Slice(offset, (int)ckeyBytes);
             offset += (int)ckeyBytes;
@@ -269,7 +303,10 @@ internal sealed class CascRootIndex
             {
                 long nameHashBytes = (long)recordCount * 8;
                 if (offset + nameHashBytes > mfst.Length)
+                {
                     break;
+                }
+
                 offset += (int)nameHashBytes;
             }
 
@@ -289,14 +326,18 @@ internal sealed class CascRootIndex
                 }
 
                 if (fdid < 0)
+                {
                     break;
+                }
 
                 var ckeySpan = contentKeys.Slice(i * CascKey.Length, CascKey.Length);
                 var ckey = new CascKey(ckeySpan);
 
                 var candidateRank = Rank(flags, locale);
                 if (!best.TryGetValue(fdid, out var existing) || candidateRank < existing.rank)
+                {
                     best[fdid] = (ckey, candidateRank);
+                }
 
                 // CascLib advances by one after each record.
                 fileDataIndex = fdid + 1;
@@ -306,7 +347,10 @@ internal sealed class CascRootIndex
 
         var map = new Dictionary<int, CascKey>(best.Count);
         foreach (var (fdid, entry) in best)
+        {
             map[fdid] = entry.contentKey;
+        }
+
         return new CascRootIndex(map);
     }
 
@@ -316,11 +360,20 @@ internal sealed class CascRootIndex
         // Priority: non-encrypted, then enUS, then LoadOnWindows.
         byte rank = 0;
         if ((flags & FlagEncrypted) != 0)
+        {
             rank |= 0b100;
+        }
+
         if ((locale & LocaleEnUs) == 0)
+        {
             rank |= 0b010;
+        }
+
         if ((flags & FlagLoadOnWindows) == 0)
+        {
             rank |= 0b001;
+        }
+
         return rank;
     }
 

@@ -20,7 +20,9 @@ sealed class JsonFileManifestProvider : IManifestProvider
     public Task EnsureManifestExistsAsync(CancellationToken cancellationToken = default)
     {
         if (!File.Exists(_manifestPath))
+        {
             throw new FileNotFoundException("Manifest not found", _manifestPath);
+        }
 
         return Task.CompletedTask;
     }
@@ -28,7 +30,9 @@ sealed class JsonFileManifestProvider : IManifestProvider
     public async Task<int?> TryResolveDb2FileDataIdAsync(string db2NameOrPath, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(db2NameOrPath))
+        {
             return null;
+        }
 
         var map = await GetMapAsync(cancellationToken).ConfigureAwait(false);
         var key = NormalizeToTableName(db2NameOrPath);
@@ -39,13 +43,17 @@ sealed class JsonFileManifestProvider : IManifestProvider
     private async Task<Dictionary<string, int>> GetMapAsync(CancellationToken cancellationToken)
     {
         if (_fileDataIdByTable is not null)
+        {
             return _fileDataIdByTable;
+        }
 
         await _lock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             if (_fileDataIdByTable is not null)
+            {
                 return _fileDataIdByTable;
+            }
 
             await using var stream = File.OpenRead(_manifestPath);
             using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken).ConfigureAwait(false);
@@ -53,14 +61,18 @@ sealed class JsonFileManifestProvider : IManifestProvider
             var result = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
 
             if (doc.RootElement.ValueKind != JsonValueKind.Array)
+            {
                 throw new InvalidOperationException("Manifest JSON root must be an array.");
+            }
 
             foreach (var element in doc.RootElement.EnumerateArray())
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
                 if (!TryGetString(element, "tableName", out var tableName))
+                {
                     continue;
+                }
 
                 if (!TryGetInt(element, "db2FileDataID", out var fdid)
                     && !TryGetInt(element, "db2FileDataId", out fdid))
@@ -85,13 +97,19 @@ sealed class JsonFileManifestProvider : IManifestProvider
         value = string.Empty;
 
         if (element.ValueKind != JsonValueKind.Object)
+        {
             return false;
+        }
 
         if (!element.TryGetProperty(propertyName, out var prop))
+        {
             return false;
+        }
 
         if (prop.ValueKind != JsonValueKind.String)
+        {
             return false;
+        }
 
         value = prop.GetString() ?? string.Empty;
         return value.Length > 0;
@@ -102,10 +120,14 @@ sealed class JsonFileManifestProvider : IManifestProvider
         value = 0;
 
         if (element.ValueKind != JsonValueKind.Object)
+        {
             return false;
+        }
 
         if (!element.TryGetProperty(propertyName, out var prop))
+        {
             return false;
+        }
 
         return prop.ValueKind switch
         {
@@ -127,7 +149,9 @@ sealed class JsonFileManifestProvider : IManifestProvider
         }
 
         if (value.EndsWith(".db2", StringComparison.OrdinalIgnoreCase))
+        {
             value = value[..^4];
+        }
 
         return value;
     }

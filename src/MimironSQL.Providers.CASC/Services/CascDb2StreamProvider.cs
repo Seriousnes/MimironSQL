@@ -60,12 +60,19 @@ public sealed class CascDb2StreamProvider : IDb2StreamProvider
         hasArchiveLocation = false;
 
         if (_root is null)
+        {
             return false;
+        }
+
         if (_archiveReader is null)
+        {
             return false;
+        }
 
         if (!_root.TryGetContentKey(fileDataId, out contentKey))
+        {
             return false;
+        }
 
         // ROOT flags/locale metadata is not retained.
         contentFlags = 0;
@@ -111,7 +118,9 @@ public sealed class CascDb2StreamProvider : IDb2StreamProvider
         var trimmed = tableName.Trim();
         var resolved = await _manifestProvider.TryResolveDb2FileDataIdAsync(trimmed, cancellationToken).ConfigureAwait(false);
         if (resolved is not { } fdid)
+        {
             throw new FileNotFoundException($"No .db2 file found for table '{trimmed}'.");
+        }
 
         return await OpenDb2ByFileDataIdAsync(fdid, cancellationToken).ConfigureAwait(false);
     }
@@ -121,7 +130,9 @@ public sealed class CascDb2StreamProvider : IDb2StreamProvider
         await EnsureInitializedAsync(cancellationToken).ConfigureAwait(false);
 
         if (_archiveReader is null || _encoding is null)
+        {
             throw new InvalidOperationException("Storage was not opened from an install root.");
+        }
 
         if (_encoding.TryGetEKeys(ckey, out var ekeys) && ekeys.Length > 0)
         {
@@ -133,7 +144,9 @@ public sealed class CascDb2StreamProvider : IDb2StreamProvider
                 {
                     var stream = await TryOpenDb2ByEKeyAsync(ekey, cancellationToken).ConfigureAwait(false);
                     if (stream is not null)
+                    {
                         return stream;
+                    }
                 }
                 catch (KeyNotFoundException ex)
                 {
@@ -149,11 +162,15 @@ public sealed class CascDb2StreamProvider : IDb2StreamProvider
             }
 
             if (lastDecodeException is not null)
+            {
                 throw lastDecodeException;
+            }
         }
 
         if (_encoding.TryGetEKey(ckey, out var resolvedEKey))
+        {
             return await TryOpenDb2ByEKeyAsync(resolvedEKey, cancellationToken).ConfigureAwait(false);
+        }
 
         return await TryOpenDb2ByEKeyAsync(ckey, cancellationToken).ConfigureAwait(false);
     }
@@ -167,7 +184,9 @@ public sealed class CascDb2StreamProvider : IDb2StreamProvider
         await EnsureInitializedAsync(cancellationToken).ConfigureAwait(false);
 
         if (_archiveReader is null)
+        {
             throw new InvalidOperationException("Storage was not opened from an install root.");
+        }
 
         byte[] blte;
         try
@@ -190,7 +209,9 @@ public sealed class CascDb2StreamProvider : IDb2StreamProvider
         }, TactKeyProvider: _tactKeyProvider, ThrowOnEncryptedBlockWithoutKey: _options.ThrowOnEncryptedBlockWithoutKey));
 
         if (skippedBlockCount > 0)
+        {
             EncryptedBlteBlocksSkipped?.Invoke(new CascStorageEncryptedBlteBlocksSkipped(ekey, skippedBlockCount, skippedLogicalBytes));
+        }
 
         return new MemoryStream(decoded, writable: false);
     }
@@ -204,10 +225,14 @@ public sealed class CascDb2StreamProvider : IDb2StreamProvider
         await EnsureInitializedAsync(cancellationToken).ConfigureAwait(false);
 
         if (_root is null)
+        {
             throw new InvalidOperationException("ROOT index was not loaded.");
+        }
 
         if (!_root.TryGetContentKey(fileDataId, out var ckey))
+        {
             return null;
+        }
 
         return await TryOpenDb2ByCKeyAsync(ckey, cancellationToken).ConfigureAwait(false);
     }
@@ -222,7 +247,9 @@ public sealed class CascDb2StreamProvider : IDb2StreamProvider
         try
         {
             if (_initialized)
+            {
                 return;
+            }
 
             await _manifestProvider.EnsureManifestExistsAsync(cancellationToken).ConfigureAwait(false);
 
@@ -260,7 +287,9 @@ public sealed class CascDb2StreamProvider : IDb2StreamProvider
             // Avoid cancellation poisoning: once we begin caching a state for a given install/build,
             // we want it to complete and be reused for subsequent callers.
             if (buildConfig.EncodingEKey is not { } encodingEKey)
+            {
                 throw new NotSupportedException("Build config did not include an ENCODING EKey; local-only resolution is not implemented for this case.");
+            }
 
             var normalizedDataDataDirectory = NormalizeDataDirectoryKey(dataDataDirectory);
             var cacheKey = new CascInstallCacheKey(normalizedDataDataDirectory, encodingEKey, buildConfig.RootCKey, buildConfig.RootEKey);

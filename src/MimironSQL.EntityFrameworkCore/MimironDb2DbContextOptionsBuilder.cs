@@ -52,4 +52,7 @@ public sealed class MimironDb2DbContextOptionsBuilder : IMimironDb2DbContextOpti
 
     internal void SetEagerSparseOffsetTable(bool eagerSparseOffsetTable)
         => Extension = Extension.WithEagerSparseOffsetTable(eagerSparseOffsetTable);
+
+    internal void SetCustomIndexes(bool enableCustomIndexes, string? cacheDirectory)
+        => Extension = Extension.WithCustomIndexes(enableCustomIndexes, cacheDirectory);
 }

@@ -24,7 +24,9 @@ internal sealed class IncludeExpressionExtractingVisitor : ExpressionVisitor
             _ = Visit(includeExpression.NavigationExpression);
 
             if (includeExpression.Navigation is not INavigationBase navigation)
+            {
                 throw new NotSupportedException("MimironDb2 IncludeExpression without INavigationBase navigation is not supported.");
+            }
 
             // For ThenInclude, EntityExpression can be a collection type (e.g. IEnumerable<T>), which
             // would prevent matching materialized entity instances when executing includes.

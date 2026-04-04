@@ -20,7 +20,9 @@ internal sealed class ParameterSearchVisitor(ParameterExpression parameter) : Ex
     protected override Expression VisitParameter(ParameterExpression node)
     {
         if (node == _parameter)
+        {
             _found = true;
+        }
 
         return base.VisitParameter(node);
     }

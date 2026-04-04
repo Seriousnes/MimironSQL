@@ -18,10 +18,14 @@ internal sealed class CorrelatedNavigationRemovingVisitor(ParameterExpression qu
         // and rewrite them into cached set-based evaluation which does not contain EntityQueryRootExpression.
 
         if (TryRewriteCorrelatedAny(node, out var rewrittenAny))
+        {
             return rewrittenAny;
+        }
 
         if (TryRewriteCorrelatedCount(node, out var rewrittenCount))
+        {
             return rewrittenCount;
+        }
 
         return base.VisitMethodCall(node);
     }
@@ -31,23 +35,31 @@ internal sealed class CorrelatedNavigationRemovingVisitor(ParameterExpression qu
         rewritten = null!;
 
         if (node.Method.Name != nameof(Queryable.Any) || node.Method.DeclaringType != typeof(Queryable))
+        {
             return false;
+        }
 
         if (node.Arguments.Count is not (1 or 2))
+        {
             return false;
+        }
 
         var source = node.Arguments[0];
         var dependentPredicate = node.Arguments.Count == 2 ? StripQuote(node.Arguments[1]) as LambdaExpression : null;
 
         if (!TryGetCorrelatedWhere(source, out var innerClrType, out var innerKeyName, out var outerKeyExpression))
+        {
             return false;
+        }
 
         var outerKey = Visit(outerKeyExpression);
         var outerKeyType = outerKey.Type;
 
         Func<QueryContext, object, bool>? compiledDependent = null;
         if (dependentPredicate is not null)
+        {
             compiledDependent = CompileInnerPredicate(innerClrType, dependentPredicate);
+        }
 
         var method = CorrelatedNavigationEvaluator.CorrelatedAnyMethodInfo.MakeGenericMethod(innerClrType, outerKeyType);
         rewritten = Expression.Call(
@@ -67,23 +79,31 @@ internal sealed class CorrelatedNavigationRemovingVisitor(ParameterExpression qu
         rewritten = null!;
 
         if (node.Method.Name != nameof(Queryable.Count) || node.Method.DeclaringType != typeof(Queryable))
+        {
             return false;
+        }
 
         if (node.Arguments.Count is not (1 or 2))
+        {
             return false;
+        }
 
         var source = node.Arguments[0];
         var dependentPredicate = node.Arguments.Count == 2 ? StripQuote(node.Arguments[1]) as LambdaExpression : null;
 
         if (!TryGetCorrelatedWhere(source, out var innerClrType, out var innerKeyName, out var outerKeyExpression))
+        {
             return false;
+        }
 
         var outerKey = Visit(outerKeyExpression);
         var outerKeyType = outerKey.Type;
 
         Func<QueryContext, object, bool>? compiledDependent = null;
         if (dependentPredicate is not null)
+        {
             compiledDependent = CompileInnerPredicate(innerClrType, dependentPredicate);
+        }
 
         var method = CorrelatedNavigationEvaluator.CorrelatedCountMethodInfo.MakeGenericMethod(innerClrType, outerKeyType);
         rewritten = Expression.Call(
@@ -101,7 +121,10 @@ internal sealed class CorrelatedNavigationRemovingVisitor(ParameterExpression qu
     private static Expression StripConvert(Expression expression)
     {
         while (expression is UnaryExpression { NodeType: ExpressionType.Convert or ExpressionType.ConvertChecked } u)
+        {
             expression = u.Operand;
+        }
+
         return expression;
     }
 
@@ -129,17 +152,23 @@ internal sealed class CorrelatedNavigationRemovingVisitor(ParameterExpression qu
         var whereSource = whereCall.Arguments[0];
         var wherePredicate = StripQuote(whereCall.Arguments[1]) as LambdaExpression;
         if (wherePredicate is null || wherePredicate.Parameters.Count != 1)
+        {
             return false;
+        }
 
         innerClrType = wherePredicate.Parameters[0].Type;
 
         // We expect correlation: inner => inner.FK == outerKey
         if (!TryExtractKeyEquality(wherePredicate, out innerKeyMemberName, out outerKeyExpression))
+        {
             return false;
+        }
 
         // Ensure this came from EF Core query root (best-effort): contains EntityQueryRootExpression in the source.
         if (!EntityQueryRootSearchVisitor.ContainsEntityQueryRoot(whereSource))
+        {
             return false;
+        }
 
         return true;
     }
@@ -216,7 +245,9 @@ internal sealed class CorrelatedNavigationRemovingVisitor(ParameterExpression qu
         right = null!;
 
         if (node.Method.Name != nameof(object.Equals))
+        {
             return false;
+        }
 
         // Static: bool object.Equals(object? objA, object? objB)
         if (node.Object is null && node.Arguments.Count == 2)

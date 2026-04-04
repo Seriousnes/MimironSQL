@@ -23,14 +23,20 @@ public sealed class DbdBuildBlock : IDbdBuildBlock
     internal void AppendBuildLine(string buildLine)
     {
         if (string.IsNullOrWhiteSpace(buildLine))
+        {
             return;
+        }
 
         var text = buildLine.Trim();
         if (text.StartsWith("BUILD ", StringComparison.Ordinal))
+        {
             text = text.Substring("BUILD ".Length).Trim();
+        }
 
         if (text.Length == 0)
+        {
             return;
+        }
 
         _buildLine = $"{BuildLine}, {text}";
     }
@@ -51,7 +57,9 @@ public sealed class DbdBuildBlock : IDbdBuildBlock
         foreach (var entry in Entries)
         {
             if (entry.IsNonInline)
+            {
                 continue;
+            }
 
             count++;
         }

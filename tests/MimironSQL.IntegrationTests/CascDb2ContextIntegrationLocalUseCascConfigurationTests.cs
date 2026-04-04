@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
 using MimironSQL.Dbd;
+using MimironSQL.EntityFrameworkCore;
 using MimironSQL.IntegrationTests.Helpers;
 using MimironSQL.Providers;
 
@@ -39,9 +40,11 @@ public sealed class CascDb2ContextIntegrationLocalUseCascConfigurationTests(Casc
     }    
 }
 
-public class CascDb2ContextIntegrationLocalUseCascConfigurationTestsFixture
+public sealed class CascDb2ContextIntegrationLocalUseCascConfigurationTestsFixture : IDisposable
 {
     public WoWDb2Context Context { get; }
+
+    public string IndexCacheDirectory { get; }
 
     public CascDb2ContextIntegrationLocalUseCascConfigurationTestsFixture()
     {
@@ -57,21 +60,34 @@ public class CascDb2ContextIntegrationLocalUseCascConfigurationTestsFixture
         var tactKeyFilePath = Path.Combine(testDataDir, "WoW.txt");
         File.Exists(tactKeyFilePath).ShouldBeTrue();
 
+        IndexCacheDirectory = TestHelpers.CreateCustomIndexCacheDirectory(nameof(CascDb2ContextIntegrationLocalUseCascConfigurationTestsFixture));
+
         var optionsBuilder = new DbContextOptionsBuilder<WoWDb2Context>();
-        optionsBuilder.UseMimironDb2ForTests(o => o.UseCasc(casc =>
+        optionsBuilder.UseMimironDb2ForTests(o =>
         {
-            casc.WowInstallRoot = wowInstallRoot;
+            o.WithCustomIndexes(indexes => indexes.CacheDirectory = IndexCacheDirectory);
+            o.UseCasc(casc =>
+            {
+                casc.WowInstallRoot = wowInstallRoot;
 
-            casc.ManifestProvider = new JsonFileManifestProvider(manifestPath);
+                casc.ManifestProvider = new JsonFileManifestProvider(manifestPath);
 
-            casc.DbdProviderFactory = sp =>
-                new FileSystemDbdProvider(
-                    new FileSystemDbdProviderOptions(Path.Combine(testDataDir, "definitions")),
-                    sp.GetRequiredService<IDbdParser>());
+                casc.DbdProviderFactory = sp =>
+                    new FileSystemDbdProvider(
+                        new FileSystemDbdProviderOptions(Path.Combine(testDataDir, "definitions")),
+                        sp.GetRequiredService<IDbdParser>());
 
-            casc.TactKeyFilePath = tactKeyFilePath;
-        }));
+                casc.TactKeyFilePath = tactKeyFilePath;
+            });
+        });
 
         Context = new WoWDb2Context(optionsBuilder.Options);
+        GC.KeepAlive(Context.Model);
+    }
+
+    public void Dispose()
+    {
+        Context.Dispose();
+        TestHelpers.DeleteDirectoryIfExists(IndexCacheDirectory);
     }
 }

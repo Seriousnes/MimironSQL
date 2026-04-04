@@ -96,7 +96,9 @@ internal sealed class MimironDb2Store : IMimironDb2Store, IDisposable
     private void ValidateLayout(string tableName, Db2TableSchema expectedSchema, Db2FileLayout actualLayout)
     {
         if (_relaxLayoutValidation)
+        {
             return;
+        }
 
         if (!expectedSchema.IsLayoutHashAllowed(actualLayout.LayoutHash))
         {
@@ -128,7 +130,9 @@ internal sealed class MimironDb2Store : IMimironDb2Store, IDisposable
         var (file, schema) = OpenTableWithSchema(tableName);
 
         if (file is not IDb2File<RowHandle> typed)
+        {
             throw new NotSupportedException($"Key lookups require row type '{typeof(RowHandle).FullName}', but file reports '{file.RowType.FullName}'.");
+        }
 
         if (!typed.TryGetRowById(id, out var handle))
         {
@@ -152,10 +156,14 @@ internal sealed class MimironDb2Store : IMimironDb2Store, IDisposable
         ArgumentNullException.ThrowIfNull(entityFactory);
 
         if (takeCount is 0 || ids.Count == 0)
+        {
             return [];
+        }
 
         if (takeCount is < 0)
+        {
             throw new ArgumentOutOfRangeException(nameof(takeCount), "Take count cannot be negative.");
+        }
 
         var maxCount = takeCount ?? int.MaxValue;
         var results = new List<TEntity>(capacity: Math.Min(ids.Count, maxCount));
@@ -163,7 +171,9 @@ internal sealed class MimironDb2Store : IMimironDb2Store, IDisposable
         var (file, schema) = OpenTableWithSchema(tableName);
 
         if (file is not IDb2File<RowHandle> typed)
+        {
             throw new NotSupportedException($"Key lookups require row type '{typeof(RowHandle).FullName}', but file reports '{file.RowType.FullName}'.");
+        }
 
         var db2EntityType = model.GetEntityType(typeof(TEntity)).WithSchema(tableName, schema);
         var materializer = new Db2EntityMaterializer<TEntity>(model, db2EntityType, entityFactory);
@@ -174,21 +184,29 @@ internal sealed class MimironDb2Store : IMimironDb2Store, IDisposable
         {
             var id = ids[i];
             if (!typed.TryGetRowById(id, out var handle))
+            {
                 continue;
+            }
 
             handles.Add(handle);
             if (handles.Count >= maxCount)
+            {
                 break;
+            }
         }
 
         if (handles.Count == 0)
+        {
             return [];
+        }
 
         handles.Sort(static (a, b) =>
         {
             var section = a.SectionIndex.CompareTo(b.SectionIndex);
             if (section != 0)
+            {
                 return section;
+            }
 
             return a.RowIndexInSection.CompareTo(b.RowIndexInSection);
         });
@@ -207,7 +225,9 @@ internal sealed class MimironDb2Store : IMimironDb2Store, IDisposable
         foreach (var entry in _fileCache.Values)
         {
             if (entry.IsValueCreated)
+            {
                 (entry.Value.File as IDisposable)?.Dispose();
+            }
         }
 
         _fileCache.Clear();
@@ -218,7 +238,9 @@ internal sealed class MimironDb2Store : IMimironDb2Store, IDisposable
         var (file, schema) = OpenTableWithSchema(tableName);
 
         if (file is IDb2File<TRow> typedFile)
+        {
             return (typedFile, schema);
+        }
 
         var requestedType = typeof(TRow);
         var actualType = file.RowType;

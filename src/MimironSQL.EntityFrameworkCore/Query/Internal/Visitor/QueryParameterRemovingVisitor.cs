@@ -31,7 +31,9 @@ internal sealed class QueryParameterRemovingVisitor(ParameterExpression queryCon
     {
         var name = GetQueryParameterName(queryParameterExpression);
         if (TryGetQueryContextParameterValues(queryContext, name, out var value))
+        {
             return value;
+        }
 
         throw new NotSupportedException(
             $"MimironDb2 could not read query parameter '{name}' from QueryContext during bootstrap execution.");
@@ -49,7 +51,9 @@ internal sealed class QueryParameterRemovingVisitor(ParameterExpression queryCon
             ?? nameField?.GetValue(queryParameterExpression) as string;
 
         if (string.IsNullOrWhiteSpace(name))
+        {
             throw new NotSupportedException($"MimironDb2 could not read parameter name from QueryParameterExpression type '{t.FullName}'.");
+        }
 
         return name;
     }
@@ -65,7 +69,9 @@ internal sealed class QueryParameterRemovingVisitor(ParameterExpression queryCon
             foreach (var p in t.GetProperties(InstanceAnyVisibility))
             {
                 if (p.GetIndexParameters().Length != 0)
+                {
                     continue;
+                }
 
                 object? candidate;
                 try
@@ -78,7 +84,9 @@ internal sealed class QueryParameterRemovingVisitor(ParameterExpression queryCon
                 }
 
                 if (TryReadFromDictionary(candidate, parameterName, out value))
+                {
                     return true;
+                }
             }
 
             foreach (var f in t.GetFields(InstanceAnyVisibility))
@@ -94,7 +102,9 @@ internal sealed class QueryParameterRemovingVisitor(ParameterExpression queryCon
                 }
 
                 if (TryReadFromDictionary(candidate, parameterName, out value))
+                {
                     return true;
+                }
             }
         }
 
@@ -105,12 +115,16 @@ internal sealed class QueryParameterRemovingVisitor(ParameterExpression queryCon
     private static bool TryReadFromDictionary(object? candidate, string key, out object? value)
     {
         if (candidate is IReadOnlyDictionary<string, object?> ro)
+        {
             return ro.TryGetValue(key, out value);
+        }
 
         if (candidate is IDictionary<string, object?> rw)
         {
             if (rw.TryGetValue(key, out value))
+            {
                 return true;
+            }
 
             value = null;
             return false;

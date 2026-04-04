@@ -89,7 +89,9 @@ public static class DbdColumnParser
     {
         var idx = inner.IndexOf("::".AsSpan(), StringComparison.Ordinal);
         if (idx <= 0)
+        {
             return null;
+        }
 
         var table = inner.Slice(0, idx).Trim();
         return table is { Length: 0 } ? null : table.ToString();
@@ -98,15 +100,29 @@ public static class DbdColumnParser
     private static Db2ValueType MapTypeToken(ReadOnlySpan<char> token)
     {
         if (token.StartsWith("int", StringComparison.Ordinal))
+        {
             return Db2ValueType.Int64;
+        }
+
         if (token.StartsWith("uint", StringComparison.Ordinal))
+        {
             return Db2ValueType.UInt64;
+        }
+
         if (token.StartsWith("float", StringComparison.Ordinal))
+        {
             return Db2ValueType.Single;
+        }
+
         if (token.StartsWith("string", StringComparison.Ordinal))
+        {
             return Db2ValueType.String;
+        }
+
         if (token.StartsWith("locstring", StringComparison.Ordinal))
+        {
             return Db2ValueType.LocString;
+        }
 
         return Db2ValueType.Unknown;
     }

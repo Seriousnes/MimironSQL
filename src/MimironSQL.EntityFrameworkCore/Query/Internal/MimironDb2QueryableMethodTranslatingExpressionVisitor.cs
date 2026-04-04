@@ -42,7 +42,9 @@ internal sealed class MimironDb2QueryableMethodTranslatingExpressionVisitor(
             ?? throw new NotSupportedException("MimironDb2 failed to translate All() during bootstrap.");
 
         if (any.QueryExpression is not Expressions.Db2QueryExpression db2QueryExpression)
+        {
             throw new NotSupportedException("MimironDb2 query translation requires Db2QueryExpression as the query root.");
+        }
 
         db2QueryExpression.ApplyScalarNegation();
 
@@ -88,7 +90,9 @@ internal sealed class MimironDb2QueryableMethodTranslatingExpressionVisitor(
         ArgumentNullException.ThrowIfNull(source);
 
         if (source.QueryExpression is not Expressions.Db2QueryExpression queryExpression)
+        {
             throw new NotSupportedException("MimironDb2 query translation requires Db2QueryExpression as the query root.");
+        }
 
         // Bootstrap semantics: Count(p?) is executed client-side by enumerating the query result.
         if (predicate is not null)
@@ -215,7 +219,9 @@ internal sealed class MimironDb2QueryableMethodTranslatingExpressionVisitor(
         }
 
         if (source.QueryExpression is not Expressions.Db2QueryExpression queryExpression)
+        {
             throw new NotSupportedException("MimironDb2 query translation requires Db2QueryExpression as the query root.");
+        }
 
         // If ordered, implement Last/LastOrDefault by reversing the orderings and taking the first element.
         if (queryExpression.Orderings.Count > 0)
@@ -224,7 +230,9 @@ internal sealed class MimironDb2QueryableMethodTranslatingExpressionVisitor(
             queryExpression.Orderings.Clear();
 
             foreach (var (keySelector, ascending) in existing)
+            {
                 queryExpression.ApplyOrdering(keySelector, !ascending);
+            }
 
             source = TranslateTake(source, Expression.Constant(1))
                 ?? throw new NotSupportedException("MimironDb2 query translation is not implemented yet.");
@@ -259,7 +267,9 @@ internal sealed class MimironDb2QueryableMethodTranslatingExpressionVisitor(
         ArgumentNullException.ThrowIfNull(keySelector);
 
         if (source.QueryExpression is not Expressions.Db2QueryExpression queryExpression)
+        {
             throw new NotSupportedException("MimironDb2 query translation requires Db2QueryExpression as the query root.");
+        }
 
         // EF Core semantics: OrderBy resets prior orderings.
         queryExpression.Orderings.Clear();
@@ -312,10 +322,14 @@ internal sealed class MimironDb2QueryableMethodTranslatingExpressionVisitor(
         ArgumentNullException.ThrowIfNull(count);
 
         if (source.QueryExpression is not Expressions.Db2QueryExpression queryExpression)
+        {
             throw new NotSupportedException("MimironDb2 query translation requires Db2QueryExpression as the query root.");
+        }
 
         if (count.Type != typeof(int))
+        {
             throw new NotSupportedException("MimironDb2 currently only supports Skip() with an int count expression.");
+        }
 
         queryExpression.ApplyOffset(count);
         return source;
@@ -333,11 +347,15 @@ internal sealed class MimironDb2QueryableMethodTranslatingExpressionVisitor(
         ArgumentNullException.ThrowIfNull(count);
 
         if (source.QueryExpression is not Expressions.Db2QueryExpression queryExpression)
+        {
             throw new NotSupportedException("MimironDb2 query translation requires Db2QueryExpression as the query root.");
+        }
 
         // EF Core will frequently parameterize Take() counts; capture the expression and evaluate at execution time.
         if (count.Type != typeof(int))
+        {
             throw new NotSupportedException("MimironDb2 currently only supports Take() with an int count expression.");
+        }
 
         queryExpression.ApplyLimit(count);
         return source;
@@ -348,10 +366,14 @@ internal sealed class MimironDb2QueryableMethodTranslatingExpressionVisitor(
         protected override Expression VisitIndex(IndexExpression node)
         {
             if (offset == 0)
+            {
                 return base.VisitIndex(node);
+            }
 
             if (node.Object?.Type != typeof(ValueBuffer))
+            {
                 return base.VisitIndex(node);
+            }
 
             var visitedObject = Visit(node.Object);
             var anyRewritten = false;
@@ -378,7 +400,9 @@ internal sealed class MimironDb2QueryableMethodTranslatingExpressionVisitor(
         protected override Expression VisitMethodCall(MethodCallExpression node)
         {
             if (offset == 0)
+            {
                 return base.VisitMethodCall(node);
+            }
 
             // EF Core shapers typically read from ValueBuffer via either:
             // - ValueBufferTryReadValue<T>(..., int index, ...)
@@ -390,7 +414,9 @@ internal sealed class MimironDb2QueryableMethodTranslatingExpressionVisitor(
                 || node.Arguments.Any(static a => a.Type == typeof(ValueBuffer) || a.Type == typeof(ValueBuffer).MakeByRefType());
 
             if (!hasValueBuffer)
+            {
                 return base.VisitMethodCall(node);
+            }
 
             var visitedObject = Visit(node.Object);
             var anyRewritten = false;
@@ -410,7 +436,9 @@ internal sealed class MimironDb2QueryableMethodTranslatingExpressionVisitor(
             }
 
             if (anyRewritten)
+            {
                 return Expression.Call(visitedObject, node.Method, newArgs);
+            }
 
             return base.VisitMethodCall(node);
         }
@@ -484,7 +512,9 @@ internal sealed class MimironDb2QueryableMethodTranslatingExpressionVisitor(
         ArgumentNullException.ThrowIfNull(entityType);
 
         if (!entityType.GetProperties().Any())
+        {
             return 0;
+        }
 
         var maxIndex = entityType.GetProperties().Max(static p => p.GetIndex());
         return maxIndex < 0 ? 0 : maxIndex + 1;
@@ -525,7 +555,9 @@ internal sealed class MimironDb2QueryableMethodTranslatingExpressionVisitor(
         ArgumentNullException.ThrowIfNull(keySelector);
 
         if (source.QueryExpression is not Expressions.Db2QueryExpression queryExpression)
+        {
             throw new NotSupportedException("MimironDb2 query translation requires Db2QueryExpression as the query root.");
+        }
 
         queryExpression.ApplyOrdering(keySelector, ascending);
         return source;
@@ -540,7 +572,9 @@ internal sealed class MimironDb2QueryableMethodTranslatingExpressionVisitor(
         ArgumentNullException.ThrowIfNull(predicate);
 
         if (source.QueryExpression is not Expressions.Db2QueryExpression queryExpression)
+        {
             throw new NotSupportedException("MimironDb2 query translation requires Db2QueryExpression as the query root.");
+        }
 
         queryExpression.ApplyPredicate(predicate);
         return source;

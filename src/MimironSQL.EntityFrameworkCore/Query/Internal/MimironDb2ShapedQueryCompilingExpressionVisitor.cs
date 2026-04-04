@@ -170,7 +170,9 @@ internal sealed class MimironDb2ShapedQueryCompilingExpressionVisitor(
             if (db2QueryExpression.NegateScalarResult)
             {
                 if (terminalResult.Type != typeof(bool))
+                {
                     throw new NotSupportedException("MimironDb2 scalar negation is only supported for boolean scalar results.");
+                }
 
                 terminalResult = Expression.Not(terminalResult);
             }
@@ -194,7 +196,9 @@ internal sealed class MimironDb2ShapedQueryCompilingExpressionVisitor(
         if (db2QueryExpression.NegateScalarResult)
         {
             if (result.Type != typeof(bool))
+            {
                 throw new NotSupportedException("MimironDb2 scalar negation is only supported for boolean scalar results.");
+            }
 
             result = Expression.Not(result);
         }
@@ -209,24 +213,34 @@ internal sealed class MimironDb2ShapedQueryCompilingExpressionVisitor(
         // into a normal method call which reads the parameter value from QueryContext at runtime.
 
         if (limit is null)
+        {
             return Expression.Constant(-1);
+        }
 
         return Rewrite(limit);
 
         Expression Rewrite(Expression expression)
         {
             while (expression is UnaryExpression { NodeType: ExpressionType.Convert or ExpressionType.ConvertChecked } u)
+            {
                 expression = u.Operand;
+            }
 
             if (expression.Type != typeof(int))
+            {
                 throw new NotSupportedException($"MimironDb2 Take() limit expression must be int, but was '{expression.Type.FullName}'.");
+            }
 
             if (expression is ConstantExpression { Value: int })
+            {
                 return expression;
+            }
 
             // Allow captured variables (closure field/property). These are reducible and safe.
             if (expression is MemberExpression)
+            {
                 return expression;
+            }
 
             if (expression is MethodCallExpression call
                 && call.Method.DeclaringType == typeof(Math)
@@ -248,7 +262,9 @@ internal sealed class MimironDb2ShapedQueryCompilingExpressionVisitor(
                     ?? nameField?.GetValue(expression) as string;
 
                 if (string.IsNullOrWhiteSpace(parameterName))
+                {
                     throw new NotSupportedException("MimironDb2 could not read QueryParameterExpression parameter name.");
+                }
 
                 return BuildQueryContextIntParameterLookup(parameterName);
             }
@@ -264,27 +280,39 @@ internal sealed class MimironDb2ShapedQueryCompilingExpressionVisitor(
         // Support addition compositions since multiple Skip() calls are cumulative.
 
         if (offset is null)
+        {
             return Expression.Constant(0);
+        }
 
         return Rewrite(offset);
 
         Expression Rewrite(Expression expression)
         {
             while (expression is UnaryExpression { NodeType: ExpressionType.Convert or ExpressionType.ConvertChecked } u)
+            {
                 expression = u.Operand;
+            }
 
             if (expression.Type != typeof(int))
+            {
                 throw new NotSupportedException($"MimironDb2 Skip() offset expression must be int, but was '{expression.Type.FullName}'.");
+            }
 
             if (expression is ConstantExpression { Value: int })
+            {
                 return expression;
+            }
 
             // Allow captured variables (closure field/property). These are reducible and safe.
             if (expression is MemberExpression)
+            {
                 return expression;
+            }
 
             if (expression is BinaryExpression { NodeType: ExpressionType.Add or ExpressionType.AddChecked } add)
+            {
                 return Expression.Add(Rewrite(add.Left), Rewrite(add.Right));
+            }
 
             if (expression is MethodCallExpression call
                 && call.Method.DeclaringType == typeof(Math)
@@ -306,7 +334,9 @@ internal sealed class MimironDb2ShapedQueryCompilingExpressionVisitor(
                     ?? nameField?.GetValue(expression) as string;
 
                 if (string.IsNullOrWhiteSpace(parameterName))
+                {
                     throw new NotSupportedException("MimironDb2 could not read QueryParameterExpression parameter name.");
+                }
 
                 return BuildQueryContextIntParameterLookup(parameterName);
             }
@@ -341,7 +371,9 @@ internal sealed class MimironDb2ShapedQueryCompilingExpressionVisitor(
 
             // Map all inner properties to this slot offset.
             foreach (var p in innerEntityType.GetProperties())
+            {
                 offsets[p] = innerOffset;
+            }
 
             runningOffset += GetEntityValueBufferLength(innerEntityType);
         }

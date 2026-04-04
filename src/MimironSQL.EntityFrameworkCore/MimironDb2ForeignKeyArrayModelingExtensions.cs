@@ -15,7 +15,9 @@ public static class MimironDb2ForeignKeyArrayModelingExtensions
         ArgumentNullException.ThrowIfNull(builder);
 
         if (builder is not MimironDb2DbContextOptionsBuilder b)
+        {
             throw new NotSupportedException("WithForeignKeyArrayModeling must be called inside UseMimironDb2(...).");
+        }
 
         b.SetForeignKeyArrayModeling(modeling);
         return builder;

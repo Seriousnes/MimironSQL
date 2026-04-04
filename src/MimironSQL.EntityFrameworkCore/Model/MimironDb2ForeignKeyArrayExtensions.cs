@@ -59,7 +59,9 @@ public static class MimironDb2ForeignKeyArrayExtensions
             const BindingFlags flags = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
 
             if (fk.GetType().GetProperty("PrincipalToDependent", flags)?.GetValue(fk) is IMutableNavigation principalToDependent)
+            {
                 return principalToDependent;
+            }
 
             throw new NotSupportedException("Unable to access EF Core principal-to-dependent navigation metadata for HasForeignKeyArray.");
 
@@ -68,22 +70,32 @@ public static class MimironDb2ForeignKeyArrayExtensions
                 const BindingFlags f = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
 
                 if (builder.GetType().GetProperty("Metadata", f)?.GetValue(builder) is IMutableForeignKey direct)
+                {
                     return direct;
+                }
 
                 foreach (var iface in builder.GetType().GetInterfaces())
                 {
                     if (!iface.IsGenericType)
+                    {
                         continue;
+                    }
 
                     if (iface.GetGenericTypeDefinition() != typeof(IInfrastructure<>))
+                    {
                         continue;
+                    }
 
                     var instance = iface.GetProperty(nameof(IInfrastructure<>.Instance))?.GetValue(builder);
                     if (instance is null)
+                    {
                         continue;
+                    }
 
                     if (instance.GetType().GetProperty("Metadata", f)?.GetValue(instance) is IMutableForeignKey fk)
+                    {
                         return fk;
+                    }
                 }
 
                 throw new NotSupportedException("Unable to access EF Core foreign key metadata for HasForeignKeyArray.");
@@ -137,22 +149,32 @@ public static class MimironDb2ForeignKeyArrayExtensions
             var type = navigationBuilder.GetType();
 
             if (TryGetNavigationFromObject(navigationBuilder, out var direct))
+            {
                 return direct;
+            }
 
             foreach (var iface in type.GetInterfaces())
             {
                 if (!iface.IsGenericType)
+                {
                     continue;
+                }
 
                 if (iface.GetGenericTypeDefinition() != typeof(IInfrastructure<>))
+                {
                     continue;
+                }
 
                 var instance = iface.GetProperty(nameof(IInfrastructure<>.Instance))?.GetValue(navigationBuilder);
                 if (instance is null)
+                {
                     continue;
+                }
 
                 if (TryGetNavigationFromObject(instance, out var nav))
+                {
                     return nav;
+                }
             }
 
             throw new NotSupportedException($"Unable to access EF Core navigation metadata for HasForeignKeyArray. Builder type: '{type.FullName}'.");
@@ -178,10 +200,14 @@ public static class MimironDb2ForeignKeyArrayExtensions
             foreach (var p in type.GetProperties(Flags))
             {
                 if (!typeof(IMutableNavigation).IsAssignableFrom(p.PropertyType))
+                {
                     continue;
+                }
 
                 if (p.GetIndexParameters().Length != 0)
+                {
                     continue;
+                }
 
                 if (p.GetValue(value) is IMutableNavigation propNav)
                 {
@@ -193,7 +219,9 @@ public static class MimironDb2ForeignKeyArrayExtensions
             foreach (var f in type.GetFields(Flags))
             {
                 if (!typeof(IMutableNavigation).IsAssignableFrom(f.FieldType))
+                {
                     continue;
+                }
 
                 if (f.GetValue(value) is IMutableNavigation fieldNav)
                 {
@@ -211,17 +239,25 @@ public static class MimironDb2ForeignKeyArrayExtensions
     private static PropertyInfo GetForeignKeyArrayMember(LambdaExpression expression)
     {
         if (expression.Parameters is not { Count: 1 })
+        {
             throw new NotSupportedException("FK array selector must have exactly one parameter.");
+        }
 
         var body = expression.Body;
         if (body is UnaryExpression { NodeType: ExpressionType.Convert or ExpressionType.ConvertChecked } u)
+        {
             body = u.Operand;
+        }
 
         if (body is not MemberExpression { Member: PropertyInfo p } member)
+        {
             throw new NotSupportedException("FK array selector only supports simple public property access (e.g., x => x.ChildIds).");
+        }
 
         if (member.Expression != expression.Parameters[0])
+        {
             throw new NotSupportedException("FK array selector only supports direct member access on the root entity parameter.");
+        }
 
         return p.GetMethod switch
         {

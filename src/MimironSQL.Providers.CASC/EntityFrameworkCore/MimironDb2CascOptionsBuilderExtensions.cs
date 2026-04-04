@@ -214,7 +214,9 @@ public static class MimironDb2CascOptionsBuilderExtensions
             ManifestProviderFactory = null;
 
             if (!string.IsNullOrWhiteSpace(manifestAssetName))
+            {
                 ManifestAssetName = manifestAssetName;
+            }
 
             return this;
         }
@@ -305,7 +307,9 @@ public static class MimironDb2CascOptionsBuilderExtensions
             if (_dbdProviderType is not null)
             {
                 if (!typeof(IDbdProvider).IsAssignableFrom(_dbdProviderType))
+                {
                     throw new InvalidOperationException($"Configured DBD provider type '{_dbdProviderType}' does not implement IDbdProvider.");
+                }
 
                 services.AddSingleton(typeof(IDbdProvider), _dbdProviderType);
                 return;
@@ -324,7 +328,9 @@ public static class MimironDb2CascOptionsBuilderExtensions
             }
 
             if (string.IsNullOrWhiteSpace(DbdDefinitionsDirectory))
+            {
                 throw new InvalidOperationException("DBD definitions directory is required.");
+            }
 
             services.AddSingleton(new FileSystemDbdProviderOptions(DbdDefinitionsDirectory));
             services.AddSingleton<IDbdProvider, FileSystemDbdProvider>();
@@ -335,7 +341,9 @@ public static class MimironDb2CascOptionsBuilderExtensions
             if (_manifestProviderType is not null)
             {
                 if (!typeof(IManifestProvider).IsAssignableFrom(_manifestProviderType))
+                {
                     throw new InvalidOperationException($"Configured manifest provider type '{_manifestProviderType}' does not implement IManifestProvider.");
+                }
 
                 services.AddSingleton(typeof(IManifestProvider), _manifestProviderType);
                 return;

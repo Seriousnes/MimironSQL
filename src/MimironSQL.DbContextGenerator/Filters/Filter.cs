@@ -12,7 +12,9 @@ internal abstract class Filter(ImmutableArray<Regex> expressions)
         foreach (var r in Expressions)
         {
             if (r.IsMatch(dbdFileNameWithoutExtension))
+            {
                 return true;
+            }
         }
 
         return false;

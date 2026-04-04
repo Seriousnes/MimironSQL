@@ -16,13 +16,19 @@ internal static class TypeMapping
     public static string GetIdClrType(DbdLayoutEntry? idEntry, IReadOnlyDictionary<string, DbdColumn> columnsByName)
     {
         if (idEntry is null)
+        {
             return "int";
+        }
 
         if (idEntry.Name is null)
+        {
             return "int";
+        }
 
         if (TryMapInlineInteger(idEntry.InlineTypeToken, out var mapped))
+        {
             return PromoteUnsignedKeyType(mapped);
+        }
 
         if (columnsByName.TryGetValue(idEntry.Name, out var col))
         {
@@ -63,7 +69,9 @@ internal static class TypeMapping
     private static string GetClrElementTypeName(DbdLayoutEntry entry)
     {
         if (TryMapInlineInteger(entry.InlineTypeToken, out var mapped))
+        {
             return mapped;
+        }
 
         return entry.ValueType switch
         {
@@ -83,10 +91,14 @@ internal static class TypeMapping
     public static string GetInitializer(string typeName)
     {
         if (typeName.EndsWith("[]", StringComparison.Ordinal))
+        {
             return " = [];";
+        }
 
         if (typeName.StartsWith("ICollection<", StringComparison.Ordinal))
+        {
             return " = [];";
+        }
 
         return typeName switch
         {
@@ -100,17 +112,23 @@ internal static class TypeMapping
         clrType = string.Empty;
 
         if (inlineTypeToken is null)
+        {
             return false;
+        }
 
         var token = inlineTypeToken.Trim();
         if (token.Length == 0)
+        {
             return false;
+        }
 
         var isUnsigned = token.StartsWith("u", StringComparison.Ordinal);
         var numberText = isUnsigned ? token.Substring(1) : token;
 
         if (!int.TryParse(numberText, NumberStyles.Integer, CultureInfo.InvariantCulture, out var bits))
+        {
             return false;
+        }
 
         clrType = (bits, isUnsigned) switch
         {

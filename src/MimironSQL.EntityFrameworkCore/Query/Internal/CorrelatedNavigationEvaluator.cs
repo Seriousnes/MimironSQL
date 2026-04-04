@@ -102,7 +102,9 @@ internal static class CorrelatedNavigationEvaluator
             var inner = materializer.Materialize(file, handle);
 
             if (dependentPredicate is not null && !dependentPredicate(queryContext, inner))
+            {
                 continue;
+            }
 
             var k = keyGetter(inner);
             counts.TryGetValue(k, out var current);

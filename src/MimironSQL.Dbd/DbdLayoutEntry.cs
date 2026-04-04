@@ -106,15 +106,25 @@ public static class DbdLayoutEntryParser
                     if (token.Length != 0)
                     {
                         if (token.Equals("noninline".AsSpan(), StringComparison.OrdinalIgnoreCase))
+                        {
                             isNonInline = true;
+                        }
+
                         if (token.Equals("id".AsSpan(), StringComparison.OrdinalIgnoreCase))
+                        {
                             isId = true;
+                        }
+
                         if (token.Equals("relation".AsSpan(), StringComparison.OrdinalIgnoreCase))
+                        {
                             isRelation = true;
+                        }
                     }
 
                     if (comma < 0)
+                    {
                         break;
+                    }
 
                     modifierText = modifierText.Slice(comma + 1);
                 }
@@ -194,7 +204,9 @@ public static class DbdLayoutEntryParser
     private static Db2ValueType MapInlineType(ReadOnlySpan<char> inner)
     {
         if (inner.StartsWith("f", StringComparison.Ordinal))
+        {
             return Db2ValueType.Single;
+        }
 
         return inner.StartsWith("u", StringComparison.Ordinal)
             ? Db2ValueType.UInt64

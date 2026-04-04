@@ -12,10 +12,14 @@ internal readonly struct FilterSet(BlockFilter block, AllowFilter allow)
     public bool IsAllowed(string dbdFileNameWithoutExtension)
     {
         if (Allow.IsMatch(dbdFileNameWithoutExtension))
+        {
             return true;
+        }
 
         if (Block.IsMatch(dbdFileNameWithoutExtension))
+        {
             return false;
+        }
 
         return true;
     }
@@ -25,7 +29,9 @@ internal readonly struct FilterSet(BlockFilter block, AllowFilter allow)
     public static FilterSet Create(ImmutableArray<string> lines)
     {
         if (lines is { Length: 0 })
+        {
             return Empty;
+        }
 
         List<Regex> block = [];
         List<Regex> allow = [];
@@ -33,23 +39,35 @@ internal readonly struct FilterSet(BlockFilter block, AllowFilter allow)
         foreach (var line in lines)
         {
             if (line is not { Length: > 0 })
+            {
                 continue;
+            }
 
             var op = line[0];
             if (op is not ('!' or '~'))
+            {
                 continue;
+            }
 
             var pattern = line.Substring(1).Trim();
             if (pattern.Length == 0)
+            {
                 continue;
+            }
 
             if (!TryCreateRegex(pattern, out var regex))
+            {
                 continue;
+            }
 
             if (op == '!')
+            {
                 block.Add(regex);
+            }
             else
+            {
                 allow.Add(regex);
+            }
         }
 
         var blockFilter = block.Count == 0 ? BlockFilter.Empty : new BlockFilter([.. block]);

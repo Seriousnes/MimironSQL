@@ -19,7 +19,9 @@ public sealed class ShouldlyScope : IDisposable
     public void Dispose()
     {
         if (_failures.Count == 0)
+        {
             return;
+        }
 
         var message = string.Join(
             Environment.NewLine + Environment.NewLine,

@@ -1033,11 +1033,15 @@ public sealed class Wdc5Tests(Wdc5TestFixture fixture) : IClassFixture<Wdc5TestF
 
             // Column meta (24 bytes per field)
             if (fieldsCount != 0)
+            {
                 writer.Write(new byte[fieldsCount * 24]);
+            }
 
             // Ensure the stream is at least the code's minimum header threshold.
             while (ms.Length < 204)
+            {
                 writer.Write((byte)0);
+            }
         }
 
         ms.Position = 0;
@@ -1108,7 +1112,9 @@ public sealed class Wdc5Tests(Wdc5TestFixture fixture) : IClassFixture<Wdc5TestF
         writer.Write(stringTableBytes);
 
         foreach (var id in indexData)
+        {
             writer.Write(id);
+        }
 
         foreach (var (destinationId, sourceId) in copyTable)
         {
@@ -1406,7 +1412,9 @@ public sealed class Wdc5Tests(Wdc5TestFixture fixture) : IClassFixture<Wdc5TestF
         WriteStruct(writer, palletColumn);
 
         foreach (var v in palletData)
+        {
             writer.Write(v);
+        }
 
         PadTo(writer, sectionFileOffset);
 
@@ -1481,7 +1489,9 @@ public sealed class Wdc5Tests(Wdc5TestFixture fixture) : IClassFixture<Wdc5TestF
         WriteStruct(writer, arrayColumn);
 
         foreach (var v in palletData)
+        {
             writer.Write(v);
+        }
 
         PadTo(writer, sectionFileOffset);
         writer.Write(rowId);
@@ -1719,7 +1729,9 @@ public sealed class Wdc5Tests(Wdc5TestFixture fixture) : IClassFixture<Wdc5TestF
     private static void PadTo(BinaryWriter writer, int position)
     {
         while (writer.BaseStream.Position < position)
+        {
             writer.Write((byte)0);
+        }
     }
 
     private sealed class NonSeekableStream(Stream inner) : Stream
@@ -1737,7 +1749,10 @@ public sealed class Wdc5Tests(Wdc5TestFixture fixture) : IClassFixture<Wdc5TestF
         protected override void Dispose(bool disposing)
         {
             if (disposing)
+            {
                 inner.Dispose();
+            }
+
             base.Dispose(disposing);
         }
     }
@@ -1896,7 +1911,9 @@ public class Wdc5TestFixture
             }
 
             if (!anyNonZero)
+            {
                 record[0] = 1;
+            }
         }
         else
         {
@@ -1973,7 +1990,9 @@ public class Wdc5TestFixture
         object?[] provided = [bytes, sbytes, shorts, ushorts, uints, longs, ulongs, floats];
         var providedCount = provided.Count(x => x is not null);
         if (providedCount != 1)
+        {
             throw new ArgumentException("Exactly one array payload must be provided.");
+        }
 
         ushort elementBits;
         byte[] recordBytes;
@@ -1996,7 +2015,10 @@ public class Wdc5TestFixture
             elementBits = 16;
             recordBytes = new byte[shorts.Length * 2];
             for (var i = 0; i < shorts.Length; i++)
+            {
                 BinaryPrimitives.WriteInt16LittleEndian(recordBytes.AsSpan(i * 2, 2), shorts[i]);
+            }
+
             sizeBits = checked((ushort)(shorts.Length * 16));
         }
         else if (ushorts is not null)
@@ -2004,7 +2026,10 @@ public class Wdc5TestFixture
             elementBits = 16;
             recordBytes = new byte[ushorts.Length * 2];
             for (var i = 0; i < ushorts.Length; i++)
+            {
                 BinaryPrimitives.WriteUInt16LittleEndian(recordBytes.AsSpan(i * 2, 2), ushorts[i]);
+            }
+
             sizeBits = checked((ushort)(ushorts.Length * 16));
         }
         else if (uints is not null)
@@ -2012,7 +2037,10 @@ public class Wdc5TestFixture
             elementBits = 32;
             recordBytes = new byte[uints.Length * 4];
             for (var i = 0; i < uints.Length; i++)
+            {
                 BinaryPrimitives.WriteUInt32LittleEndian(recordBytes.AsSpan(i * 4, 4), uints[i]);
+            }
+
             sizeBits = checked((ushort)(uints.Length * 32));
         }
         else if (longs is not null)
@@ -2020,7 +2048,10 @@ public class Wdc5TestFixture
             elementBits = 64;
             recordBytes = new byte[longs.Length * 8];
             for (var i = 0; i < longs.Length; i++)
+            {
                 BinaryPrimitives.WriteInt64LittleEndian(recordBytes.AsSpan(i * 8, 8), longs[i]);
+            }
+
             sizeBits = checked((ushort)(longs.Length * 64));
         }
         else if (ulongs is not null)
@@ -2028,7 +2059,10 @@ public class Wdc5TestFixture
             elementBits = 64;
             recordBytes = new byte[ulongs.Length * 8];
             for (var i = 0; i < ulongs.Length; i++)
+            {
                 BinaryPrimitives.WriteUInt64LittleEndian(recordBytes.AsSpan(i * 8, 8), ulongs[i]);
+            }
+
             sizeBits = checked((ushort)(ulongs.Length * 64));
         }
         else if (floats is not null)
@@ -2036,7 +2070,10 @@ public class Wdc5TestFixture
             elementBits = 32;
             recordBytes = new byte[floats.Length * 4];
             for (var i = 0; i < floats.Length; i++)
+            {
                 BinaryPrimitives.WriteSingleLittleEndian(recordBytes.AsSpan(i * 4, 4), floats[i]);
+            }
+
             sizeBits = checked((ushort)(floats.Length * 32));
         }
         else
@@ -2381,6 +2418,8 @@ public class Wdc5TestFixture
     private static void PadTo(BinaryWriter writer, int position)
     {
         while (writer.BaseStream.Position < position)
+        {
             writer.Write((byte)0);
+        }
     }
 }

@@ -66,10 +66,14 @@ internal static class Db2QueryContextParameterReader
         {
             var store = storeAccessor(queryContext);
             if (store is null)
+            {
                 continue;
+            }
 
             if (TryGetValueFromStore(store, parameterName, out value))
+            {
                 return true;
+            }
         }
 
         value = null;
@@ -81,7 +85,9 @@ internal static class Db2QueryContextParameterReader
         const BindingFlags InstanceAnyVisibility = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
 
         foreach (var member in EnumerateCandidateStoreMembers(queryContextRuntimeType, InstanceAnyVisibility))
+        {
             yield return BuildMemberAccessor(member);
+        }
 
         static IEnumerable<MemberInfo> EnumerateCandidateStoreMembers(Type t, BindingFlags flags)
         {
@@ -90,16 +96,22 @@ internal static class Db2QueryContextParameterReader
                 foreach (var p in current.GetProperties(flags))
                 {
                     if (p.GetIndexParameters().Length != 0)
+                    {
                         continue;
+                    }
 
                     if (LooksLikeStringKeyedDictionary(p.PropertyType))
+                    {
                         yield return p;
+                    }
                 }
 
                 foreach (var f in current.GetFields(flags))
                 {
                     if (LooksLikeStringKeyedDictionary(f.FieldType))
+                    {
                         yield return f;
+                    }
                 }
             }
         }
@@ -107,23 +119,33 @@ internal static class Db2QueryContextParameterReader
         static bool LooksLikeStringKeyedDictionary(Type candidate)
         {
             if (typeof(System.Collections.IDictionary).IsAssignableFrom(candidate))
+            {
                 return true;
+            }
 
             if (!candidate.IsGenericType && candidate.GetInterfaces().Length == 0)
+            {
                 return false;
+            }
 
             foreach (var i in candidate.GetInterfaces().Append(candidate))
             {
                 if (!i.IsGenericType)
+                {
                     continue;
+                }
 
                 var def = i.GetGenericTypeDefinition();
                 if (def != typeof(IReadOnlyDictionary<,>) && def != typeof(IDictionary<,>))
+                {
                     continue;
+                }
 
                 var args = i.GetGenericArguments();
                 if (args.Length == 2 && args[0] == typeof(string))
+                {
                     return true;
+                }
             }
 
             return false;

@@ -11,10 +11,14 @@ internal static class Wdc5LayoutReader
     {
         ArgumentNullException.ThrowIfNull(stream);
         if (!stream.CanSeek)
+        {
             throw new NotSupportedException("WDC5 layout reading requires a seekable Stream.");
+        }
 
         if (stream.Length < HeaderSize)
+        {
             throw new InvalidDataException("DB2 file is too small to be valid.");
+        }
 
         var originalPosition = stream.Position;
         try
@@ -24,7 +28,9 @@ internal static class Wdc5LayoutReader
 
             var magic = reader.ReadUInt32();
             if (magic != Wdc5Magic)
+            {
                 throw new InvalidDataException("Expected WDC5.");
+            }
 
             reader.ReadUInt32(); // schemaVersion
             reader.ReadBytes(128); // schema string

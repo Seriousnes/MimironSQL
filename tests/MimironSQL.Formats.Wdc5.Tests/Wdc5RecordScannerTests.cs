@@ -126,14 +126,18 @@ public sealed class Wdc5RecordScannerTests(Wdc5TestFixture fixture) : IClassFixt
             if (!isArrayField)
             {
                 if (EqualityComparer<T>.Default.Equals(file.ReadField<T>(handle, fieldIndex), value))
+                {
                     yield return handle;
+                }
 
                 continue;
             }
 
             var values = file.ReadField<T[]>(handle, fieldIndex);
             if (values.Contains(value))
+            {
                 yield return handle;
+            }
         }
     }
 
@@ -224,7 +228,9 @@ public sealed class Wdc5RecordScannerTests(Wdc5TestFixture fixture) : IClassFixt
         }
 
         foreach (var row in rows)
+        {
             writer.Write(row.RowId);
+        }
 
         ms.Position = 0;
         return ms;
@@ -381,6 +387,8 @@ public sealed class Wdc5RecordScannerTests(Wdc5TestFixture fixture) : IClassFixt
     private static void PadTo(BinaryWriter writer, int position)
     {
         while (writer.BaseStream.Position < position)
+        {
             writer.Write((byte)0);
+        }
     }
 }

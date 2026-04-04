@@ -21,7 +21,9 @@ internal static class CascConfigStore
         var path = Path.Combine(dataConfigDirectory, subDir1, subDir2, hex);
 
         if (!File.Exists(path))
+        {
             throw new FileNotFoundException("CASC config blob not found", path);
+        }
 
         return File.ReadAllBytes(path);
     }

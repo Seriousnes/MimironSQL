@@ -16,7 +16,8 @@
 	</ItemGroup>
 
 	<ItemGroup>
-		<AdditionalFiles Include=".env.local" />
+		<AdditionalFiles Include=".env" />
+		<AdditionalFiles Include=".env.local" Condition="Exists('$(MSBuildProjectDirectory)\\.env.local')" />
 		<AdditionalFiles Include="..\TestData\**\*.dbd" />
 	</ItemGroup>
 	

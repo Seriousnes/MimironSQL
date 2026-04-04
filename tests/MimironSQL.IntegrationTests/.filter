@@ -1,0 +1,2 @@
+!.*
+~^(Map|MapChallengeMode|QuestV2|Spell|SpellName|SpellItem.*|SkillLine)$

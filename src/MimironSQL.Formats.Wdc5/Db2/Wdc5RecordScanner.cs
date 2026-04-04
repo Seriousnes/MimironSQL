@@ -24,7 +24,13 @@ internal sealed class Wdc5RecordScanner
     {
         ArgumentNullException.ThrowIfNull(results);
 
-        if ((uint)fieldIndex >= (uint)_file.Header.FieldsCount)
+        if (fieldIndex == Db2VirtualFieldIndex.Id)
+        {
+            ScanVirtualIdField(value, results);
+            return;
+        }
+
+        if (fieldIndex < 0 || (uint)fieldIndex >= (uint)_file.Header.FieldsCount)
         {
             throw new ArgumentOutOfRangeException(nameof(fieldIndex));
         }
@@ -74,6 +80,43 @@ internal sealed class Wdc5RecordScanner
                 default:
                     ScanFallbackSection(sectionIndex, section, fieldIndex, value, isArrayField, results);
                     break;
+            }
+        }
+    }
+
+    private void ScanVirtualIdField<T>(T value, List<RowHandle> results) where T : unmanaged
+    {
+        var expectedId = ConvertIdValue(value);
+
+        for (var sectionIndex = 0; sectionIndex < _file.ParsedSections.Count; sectionIndex++)
+        {
+            var section = _file.ParsedSections[sectionIndex];
+
+            if (section.IndexData is { Length: not 0 })
+            {
+                var indexData = section.IndexData;
+                for (var rowIndex = 0; rowIndex < section.NumRecords; rowIndex++)
+                {
+                    if (indexData[rowIndex] != expectedId)
+                    {
+                        continue;
+                    }
+
+                    results.Add(new RowHandle(sectionIndex, rowIndex, expectedId));
+                }
+
+                continue;
+            }
+
+            for (var rowIndex = 0; rowIndex < section.NumRecords; rowIndex++)
+            {
+                var rowId = _file.GetSourceIdForAccessor(section, rowIndex);
+                if (rowId != expectedId)
+                {
+                    continue;
+                }
+
+                results.Add(new RowHandle(sectionIndex, rowIndex, rowId));
             }
         }
     }
@@ -195,12 +238,23 @@ internal sealed class Wdc5RecordScanner
 
     private void ScanPalletScalarSection(int sectionIndex, Wdc5Section section, int fieldIndex, ulong expectedRaw, List<RowHandle> results)
     {
+        var columnMeta = _file.ColumnMeta[fieldIndex];
+        var matchingPalletIndices = FindMatchingPalletIndices(_file.PalletData[fieldIndex], unchecked((uint)expectedRaw));
+        if (matchingPalletIndices.Length == 0)
+        {
+            return;
+        }
+
         if (_file.Header.Flags.HasFlag(Db2Flags.Sparse))
         {
-            var accessor = _file.CreateSparseFieldAccessor(sectionIndex, fieldIndex);
+            _file.EnsureSectionRecordsMaterialized(section);
+            var offsetTable = section.SparseOffsetTable?.Value ?? throw new InvalidOperationException("Sparse offset table was not initialized.");
+            var records = section.RecordsData ?? throw new InvalidOperationException("Sparse section record data is not materialized.");
+
             for (var rowIndex = 0; rowIndex < section.NumRecords; rowIndex++)
             {
-                if (accessor.ReadScalarRaw(rowIndex) != expectedRaw)
+                var reader = new Wdc5RowReader(records, positionBits: offsetTable.GetFieldBitPosition(rowIndex, fieldIndex));
+                if (!MatchesPalletIndex(ref reader, columnMeta, matchingPalletIndices))
                 {
                     continue;
                 }
@@ -211,16 +265,61 @@ internal sealed class Wdc5RecordScanner
             return;
         }
 
-        var accessor2 = _file.CreateFieldAccessor(sectionIndex, fieldIndex);
+        _file.EnsureSectionRecordsMaterialized(section);
+        var denseRecords = section.RecordsData ?? throw new InvalidOperationException("Dense section record data is not materialized.");
+        var rowSizeBits = _file.Header.RecordSize * 8;
+
         for (var rowIndex = 0; rowIndex < section.NumRecords; rowIndex++)
         {
-            if (accessor2.ReadScalarRaw(rowIndex) != expectedRaw)
+            var reader = new Wdc5RowReader(denseRecords, positionBits: (rowIndex * rowSizeBits) + columnMeta.RecordOffset);
+            if (!MatchesPalletIndex(ref reader, columnMeta, matchingPalletIndices))
             {
                 continue;
             }
 
             results.Add(new RowHandle(sectionIndex, rowIndex, _file.GetSourceIdForAccessor(section, rowIndex)));
         }
+    }
+
+    private static int[] FindMatchingPalletIndices(uint[] palletData, uint expectedValue)
+    {
+        if (palletData.Length == 0)
+        {
+            return [];
+        }
+
+        List<int>? matches = null;
+        for (var i = 0; i < palletData.Length; i++)
+        {
+            if (palletData[i] != expectedValue)
+            {
+                continue;
+            }
+
+            matches ??= [];
+            matches.Add(i);
+        }
+
+        return matches is null ? [] : [.. matches];
+    }
+
+    private static bool MatchesPalletIndex(ref Wdc5RowReader reader, ColumnMetaData columnMeta, int[] matchingPalletIndices)
+    {
+        var palletIndex = reader.ReadUInt32(columnMeta.Pallet.BitWidth);
+        if (matchingPalletIndices.Length == 1)
+        {
+            return palletIndex == (uint)matchingPalletIndices[0];
+        }
+
+        for (var i = 0; i < matchingPalletIndices.Length; i++)
+        {
+            if (palletIndex == (uint)matchingPalletIndices[i])
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private void ScanArraySection<T>(int sectionIndex, Wdc5Section section, int fieldIndex, T value, FieldMetaData fieldMeta, ColumnMetaData columnMeta, int fieldBitWidth, List<RowHandle> results) where T : unmanaged
@@ -451,6 +550,75 @@ internal sealed class Wdc5RecordScanner
             CompressionType.Common or CompressionType.Pallet or CompressionType.PalletArray => MaskBits(raw, 32),
             _ => MaskBits(raw, fieldBitWidth)
         };
+
+    private static int ConvertIdValue<T>(T value) where T : unmanaged
+    {
+        var mutableValue = value;
+
+        if (typeof(T).IsEnum)
+        {
+            return Unsafe.SizeOf<T>() switch
+            {
+                1 => Unsafe.As<T, byte>(ref mutableValue),
+                2 => Unsafe.As<T, ushort>(ref mutableValue),
+                4 => checked((int)Unsafe.As<T, uint>(ref mutableValue)),
+                8 => checked((int)Unsafe.As<T, ulong>(ref mutableValue)),
+                _ => throw new NotSupportedException($"Unsupported enum size {Unsafe.SizeOf<T>()} for virtual ID scans.")
+            };
+        }
+
+        if (typeof(T) == typeof(byte))
+        {
+            return Unsafe.As<T, byte>(ref mutableValue);
+        }
+
+        if (typeof(T) == typeof(sbyte))
+        {
+            return Unsafe.As<T, sbyte>(ref mutableValue);
+        }
+
+        if (typeof(T) == typeof(short))
+        {
+            return Unsafe.As<T, short>(ref mutableValue);
+        }
+
+        if (typeof(T) == typeof(ushort))
+        {
+            return Unsafe.As<T, ushort>(ref mutableValue);
+        }
+
+        if (typeof(T) == typeof(int))
+        {
+            return Unsafe.As<T, int>(ref mutableValue);
+        }
+
+        if (typeof(T) == typeof(uint))
+        {
+            return checked((int)Unsafe.As<T, uint>(ref mutableValue));
+        }
+
+        if (typeof(T) == typeof(long))
+        {
+            return checked((int)Unsafe.As<T, long>(ref mutableValue));
+        }
+
+        if (typeof(T) == typeof(ulong))
+        {
+            return checked((int)Unsafe.As<T, ulong>(ref mutableValue));
+        }
+
+        if (typeof(T) == typeof(nint))
+        {
+            return checked((int)Unsafe.As<T, nint>(ref mutableValue));
+        }
+
+        if (typeof(T) == typeof(nuint))
+        {
+            return checked((int)Unsafe.As<T, nuint>(ref mutableValue));
+        }
+
+        throw new NotSupportedException($"Unsupported virtual ID scan type {typeof(T).FullName}.");
+    }
 
     private static ulong MaskBits(ulong value, int fieldBitWidth)
     {

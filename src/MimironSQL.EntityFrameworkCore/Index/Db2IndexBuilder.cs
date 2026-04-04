@@ -4,7 +4,6 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata;
 
 using MimironSQL.Db2;
-using MimironSQL.EntityFrameworkCore.Model;
 using MimironSQL.EntityFrameworkCore.Schema;
 using MimironSQL.EntityFrameworkCore.Storage;
 using MimironSQL.Formats;
@@ -63,12 +62,16 @@ internal sealed class Db2IndexBuilder
     {
         foreach (var entityType in efModel.GetEntityTypes())
         {
-            if (!IsDb2EntityType(entityType.ClrType))
+            if (entityType.IsOwned() || entityType.FindPrimaryKey() is null)
             {
                 continue;
             }
 
-            var tableName = entityType.GetTableName() ?? entityType.ClrType.Name;
+            var tableName = entityType.GetTableName();
+            if (string.IsNullOrWhiteSpace(tableName))
+            {
+                continue;
+            }
 
             Db2TableSchema schema;
             try
@@ -122,19 +125,6 @@ internal sealed class Db2IndexBuilder
                 }
             }
         }
-    }
-
-    private static bool IsDb2EntityType(Type clrType)
-    {
-        for (var current = clrType; current is not null && current != typeof(object); current = current.BaseType!)
-        {
-            if (current.IsGenericType && current.GetGenericTypeDefinition() == typeof(Db2Entity<>))
-            {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     private static void BuildIndexFile(

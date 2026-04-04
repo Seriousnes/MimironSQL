@@ -43,6 +43,15 @@ public sealed class Wdc5RecordScannerTests(Wdc5TestFixture fixture) : IClassFixt
     }
 
     [Fact]
+    public void ScanFieldEquals_VirtualId_MatchesBaseline()
+    {
+        using var stream = CreateDenseImmediateTargetFile([(500, 11), (501, 22), (502, 33)]);
+        using var file = new Wdc5File(stream);
+
+        AssertMatchesBaseline(file, fieldIndex: Db2VirtualFieldIndex.Id, value: 501);
+    }
+
+    [Fact]
     public void ScanFieldEquals_CommonCompression_MatchesBaselineForDefaultAndOverride()
     {
         using var stream = CreateCommonTargetFile(id0: 1000, id1: 1001, defaultValue: 42, commonEntryId: 1000, commonEntryValue: 777);
@@ -59,6 +68,15 @@ public sealed class Wdc5RecordScannerTests(Wdc5TestFixture fixture) : IClassFixt
         using var file = new Wdc5File(stream);
 
         AssertMatchesBaseline(file, fieldIndex: 1, value: 30u);
+    }
+
+    [Fact]
+    public void ScanFieldEquals_PalletCompression_WithDuplicatePalletValues_MatchesBaseline()
+    {
+        using var stream = CreatePalletTargetFile(id0: 2100, palletIndex0: 0, id1: 2101, palletIndex1: 1, palletData: [20u, 20u, 30u, 40u]);
+        using var file = new Wdc5File(stream);
+
+        AssertMatchesBaseline(file, fieldIndex: 1, value: 20u);
     }
 
     [Fact]
@@ -115,6 +133,19 @@ public sealed class Wdc5RecordScannerTests(Wdc5TestFixture fixture) : IClassFixt
 
     private static IEnumerable<RowHandle> EnumerateBaselineMatches<T>(Wdc5File file, int fieldIndex, T value) where T : unmanaged
     {
+        if (fieldIndex == Db2VirtualFieldIndex.Id)
+        {
+            foreach (var handle in file.EnumerateRowHandles())
+            {
+                if (EqualityComparer<T>.Default.Equals(file.ReadField<T>(handle, fieldIndex), value))
+                {
+                    yield return handle;
+                }
+            }
+
+            yield break;
+        }
+
         var fieldMeta = file.FieldMeta[fieldIndex];
         var columnMeta = file.ColumnMeta[fieldIndex];
         var fieldBitWidth = GetFieldBitWidth(fieldMeta, columnMeta);

@@ -494,7 +494,7 @@ public sealed class Wdc5File : IDb2File<RowHandle>, IDb2DenseStringTableIndexPro
         return GetVirtualId(section, rowIndex, reader);
     }
 
-    private void EnsureSectionRecordsMaterialized(Wdc5Section section)
+    internal void EnsureSectionRecordsMaterialized(Wdc5Section section)
     {
         if (section.RecordsData is not null)
             return;

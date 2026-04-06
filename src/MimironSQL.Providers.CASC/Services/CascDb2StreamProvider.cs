@@ -254,16 +254,14 @@ public sealed class CascDb2StreamProvider : IDb2StreamProvider
             await _manifestProvider.EnsureManifestExistsAsync(cancellationToken).ConfigureAwait(false);
 
             var installRoot = _options.WowInstallRoot;
-            var layout = CascInstallLayoutDetector.Detect(installRoot);
+            var buildInfo = CascBuildInfo.Open(installRoot);
+            var flavor = buildInfo.GetFlavor(_options.Product);
 
-            var buildInfo = CascBuildInfo.Read(layout.BuildInfoPath);
-            var record = CascBuildInfo.SelectForProduct(buildInfo, layout.Product);
-
-            var buildConfigKey = CascKey.ParseHex(record.BuildConfig);
-            var buildConfigBytes = CascConfigStore.ReadConfigBytes(layout.DataConfigDirectory, buildConfigKey);
+            var buildConfigKey = CascKey.ParseHex(flavor.BuildInfo.BuildConfig);
+            var buildConfigBytes = CascConfigStore.ReadConfigBytes(flavor.DataConfigDirectory, buildConfigKey);
             var buildConfig = CascBuildConfigParser.Read(buildConfigBytes);
 
-            var state = await Cache.GetOrCreateAsync(layout.DataDataDirectory, buildConfig, cancellationToken).ConfigureAwait(false);
+            var state = await Cache.GetOrCreateAsync(flavor.DataDataDirectory, buildConfig, cancellationToken).ConfigureAwait(false);
             _archiveReader = state.ArchiveReader;
             _encoding = state.Encoding;
             _root = state.Root;

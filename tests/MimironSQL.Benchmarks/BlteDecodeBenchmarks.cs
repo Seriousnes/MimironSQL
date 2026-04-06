@@ -25,15 +25,14 @@ public class BlteDecodeBenchmarks
 
     private static byte[] ReadEncodingBlteBytes(string wowInstallRoot)
     {
-        var layout = CascInstallLayoutDetector.Detect(wowInstallRoot);
-        var buildInfo = CascBuildInfo.Read(layout.BuildInfoPath);
-        var record = CascBuildInfo.SelectForProduct(buildInfo, layout.Product);
+        var buildInfo = CascBuildInfo.Open(wowInstallRoot);
+        var flavor = buildInfo.GetFlavor("wow");
 
-        var buildConfigKey = CascKey.ParseHex(record.BuildConfig);
-        var buildConfigBytes = CascConfigStore.ReadConfigBytes(layout.DataConfigDirectory, buildConfigKey);
+        var buildConfigKey = CascKey.ParseHex(flavor.BuildInfo.BuildConfig);
+        var buildConfigBytes = CascConfigStore.ReadConfigBytes(flavor.DataConfigDirectory, buildConfigKey);
         var buildConfig = CascBuildConfigParser.Read(buildConfigBytes);
 
-        var archiveReader = new CascLocalArchiveReader(layout.DataDataDirectory);
+        var archiveReader = new CascLocalArchiveReader(flavor.DataDataDirectory);
         return archiveReader.ReadBlteBytesAsync(buildConfig.EncodingEKey ?? throw new InvalidOperationException("Build config did not include an ENCODING EKey."), CancellationToken.None)
             .ConfigureAwait(false)
             .GetAwaiter()

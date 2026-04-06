@@ -7,6 +7,17 @@ namespace MimironSQL.Providers;
 /// </summary>
 public sealed partial class WowBuildIdentityProvider : IWowBuildIdentityProvider
 {
+    private readonly CascDb2ProviderOptions _options;
+
+    /// <summary>
+    /// Creates a new <see cref="WowBuildIdentityProvider"/>.
+    /// </summary>
+    /// <param name="options">CASC provider options containing the product token.</param>
+    public WowBuildIdentityProvider(CascDb2ProviderOptions options)
+    {
+        _options = options ?? throw new ArgumentNullException(nameof(options));
+    }
+
     /// <summary>
     /// Gets build identity information for the installation rooted at <paramref name="installRoot"/>.
     /// </summary>
@@ -17,9 +28,9 @@ public sealed partial class WowBuildIdentityProvider : IWowBuildIdentityProvider
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(installRoot);
 
-        var layout = CascInstallLayoutDetector.Detect(installRoot);
-        var records = CascBuildInfo.Read(layout.BuildInfoPath);
-        var record = CascBuildInfo.SelectForProduct(records, layout.Product);
+        var buildInfo = CascBuildInfo.Open(installRoot);
+        var flavor = buildInfo.GetFlavor(_options.Product);
+        var record = flavor.BuildInfo;
 
         var buildNumber = TryParseBuildNumber(record.Version);
         var version = record.Version;

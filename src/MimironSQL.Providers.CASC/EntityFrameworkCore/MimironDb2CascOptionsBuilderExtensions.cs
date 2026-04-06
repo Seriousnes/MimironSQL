@@ -61,6 +61,7 @@ public static class MimironDb2CascOptionsBuilderExtensions
             casc.ManifestAssetName = bound.ManifestAssetName;
             casc.TactKeyFilePath = bound.TactKeyFilePath;
             casc.ThrowOnEncryptedBlockWithoutKey = bound.ThrowOnEncryptedBlockWithoutKey;
+            casc.Product = bound.Product;
         });
     }
 
@@ -84,6 +85,8 @@ public static class MimironDb2CascOptionsBuilderExtensions
                         configuration["ManifestAssetName"]?.Trim() ??
                         "manifest.json";
 
+        var product = ReadString(casc, configuration, "Product") ?? "wow";
+
         return new CascDb2ProviderOptions
         {
             WowInstallRoot = wowInstallRoot,
@@ -92,6 +95,7 @@ public static class MimironDb2CascOptionsBuilderExtensions
             ManifestAssetName = assetName,
             TactKeyFilePath = tactKeyFilePath,
             ThrowOnEncryptedBlockWithoutKey = throwOnEncryptedBlockWithoutKey,
+            Product = product,
         };
     }
 
@@ -143,6 +147,12 @@ public static class MimironDb2CascOptionsBuilderExtensions
         /// When <see langword="false"/> (default), encrypted blocks are skipped and output is zero-filled.
         /// </summary>
         public bool ThrowOnEncryptedBlockWithoutKey { get; set; } = false;
+
+        /// <summary>
+        /// The CASC product token (e.g. <c>wow</c>, <c>wowt</c>, <c>wow_classic</c>) that identifies
+        /// which flavor to target. Default is <c>wow</c>.
+        /// </summary>
+        public string Product { get; set; } = "wow";
 
         /// <summary>
         /// Optional explicit DBD provider instance to register.
@@ -258,12 +268,31 @@ public static class MimironDb2CascOptionsBuilderExtensions
         }
 
         /// <summary>
+        /// Sets the CASC product token (e.g. <c>wow</c>, <c>wowt</c>, <c>wow_classic</c>).
+        /// </summary>
+        public CascDb2ProviderBuilder WithProduct(string product)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(product);
+            Product = product;
+            return this;
+        }
+
+        /// <summary>
         /// Applies the configured CASC provider settings to the underlying provider options builder.
         /// </summary>
         /// <returns>The underlying provider options builder.</returns>
         public IMimironDb2DbContextOptionsBuilder Apply()
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(WowInstallRoot);
+
+            // Auto-detect the WoW version from .build.info.
+            var buildInfo = CascBuildInfo.Open(WowInstallRoot);
+            var flavor = buildInfo.GetFlavor(Product);
+
+            if (!string.IsNullOrWhiteSpace(flavor.BuildInfo.Version))
+            {
+                _builder.WithWowVersion(flavor.BuildInfo.Version);
+            }
 
             var hasCustomDbdProvider = _dbdProviderType is not null || DbdProvider is not null || DbdProviderFactory is not null;
             if (!hasCustomDbdProvider && string.IsNullOrWhiteSpace(DbdDefinitionsDirectory))
@@ -280,6 +309,7 @@ public static class MimironDb2CascOptionsBuilderExtensions
                 ManifestAssetName = ManifestAssetName,
                 TactKeyFilePath = TactKeyFilePath,
                 ThrowOnEncryptedBlockWithoutKey = ThrowOnEncryptedBlockWithoutKey,
+                Product = Product,
             };
 
             var configHash = HashCode.Combine(
@@ -289,7 +319,8 @@ public static class MimironDb2CascOptionsBuilderExtensions
                 cascOptions.ManifestDirectory,
                 cascOptions.ManifestAssetName,
                 cascOptions.TactKeyFilePath,
-                cascOptions.ThrowOnEncryptedBlockWithoutKey);
+                cascOptions.ThrowOnEncryptedBlockWithoutKey,
+                cascOptions.Product);
 
             return _builder.ConfigureProvider(
                 providerKey: "CASC",

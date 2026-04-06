@@ -42,4 +42,10 @@ public sealed record CascDb2ProviderOptions
     /// When <see langword="true"/>, decoding throws.
     /// </summary>
     public bool ThrowOnEncryptedBlockWithoutKey { get; init; } = false;
+
+    /// <summary>
+    /// The CASC product token (e.g. <c>wow</c>, <c>wowt</c>, <c>wow_classic</c>) that identifies
+    /// which flavor to target. Default is <c>wow</c>.
+    /// </summary>
+    public string Product { get; init; } = "wow";
 }

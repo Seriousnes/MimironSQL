@@ -24,8 +24,8 @@ internal static class TestHelpers
 
         return optionsBuilder.UseMimironDb2(o =>
         {
-            o.WithWowVersion(WowVersion);
             configure(o);
+            o.WithWowVersion(WowVersion);
         });
     }
 
@@ -39,8 +39,8 @@ internal static class TestHelpers
 
         optionsBuilder.UseMimironDb2(o =>
         {
-            o.WithWowVersion(WowVersion);
             configure(o);
+            o.WithWowVersion(WowVersion);
         });
 
         return optionsBuilder;

@@ -16,25 +16,183 @@ internal sealed record CascBuildInfoRecord(
     string? Version);
 
 /// <summary>
-/// Helpers for reading and selecting records from <c>.build.info</c>.
+/// Describes a detected WoW flavor (e.g. <c>_retail_</c>) paired with its <c>.build.info</c> record.
 /// </summary>
-internal static class CascBuildInfo
+/// <param name="Product">The CASC product token (e.g. <c>wow</c>).</param>
+/// <param name="FlavorDirectory">The flavor root directory (e.g. <c>_retail_</c>).</param>
+/// <param name="DataDirectory">The <c>Data</c> directory under the flavor.</param>
+/// <param name="DataDataDirectory">The <c>Data\data</c> directory.</param>
+/// <param name="DataConfigDirectory">The <c>Data\config</c> directory.</param>
+/// <param name="BuildInfo">The matched <c>.build.info</c> record for this flavor's product.</param>
+internal sealed record CascFlavor(
+    string Product,
+    string FlavorDirectory,
+    string DataDirectory,
+    string DataDataDirectory,
+    string DataConfigDirectory,
+    CascBuildInfoRecord BuildInfo);
+
+/// <summary>
+/// Reads and correlates <c>.build.info</c> and per-flavor <c>.flavor.info</c> from a WoW installation.
+/// </summary>
+internal sealed class CascBuildInfo
 {
-    /// <summary>
-    /// Reads <c>.build.info</c> records from disk.
-    /// </summary>
-    /// <param name="buildInfoPath">Path to the <c>.build.info</c> file.</param>
-    /// <returns>The parsed records.</returns>
-    public static IReadOnlyList<CascBuildInfoRecord> Read(string buildInfoPath)
+    private CascBuildInfo(string installRoot, IReadOnlyList<CascBuildInfoRecord> records, IReadOnlyList<CascFlavor> flavors)
     {
-        ArgumentNullException.ThrowIfNull(buildInfoPath);
-        if (!File.Exists(buildInfoPath))
+        InstallRoot = installRoot;
+        Records = records;
+        Flavors = flavors;
+    }
+
+    /// <summary>
+    /// Root directory of the World of Warcraft installation.
+    /// </summary>
+    public string InstallRoot { get; }
+
+    /// <summary>
+    /// All parsed rows from the <c>.build.info</c> file.
+    /// </summary>
+    public IReadOnlyList<CascBuildInfoRecord> Records { get; }
+
+    /// <summary>
+    /// Detected flavors, each paired with its matched <c>.build.info</c> record.
+    /// </summary>
+    public IReadOnlyList<CascFlavor> Flavors { get; }
+
+    /// <summary>
+    /// Gets the flavor matching the specified product token.
+    /// </summary>
+    /// <param name="product">The CASC product token (e.g. <c>wow</c>, <c>wowt</c>, <c>wow_classic</c>).</param>
+    /// <returns>The matching <see cref="CascFlavor"/>.</returns>
+    /// <exception cref="InvalidOperationException">No flavor matches the specified product.</exception>
+    public CascFlavor GetFlavor(string product)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(product);
+
+        foreach (var flavor in Flavors)
         {
-            throw new FileNotFoundException(".build.info not found", buildInfoPath);
+            if (string.Equals(flavor.Product, product, StringComparison.OrdinalIgnoreCase))
+            {
+                return flavor;
+            }
         }
 
-        // .build.info can be tab-separated (older) or pipe-separated (modern). First non-empty line is header.
-        // Columns vary slightly by era; we only need Product + BuildConfig.
+        var available = string.Join(", ", Flavors.Select(f => f.Product));
+        throw new InvalidOperationException($"No flavor found for product '{product}'. Available: {available}");
+    }
+
+    /// <summary>
+    /// Opens and parses the <c>.build.info</c> from a WoW installation root, detecting all flavors.
+    /// </summary>
+    /// <param name="installRoot">Root directory of the World of Warcraft installation.</param>
+    /// <returns>A <see cref="CascBuildInfo"/> with parsed records and detected flavors.</returns>
+    public static CascBuildInfo Open(string installRoot)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(installRoot);
+
+        var buildInfoPath = Directory.GetFiles(installRoot, ".build.info", SearchOption.TopDirectoryOnly)
+            is [var path]
+                ? path
+                : throw new FileNotFoundException(".build.info not found in install root", Path.Combine(installRoot, ".build.info"));
+
+        var records = ReadBuildInfo(buildInfoPath);
+
+        // Detect flavor directories by searching for .flavor.info files in immediate subdirectories.
+        var flavorInfoPaths = Directory.GetFiles(installRoot, ".flavor.info", SearchOption.AllDirectories);
+        var flavors = new List<CascFlavor>();
+
+        foreach (var flavorInfoPath in flavorInfoPaths)
+        {
+            var flavorDir = Path.GetDirectoryName(flavorInfoPath)!;
+            var dataDir = Path.Combine(flavorDir, "Data");
+            var dataDataDir = Path.Combine(dataDir, "data");
+            var dataConfigDir = Path.Combine(dataDir, "config");
+
+            if (!Directory.Exists(dataDataDir) || !Directory.Exists(dataConfigDir))
+            {
+                continue;
+            }
+
+            var product = ReadFlavorProduct(flavorInfoPath);
+            var record = SelectForProduct(records, product);
+            flavors.Add(new CascFlavor(product, flavorDir, dataDir, dataDataDir, dataConfigDir, record));
+        }
+
+        // Fallback: Data directory directly under installRoot (non-shared layout).
+        if (flavors.Count == 0)
+        {
+            var dataDir = Path.Combine(installRoot, "Data");
+            var dataDataDir = Path.Combine(dataDir, "data");
+            var dataConfigDir = Path.Combine(dataDir, "config");
+
+            if (Directory.Exists(dataDataDir) && Directory.Exists(dataConfigDir))
+            {
+                var product = "wow";
+                var flavorInfoPath = Path.Combine(installRoot, ".flavor.info");
+                if (File.Exists(flavorInfoPath))
+                {
+                    product = ReadFlavorProduct(flavorInfoPath);
+                }
+
+                var record = SelectForProduct(records, product);
+                flavors.Add(new CascFlavor(product, installRoot, dataDir, dataDataDir, dataConfigDir, record));
+            }
+        }
+
+        if (flavors.Count == 0)
+        {
+            throw new InvalidOperationException("Unable to locate WoW Data folders (Data\\data + Data\\config) under the provided install root.");
+        }
+
+        return new CascBuildInfo(installRoot, records, flavors);
+    }
+
+    /// <summary>
+    /// Selects the first record matching the specified product, optionally falling back to additional products.
+    /// </summary>
+    /// <param name="records">The available records.</param>
+    /// <param name="product">The desired product identifier.</param>
+    /// <param name="productFallbacks">Optional additional products to try.</param>
+    /// <returns>The selected build info record.</returns>
+    public static CascBuildInfoRecord SelectForProduct(
+        IReadOnlyList<CascBuildInfoRecord> records,
+        string product,
+        IEnumerable<string>? productFallbacks = null)
+    {
+        ArgumentNullException.ThrowIfNull(records);
+        ArgumentNullException.ThrowIfNull(product);
+
+        var wanted = new[] { product }.Concat(productFallbacks ?? []).ToArray();
+        foreach (var p in wanted)
+        {
+            var record = records.FirstOrDefault(r => string.Equals(r.Product, p, StringComparison.OrdinalIgnoreCase));
+            if (record is not null)
+            {
+                return record;
+            }
+        }
+
+        // Some .build.info "Product" fields can include suffixes; allow prefix match.
+        foreach (var p in wanted)
+        {
+            var record = records.FirstOrDefault(r => r.Product.StartsWith(p, StringComparison.OrdinalIgnoreCase));
+            if (record is not null)
+            {
+                return record;
+            }
+        }
+
+        throw new InvalidOperationException($"No .build.info record found for product '{product}'.");
+    }
+
+    private static string ReadFlavorProduct(string flavorInfoPath)
+    {
+        var text = File.ReadAllText(flavorInfoPath).Trim();
+        return text.Length > 0 ? text : "wow";
+    }
+
+    private static IReadOnlyList<CascBuildInfoRecord> ReadBuildInfo(string buildInfoPath)
+    {
         var lines = File.ReadAllLines(buildInfoPath);
         int headerLineIndex = -1;
         for (int i = 0; i < lines.Length; i++)
@@ -112,44 +270,6 @@ internal static class CascBuildInfo
         return records;
     }
 
-    /// <summary>
-    /// Selects the first record matching the specified product, optionally falling back to additional products.
-    /// </summary>
-    /// <param name="records">The available records.</param>
-    /// <param name="product">The desired product identifier.</param>
-    /// <param name="productFallbacks">Optional additional products to try.</param>
-    /// <returns>The selected build info record.</returns>
-    public static CascBuildInfoRecord SelectForProduct(
-        IReadOnlyList<CascBuildInfoRecord> records,
-        string product,
-        IEnumerable<string>? productFallbacks = null)
-    {
-        ArgumentNullException.ThrowIfNull(records);
-        ArgumentNullException.ThrowIfNull(product);
-
-        var wanted = new[] { product }.Concat(productFallbacks ?? []).ToArray();
-        foreach (var p in wanted)
-        {
-            var record = records.FirstOrDefault(r => string.Equals(r.Product, p, StringComparison.OrdinalIgnoreCase));
-            if (record is not null)
-            {
-                return record;
-            }
-        }
-
-        // Some .build.info "Product" fields can include suffixes; allow prefix match.
-        foreach (var p in wanted)
-        {
-            var record = records.FirstOrDefault(r => r.Product.StartsWith(p, StringComparison.OrdinalIgnoreCase));
-            if (record is not null)
-            {
-                return record;
-            }
-        }
-
-        throw new InvalidOperationException($"No .build.info record found for product '{product}'.");
-    }
-
     private static int FindColumn(Dictionary<string, int> map, params string[] names)
     {
         foreach (var name in names)
@@ -209,10 +329,6 @@ internal static class CascBuildInfo
 
     private static string? ExtractFirstHex(string input)
     {
-        // Common patterns:
-        // - just hex
-        // - "ckey ekey" pairs, or "key|size" etc.
-        // We only care about 32-hex substrings.
         for (int i = 0; i + 32 <= input.Length; i++)
         {
             var span = input.AsSpan(i, 32);

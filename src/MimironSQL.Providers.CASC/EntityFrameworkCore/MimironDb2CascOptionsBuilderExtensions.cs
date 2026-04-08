@@ -40,10 +40,56 @@ public static class MimironDb2CascOptionsBuilderExtensions
     }
 
     /// <summary>
-    /// Configures the CASC provider using configuration binding and applies it immediately.
+    /// Configures the CASC provider using a connection string and applies it immediately.
     /// </summary>
     /// <param name="builder">The provider options builder.</param>
-    /// <param name="configuration">Configuration used to bind <see cref="CascDb2ProviderOptions"/>.</param>
+    /// <param name="connectionString">
+    /// A semicolon-delimited connection string.
+    /// See <see cref="CascDb2ProviderOptions(string)"/> for supported keys and aliases.
+    /// </param>
+    /// <returns>The same <paramref name="builder"/> instance to enable chaining.</returns>
+    public static IMimironDb2DbContextOptionsBuilder UseCasc(
+        this IMimironDb2DbContextOptionsBuilder builder,
+        string connectionString)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+        ArgumentException.ThrowIfNullOrWhiteSpace(connectionString);
+
+        return builder.UseCasc(casc => casc.WithOptions(new CascDb2ProviderOptions(connectionString)));
+    }
+
+    /// <summary>
+    /// Configures the CASC provider using a connection string with additional fluent configuration.
+    /// </summary>
+    /// <param name="builder">The provider options builder.</param>
+    /// <param name="connectionString">
+    /// A semicolon-delimited connection string.
+    /// See <see cref="CascDb2ProviderOptions(string)"/> for supported keys and aliases.
+    /// </param>
+    /// <param name="configure">Callback for additional configuration (e.g. custom provider types).</param>
+    /// <returns>The same <paramref name="builder"/> instance to enable chaining.</returns>
+    public static IMimironDb2DbContextOptionsBuilder UseCasc(
+        this IMimironDb2DbContextOptionsBuilder builder,
+        string connectionString,
+        Action<CascDb2ProviderBuilder> configure)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+        ArgumentException.ThrowIfNullOrWhiteSpace(connectionString);
+        ArgumentNullException.ThrowIfNull(configure);
+
+        return builder.UseCasc(casc =>
+        {
+            casc.WithOptions(new CascDb2ProviderOptions(connectionString));
+            configure(casc);
+        });
+    }
+
+    /// <summary>
+    /// Configures the CASC provider using configuration binding and applies it immediately.
+    /// Binds <see cref="CascDb2ProviderOptions"/> from the <c>Casc</c> configuration section.
+    /// </summary>
+    /// <param name="builder">The provider options builder.</param>
+    /// <param name="configuration">Configuration to bind from.</param>
     /// <returns>The same <paramref name="builder"/> instance to enable chaining.</returns>
     public static IMimironDb2DbContextOptionsBuilder UseCasc(
         this IMimironDb2DbContextOptionsBuilder builder,
@@ -52,51 +98,8 @@ public static class MimironDb2CascOptionsBuilderExtensions
         ArgumentNullException.ThrowIfNull(builder);
         ArgumentNullException.ThrowIfNull(configuration);
 
-        var bound = BindOptions(configuration);
-        return builder.UseCasc(casc =>
-        {
-            casc.WowInstallRoot = bound.WowInstallRoot;
-            casc.DbdDefinitionsDirectory = bound.DbdDefinitionsDirectory;
-            casc.ManifestDirectory = bound.ManifestDirectory;
-            casc.ManifestAssetName = bound.ManifestAssetName;
-            casc.TactKeyFilePath = bound.TactKeyFilePath;
-            casc.ThrowOnEncryptedBlockWithoutKey = bound.ThrowOnEncryptedBlockWithoutKey;
-            casc.Product = bound.Product;
-        });
-    }
-
-    private static CascDb2ProviderOptions BindOptions(IConfiguration configuration)
-    {
-        var casc = configuration.GetSection("Casc");
-
-        static string? ReadString(IConfigurationSection section, IConfiguration root, string key)
-            => section[key]?.Trim() is { Length: > 0 } v ? v : (root[key]?.Trim() is { Length: > 0 } r ? r : null);
-
-        var wowInstallRoot = ReadString(casc, configuration, "WowInstallRoot") ?? string.Empty;
-        var dbdDefsDir = ReadString(casc, configuration, "DbdDefinitionsDirectory");
-        var cacheDir = ReadString(casc, configuration, "ManifestDirectory") ?? string.Empty;
-        var tactKeyFilePath = ReadString(casc, configuration, "TactKeyFilePath");
-
-        var throwOnEncryptedBlockWithoutKey = casc.GetValue<bool?>("ThrowOnEncryptedBlockWithoutKey") ??
-                             configuration.GetValue<bool?>("ThrowOnEncryptedBlockWithoutKey") ??
-                             false;
-
-        var assetName = casc["ManifestAssetName"]?.Trim() ??
-                        configuration["ManifestAssetName"]?.Trim() ??
-                        "manifest.json";
-
-        var product = ReadString(casc, configuration, "Product") ?? "wow";
-
-        return new CascDb2ProviderOptions
-        {
-            WowInstallRoot = wowInstallRoot,
-            DbdDefinitionsDirectory = dbdDefsDir,
-            ManifestDirectory = cacheDir,
-            ManifestAssetName = assetName,
-            TactKeyFilePath = tactKeyFilePath,
-            ThrowOnEncryptedBlockWithoutKey = throwOnEncryptedBlockWithoutKey,
-            Product = product,
-        };
+        var options = configuration.GetSection("Casc").Get<CascDb2ProviderOptions>() ?? new CascDb2ProviderOptions();
+        return builder.UseCasc(casc => casc.WithOptions(options));
     }
 
     /// <summary>
@@ -274,6 +277,24 @@ public static class MimironDb2CascOptionsBuilderExtensions
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(product);
             Product = product;
+            return this;
+        }
+
+        /// <summary>
+        /// Applies values from a <see cref="CascDb2ProviderOptions"/> instance to this builder.
+        /// </summary>
+        /// <param name="options">The options to apply.</param>
+        /// <returns>This builder for chaining.</returns>
+        public CascDb2ProviderBuilder WithOptions(CascDb2ProviderOptions options)
+        {
+            ArgumentNullException.ThrowIfNull(options);
+            WowInstallRoot = options.WowInstallRoot;
+            DbdDefinitionsDirectory = options.DbdDefinitionsDirectory;
+            ManifestDirectory = options.ManifestDirectory;
+            ManifestAssetName = options.ManifestAssetName;
+            TactKeyFilePath = options.TactKeyFilePath;
+            ThrowOnEncryptedBlockWithoutKey = options.ThrowOnEncryptedBlockWithoutKey;
+            Product = options.Product;
             return this;
         }
 

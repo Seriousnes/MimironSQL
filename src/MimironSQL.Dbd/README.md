@@ -42,7 +42,7 @@ The returned `IDbdFile` exposes:
 | `DbdFile` | Root parsed object — columns, layouts, and global builds |
 | `DbdLayout` | A `LAYOUT` section — groups one or more layout hashes with their build blocks |
 | `DbdBuildBlock` | A `BUILD` block — ordered list of field entries for a specific build range |
-| `DbdLayoutEntry` | Single field within a build block — name, type, array count, inline flag, ID/relation markers |
+| `DbdLayoutEntry` | Single field within a build block — name, type, array count, inline flag, ID/relation markers, inline type token |
 | `DbdColumn` | Column-level metadata from the `COLUMNS` section — value type, foreign key reference, verified flag |
 | `DbdColumnParser` | Parses a `COLUMNS` section line into a column name and `DbdColumn` |
 | `DbdLayoutEntryParser` | Parses a `BUILD` section line into a `DbdLayoutEntry` |
@@ -80,12 +80,14 @@ Category<16>
 Title_lang
 ```
 
-Field annotations include bit-width suffixes (`<32>`), array counts (`[4]`), the `$id$` marker for record IDs, `$relation$` for relation columns, and `$noninline$` for non-inline fields.
+Field annotations include bit-width suffixes (`<32>`), array counts (`[4]`), the `$id$` marker for record IDs, `$relation$` for relation columns, `$noninline$` for non-inline fields, and an optional inline type token.
 
 ## Architecture
 
 - Implements interfaces from `MimironSQL.Contracts` (`IDbdFile`, `IDbdLayout`, `IDbdBuildBlock`, `IDbdLayoutEntry`, `IDbdColumn`, `IDbdParser`).
 - `DbdFile.Parse(Stream)` contains the core parsing state machine; `DbdParser` is the public-facing wrapper.
+- `DbdLayout.TrySelectBuildByPhysicalColumnCount` selects the correct build block for a file's physical field count.
+- `DbdBuildBlock.GetPhysicalColumnCount()` computes the physical column count for a build block.
 - Consumed by `MimironSQL.EntityFrameworkCore` for runtime schema resolution and by `MimironSQL.DbContextGenerator` for compile-time source generation.
 - Embedded into downstream packages rather than referenced as a package dependency, so it does not appear in consumers' dependency graphs.
 

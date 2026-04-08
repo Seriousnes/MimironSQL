@@ -96,6 +96,42 @@ public sealed class FileSystemProviderTests
         }
     }
 
+    [Fact]
+    public void FileSystemProviderOptions_ConnectionString_ParsesAllKeys()
+    {
+        var options = new FileSystemProviderOptions(@"Db2DirectoryPath=C:\db2;DbdDefinitionsDirectory=C:\dbd");
+
+        options.Db2DirectoryPath.ShouldBe(@"C:\db2");
+        options.DbdDefinitionsDirectory.ShouldBe(@"C:\dbd");
+    }
+
+    [Fact]
+    public void FileSystemProviderOptions_ConnectionString_SupportsAliases()
+    {
+        var options = new FileSystemProviderOptions(@"Db2 Directory=C:\db2;Dbd Directory=C:\dbd");
+
+        options.Db2DirectoryPath.ShouldBe(@"C:\db2");
+        options.DbdDefinitionsDirectory.ShouldBe(@"C:\dbd");
+    }
+
+    [Fact]
+    public void FileSystemProviderOptions_ConnectionString_IsCaseInsensitive()
+    {
+        var options = new FileSystemProviderOptions(@"db2directory=C:\db2;dbddirectory=C:\dbd");
+
+        options.Db2DirectoryPath.ShouldBe(@"C:\db2");
+        options.DbdDefinitionsDirectory.ShouldBe(@"C:\dbd");
+    }
+
+    [Fact]
+    public void FileSystemProviderOptions_ConnectionString_UsesDefaults_ForMissingKeys()
+    {
+        var options = new FileSystemProviderOptions(@"Db2Directory=C:\db2");
+
+        options.Db2DirectoryPath.ShouldBe(@"C:\db2");
+        options.DbdDefinitionsDirectory.ShouldBe(string.Empty);
+    }
+
     private static string CreateTempDirectory()
     {
         var dir = Path.Combine(Path.GetTempPath(), "MimironSQL-Tests", Guid.NewGuid().ToString("N"));

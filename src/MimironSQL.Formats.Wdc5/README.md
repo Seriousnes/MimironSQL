@@ -22,14 +22,22 @@ dotnet add package MimironSQL.Formats.Wdc5
 
 ```csharp
 using var stream = File.OpenRead("Map.db2");
-var file = new Wdc5Format().OpenFile(stream);
+var format = new Wdc5Format();
+using var file = format.OpenFile(stream);
 ```
 
 Or with encryption support:
 
 ```csharp
+var format = new Wdc5Format(tactKeyProvider: myTactKeyProvider);
+using var file = format.OpenFile(stream);
+```
+
+To construct a `Wdc5File` directly:
+
+```csharp
 var options = new Wdc5FileOptions(TactKeyProvider: myTactKeyProvider);
-var file = new Wdc5File(stream, options);
+using var file = new Wdc5File(stream, options);
 ```
 
 ### Reading rows
@@ -57,16 +65,22 @@ if (file.TryGetRowHandle(2222, out var handle))
 
 | Type | Kind | Description |
 | --- | --- | --- |
-| `Wdc5Format` | class | `IDb2Format` implementation — entry point for opening files. |
-| `Wdc5File` | class | Parsed WDC5 file. Implements `IDb2File<RowHandle>` for row enumeration and field reading. |
-| `Wdc5FileOptions` | record | Options controlling parsing and decryption (TACT key provider, nonce strategy). |
+| `Wdc5Format` | class | `IDb2Format` implementation — entry point for opening files. Accepts optional `ITactKeyProvider` and `Wdc5FormatOptions`. |
+| `Wdc5FormatOptions` | class | Format-level options (e.g., `EagerSparseOffsetTable`). |
+| `Wdc5File` | class | Parsed WDC5 file. Implements `IDb2File<RowHandle>` and `IDb2DenseStringTableIndexProvider<RowHandle>`. Also implements `IDisposable`. |
+| `Wdc5FileOptions` | record | Options controlling parsing, decryption (TACT key provider, nonce strategy), and record loading mode. |
 | `Wdc5Header` | record struct | Parsed file header (schema hash, field counts, flags, section count, etc.). |
 | `Wdc5SectionHeader` | record struct | Per-section header (TACT key lookup, record count, string table size, copy table count). |
 | `Wdc5Section` | class | Parsed section data including record bytes, string table, index data, and copy table entries. |
 | `FieldMetaData` | record struct | Per-field bit width and offset within a record. |
 | `ColumnMetaData` | struct | Extended column metadata including compression type, pallet, and common-data parameters. |
+| `ColumnCompressionDataImmediate` | record struct | Compression parameters for `Immediate` / `SignedImmediate` columns. |
+| `ColumnCompressionDataPallet` | record struct | Compression parameters for `Pallet` / `PalletArray` columns. |
+| `ColumnCompressionDataCommon` | record struct | Compression parameters for `Common` columns. |
 | `CompressionType` | enum | Column compression mode: `None`, `Immediate`, `Common`, `Pallet`, `PalletArray`, `SignedImmediate`. |
+| `SparseEntry` | record struct | Offset/size pair for a sparse (offset-map) record entry. |
 | `Wdc5FileLookupTracker` | static class | Diagnostic helper for tracking `TryGetRowById` call counts. |
+| `Wdc5FileLookupSnapshot` | record struct | Snapshot of lookup tracker state. |
 
 ## Header Structure
 
@@ -83,9 +97,15 @@ if (file.TryGetRowHandle(2222, out var handle))
 | `TableHash` | `uint` | Table hash. |
 | `LayoutHash` | `uint` | Layout hash. |
 | `MinIndex` / `MaxIndex` | `int` | Record index range. |
+| `Locale` | `int` | Locale identifier. |
 | `Flags` | `Db2Flags` | DB2 flags (e.g., sparse, has offset map). |
 | `IdFieldIndex` | `ushort` | Zero-based index of the ID field. |
 | `TotalFieldsCount` | `int` | Total fields including hidden fields. |
+| `PackedDataOffset` | `int` | Offset of packed data. |
+| `LookupColumnCount` | `int` | Number of lookup columns. |
+| `ColumnMetaDataSize` | `int` | Size of column metadata. |
+| `CommonDataSize` | `int` | Size of common data. |
+| `PalletDataSize` | `int` | Size of pallet data. |
 | `SectionsCount` | `int` | Number of sections in the file. |
 
 ### `Wdc5SectionHeader`
@@ -96,7 +116,10 @@ if (file.TryGetRowHandle(2222, out var handle))
 | `FileOffset` | `int` | Absolute file offset where the section begins. |
 | `NumRecords` | `int` | Number of records in the section. |
 | `StringTableSize` | `int` | String table size for the section. |
+| `OffsetRecordsEndOffset` | `int` | End offset of offset-map records. |
 | `IndexDataSize` | `int` | Index data size in bytes. |
+| `ParentLookupDataSize` | `int` | Size of parent lookup data. |
+| `OffsetMapIDCount` | `int` | Number of offset-map ID entries. |
 | `CopyTableCount` | `int` | Number of copy-table entries. |
 
 ## Encryption Support
@@ -108,7 +131,7 @@ var options = new Wdc5FileOptions(
     TactKeyProvider: myTactKeyProvider,
     EncryptedRowNonceStrategy: Wdc5EncryptedRowNonceStrategy.SourceId);
 
-var file = new Wdc5File(stream, options);
+using var file = new Wdc5File(stream, options);
 ```
 
 The `Wdc5EncryptedRowNonceStrategy` enum controls how per-row decryption nonces are derived:
@@ -117,6 +140,13 @@ The `Wdc5EncryptedRowNonceStrategy` enum controls how per-row decryption nonces 
 | --- | --- |
 | `SourceId` | Use the source row ID from the raw record (default). |
 | `DestinationId` | Use the destination (post-copy) row ID. |
+
+The `Wdc5RecordLoadingMode` enum controls when record data is loaded:
+
+| Value | Description |
+| --- | --- |
+| `Lazy` | Records are read on demand (default). |
+| `Eager` | All record data is loaded upfront during file construction. |
 
 Decryption is performed via the `Salsa20` cipher bundled as a project dependency.
 

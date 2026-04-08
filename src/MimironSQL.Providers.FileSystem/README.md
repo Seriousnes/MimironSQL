@@ -27,12 +27,31 @@ When used with `MimironSQL.EntityFrameworkCore`, configure the file system provi
 ```csharp
 var builder = new DbContextOptionsBuilder<WoWDb2Context>();
 
-builder.UseMimironDb2(o => o.UseFileSystem(
-    db2DirectoryPath: "path/to/db2/files",
-    dbdDefinitionsDirectory: "path/to/dbd/definitions"));
+builder.UseMimironDb2(o => o
+    .WithWowVersion(WoWDb2Context.WowVersion)
+    .UseFileSystem(
+        db2DirectoryPath: "path/to/db2/files",
+        dbdDefinitionsDirectory: "path/to/dbd/definitions"));
 
 using var context = new WoWDb2Context(builder.Options);
 ```
+
+A connection string overload is also available:
+
+```csharp
+builder.UseMimironDb2(o => o
+    .WithWowVersion(WoWDb2Context.WowVersion)
+    .UseFileSystem("Db2Directory=path/to/db2;DbdDirectory=path/to/dbd"));
+```
+
+### Connection String Keys
+
+The connection string uses semicolon-delimited key=value pairs. Keys are case-insensitive and support aliases:
+
+| Key | Aliases | Description |
+| --- | --- | --- |
+| `Db2DirectoryPath` | `Db2Directory`, `Db2 Directory` | Directory containing `.db2` files |
+| `DbdDefinitionsDirectory` | `DbdDirectory`, `Dbd Directory` | Directory containing `.dbd` files |
 
 An overload accepting `FileSystemDb2StreamProviderOptions` and `FileSystemDbdProviderOptions` is also available for more explicit configuration.
 
@@ -49,6 +68,9 @@ var provider = new FileSystemDb2StreamProvider(
     new FileSystemDb2StreamProviderOptions("path/to/db2/files"));
 
 using var stream = provider.OpenDb2Stream("Map");
+
+// Async variant
+using var stream = await provider.OpenDb2StreamAsync("Map");
 ```
 
 ### FileSystemDbdProvider
@@ -94,6 +116,21 @@ if (provider.TryGetKey(0x1234567890ABCDEF, out var key))
 | `FileSystemDb2StreamProvider` | `FileSystemDb2StreamProviderOptions(string Db2DirectoryPath)` | `IDb2StreamProvider` |
 | `FileSystemDbdProvider` | `FileSystemDbdProviderOptions(string DefinitionsDirectory)` | `IDbdProvider` |
 | `FileSystemTactKeyProvider` | `FileSystemTactKeyProviderOptions(string KeyFilePath)` | `ITactKeyProvider` |
+
+### FileSystemProviderOptions
+
+Combined options record that supports connection string initialization:
+
+```csharp
+public sealed record FileSystemProviderOptions
+{
+    public FileSystemProviderOptions();
+    public FileSystemProviderOptions(string connectionString);
+
+    public string Db2DirectoryPath { get; init; }
+    public string DbdDefinitionsDirectory { get; init; }
+}
+```
 
 ## License
 

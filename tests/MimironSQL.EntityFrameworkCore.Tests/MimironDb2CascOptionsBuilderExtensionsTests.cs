@@ -151,6 +151,63 @@ public sealed class MimironDb2CascOptionsBuilderExtensionsTests : IDisposable
         extension!.WowVersion.ShouldBe("99.0.0.12345");
     }
 
+    [Fact]
+    public void UseCasc_ConnectionString_ConfiguresAndAutoDetectsVersion()
+    {
+        var optionsBuilder = new DbContextOptionsBuilder();
+        optionsBuilder.UseMimironDb2(o => o
+            .UseCasc($"WowInstallRoot={_fakeWowRoot};DbdDirectory=C:\\dbd"));
+
+        var extension = optionsBuilder.Options.FindExtension<MimironDb2OptionsExtension>();
+        extension.ShouldNotBeNull();
+        extension!.WowVersion.ShouldBe("11.0.7.99999");
+    }
+
+    [Fact]
+    public void UseCasc_ConnectionString_WithConfigure_AllowsCustomProviders()
+    {
+        var expectedDbdProvider = Substitute.For<IDbdProvider>();
+        var expectedManifestProvider = Substitute.For<IManifestProvider>();
+
+        var optionsBuilder = new DbContextOptionsBuilder();
+        optionsBuilder.UseMimironDb2(o => o
+            .UseCasc($"Install Root={_fakeWowRoot}", casc =>
+            {
+                casc.DbdProviderFactory = _ => expectedDbdProvider;
+                casc.ManifestProviderFactory = _ => expectedManifestProvider;
+            }));
+
+        var extension = optionsBuilder.Options.FindExtension<MimironDb2OptionsExtension>();
+        extension.ShouldNotBeNull();
+        extension!.WowVersion.ShouldBe("11.0.7.99999");
+
+        var services = new ServiceCollection();
+        extension.ApplyServices(services);
+
+        using var serviceProvider = services.BuildServiceProvider();
+        serviceProvider.GetRequiredService<IDbdProvider>().ShouldBeSameAs(expectedDbdProvider);
+        serviceProvider.GetRequiredService<IManifestProvider>().ShouldBeSameAs(expectedManifestProvider);
+    }
+
+    [Fact]
+    public void UseCasc_WithOptions_CopiesAllProperties()
+    {
+        var optionsBuilder = new DbContextOptionsBuilder();
+        optionsBuilder.UseMimironDb2(o => o.UseCasc(casc =>
+        {
+            casc.WithOptions(new CascDb2ProviderOptions
+            {
+                WowInstallRoot = _fakeWowRoot,
+                Product = "wow",
+                ManifestAssetName = "custom.json",
+            });
+            casc.DbdProviderFactory = _ => Substitute.For<IDbdProvider>();
+        }));
+
+        var extension = optionsBuilder.Options.FindExtension<MimironDb2OptionsExtension>();
+        extension.ShouldNotBeNull();
+    }
+
     private static void CreateFakeWowLayout(string root, string version = "11.0.7.99999", string product = "wow")
     {
         var flavorDir = Path.Combine(root, "_retail_");

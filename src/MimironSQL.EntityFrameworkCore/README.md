@@ -66,13 +66,35 @@ services.AddDbContext<WoWDb2Context>(options =>
             dbdDefinitionsDirectory: "path/to/dbd/definitions")));
 ```
 
+Or with a connection string:
+
+```csharp
+services.AddDbContext<WoWDb2Context>(options =>
+    options.UseMimironDb2(o => o
+        .WithWowVersion(WoWDb2Context.WowVersion)
+        .UseFileSystem("Db2Directory=path/to/db2;DbdDirectory=path/to/dbd")));
+```
+
 **CASC provider:**
 
 ```csharp
 services.AddDbContext<WoWDb2Context>(options =>
     options.UseMimironDb2(o => o
         .WithWowVersion(WoWDb2Context.WowVersion)
-        .UseCasc(configuration)));
+        .UseCasc(casc => casc
+            .WithWowInstallRoot("path/to/World of Warcraft")
+            .WithDbdDefinitions("path/to/dbd/definitions")
+            .WithManifest("path/to/manifest/cache")
+            .Apply())));
+```
+
+Or with a connection string:
+
+```csharp
+services.AddDbContext<WoWDb2Context>(options =>
+    options.UseMimironDb2(o => o
+        .WithWowVersion(WoWDb2Context.WowVersion)
+        .UseCasc("WowInstallRoot=C:\\WoW;DbdDirectory=C:\\dbd;ManifestDirectory=C:\\cache")));
 ```
 
 Only one provider may be configured per `DbContext`.
@@ -106,12 +128,28 @@ options.UseMimironDb2(o =>
 });
 ```
 
-### Registering services without EF Core
+### Additional Configuration
 
-If you need MimironSQL core services outside of a `DbContext`, register them manually:
+The options builder exposes additional extension methods for advanced scenarios:
 
 ```csharp
-services.AddMimironSQLServices();
+options.UseMimironDb2(o =>
+{
+    o.WithWowVersion(WoWDb2Context.WowVersion);
+    o.UseFileSystem(db2Dir, dbdDir);
+
+    // Control how FK arrays are modeled (SharedTypeJoinEntity or ClrJoinEntity)
+    o.WithForeignKeyArrayModeling(ForeignKeyArrayModeling.ClrJoinEntity);
+
+    // Relax layout validation for tables with mismatched physical field counts
+    o.WithRelaxedLayoutValidation();
+
+    // Enable custom indexing for faster row lookups
+    o.WithCustomIndexes(idx => idx.CacheDirectory = "path/to/index/cache");
+
+    // Configure WDC5-specific format options
+    o.ConfigureWdc5(wdc5 => wdc5.EagerSparseOffsetTable = true);
+});
 ```
 
 ## Public API
@@ -130,22 +168,101 @@ public static class MimironDb2DbContextOptionsExtensions
 ### MimironDb2DbContextOptionsBuilder
 
 ```csharp
-public class MimironDb2DbContextOptionsBuilder : IMimironDb2DbContextOptionsBuilder
+public sealed class MimironDb2DbContextOptionsBuilder : IMimironDb2DbContextOptionsBuilder
 {
-    public MimironDb2DbContextOptionsBuilder(DbContextOptionsBuilder optionsBuilder);
     public DbContextOptionsBuilder OptionsBuilder { get; }
+
+    public IMimironDb2DbContextOptionsBuilder WithWowVersion(string wowVersion);
+    public IMimironDb2DbContextOptionsBuilder ConfigureProvider(
+        string providerKey,
+        int providerConfigHash,
+        Action<IServiceCollection> applyProviderServices);
 }
 ```
 
-### MimironDb2OptionsExtension
-
-Implements `IDbContextOptionsExtension`. Carries provider selection and registers all internal services during `ApplyServices`.
+### Configuration Extensions
 
 ```csharp
-public class MimironDb2OptionsExtension : IDbContextOptionsExtension
+public static class MimironDb2ForeignKeyArrayModelingExtensions
 {
-    public string? ProviderKey { get; }
-    public int ProviderConfigHash { get; }
+    public static IMimironDb2DbContextOptionsBuilder WithForeignKeyArrayModeling(
+        this IMimironDb2DbContextOptionsBuilder builder,
+        ForeignKeyArrayModeling modeling);
+}
+
+public static class MimironDb2LayoutValidationExtensions
+{
+    public static IMimironDb2DbContextOptionsBuilder WithRelaxedLayoutValidation(
+        this IMimironDb2DbContextOptionsBuilder builder,
+        bool relaxed = true);
+}
+
+public static class MimironDb2IndexExtensions
+{
+    public static IMimironDb2DbContextOptionsBuilder WithCustomIndexes(
+        this IMimironDb2DbContextOptionsBuilder builder,
+        Action<Db2IndexOptions>? configure = null);
+}
+
+public static class MimironDb2Wdc5Extensions
+{
+    public static IMimironDb2DbContextOptionsBuilder ConfigureWdc5(
+        this IMimironDb2DbContextOptionsBuilder builder,
+        Action<Wdc5FormatOptions> configure);
+}
+```
+
+### ForeignKeyArrayModeling
+
+```csharp
+public enum ForeignKeyArrayModeling
+{
+    SharedTypeJoinEntity = 0,
+    ClrJoinEntity = 1,
+}
+```
+
+### Db2IndexOptions
+
+```csharp
+public sealed class Db2IndexOptions
+{
+    public string? CacheDirectory { get; set; }
+}
+```
+
+### Db2Entity\<TKey\>
+
+Base class for generated entity types.
+
+```csharp
+public abstract class Db2Entity<TKey> where TKey : IEquatable<TKey>, IComparable<TKey>
+{
+    public virtual TKey Id { get; set; }
+}
+```
+
+### Model Configuration Extensions
+
+```csharp
+public static class MimironDb2ForeignKeyArrayExtensions
+{
+    public static ReferenceCollectionBuilder<TEntity, TTarget> HasForeignKeyArray<TEntity, TTarget>(
+        this ReferenceCollectionBuilder<TEntity, TTarget> builder,
+        Expression<Func<TEntity, IEnumerable<int>>> foreignKeyIds);
+
+    public static CollectionNavigationBuilder<TEntity, TTarget> HasForeignKeyArray<TEntity, TTarget>(
+        this CollectionNavigationBuilder<TEntity, TTarget> builder,
+        Expression<Func<TEntity, IEnumerable<int>>> foreignKeyIds);
+}
+
+public static class MimironDb2SharedPrimaryKeyOneToOneExtensions
+{
+    public static ReferenceReferenceBuilder<TPrincipal, TDependent> HasSharedPrimaryKey<TPrincipal, TDependent>(
+        this EntityTypeBuilder<TPrincipal> builder,
+        Expression<Func<TPrincipal, TDependent?>> principalNavigation,
+        Expression<Func<TDependent, TPrincipal?>> dependentNavigation,
+        bool required = true);
 }
 ```
 

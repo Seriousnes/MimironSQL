@@ -74,4 +74,56 @@ public sealed class CascTests
         Should.Throw<ArgumentOutOfRangeException>(() => EndianBitConverter.ReadUIntBigEndian([]));
         Should.Throw<ArgumentOutOfRangeException>(() => EndianBitConverter.ReadUIntBigEndian(new byte[9]));
     }
+
+    [Fact]
+    public void CascDb2ProviderOptions_ConnectionString_ParsesAllKeys()
+    {
+        var options = new CascDb2ProviderOptions(
+            @"WowInstallRoot=C:\WoW;Product=wowt;DbdDefinitionsDirectory=C:\dbd;ManifestDirectory=C:\manifest;ManifestAssetName=custom.json;TactKeyFilePath=C:\keys.txt;ThrowOnEncryptedBlockWithoutKey=true");
+
+        options.WowInstallRoot.ShouldBe(@"C:\WoW");
+        options.Product.ShouldBe("wowt");
+        options.DbdDefinitionsDirectory.ShouldBe(@"C:\dbd");
+        options.ManifestDirectory.ShouldBe(@"C:\manifest");
+        options.ManifestAssetName.ShouldBe("custom.json");
+        options.TactKeyFilePath.ShouldBe(@"C:\keys.txt");
+        options.ThrowOnEncryptedBlockWithoutKey.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void CascDb2ProviderOptions_ConnectionString_SupportsAliases()
+    {
+        var options = new CascDb2ProviderOptions(
+            @"Install Root=C:\WoW;DbdDirectory=C:\dbd;Manifest Directory=C:\m;Manifest Asset Name=m.json;Tact Key File=C:\k.txt;Strict Tact Keys=true");
+
+        options.WowInstallRoot.ShouldBe(@"C:\WoW");
+        options.DbdDefinitionsDirectory.ShouldBe(@"C:\dbd");
+        options.ManifestDirectory.ShouldBe(@"C:\m");
+        options.ManifestAssetName.ShouldBe("m.json");
+        options.TactKeyFilePath.ShouldBe(@"C:\k.txt");
+        options.ThrowOnEncryptedBlockWithoutKey.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void CascDb2ProviderOptions_ConnectionString_UsesDefaults_ForMissingKeys()
+    {
+        var options = new CascDb2ProviderOptions(@"WowInstallRoot=C:\WoW");
+
+        options.WowInstallRoot.ShouldBe(@"C:\WoW");
+        options.Product.ShouldBe("wow");
+        options.DbdDefinitionsDirectory.ShouldBeNull();
+        options.ManifestDirectory.ShouldBe(string.Empty);
+        options.ManifestAssetName.ShouldBe("manifest.json");
+        options.TactKeyFilePath.ShouldBeNull();
+        options.ThrowOnEncryptedBlockWithoutKey.ShouldBeFalse();
+    }
+
+    [Fact]
+    public void CascDb2ProviderOptions_ConnectionString_IsCaseInsensitive()
+    {
+        var options = new CascDb2ProviderOptions(@"wowinstallroot=C:\WoW;product=wow_classic");
+
+        options.WowInstallRoot.ShouldBe(@"C:\WoW");
+        options.Product.ShouldBe("wow_classic");
+    }
 }

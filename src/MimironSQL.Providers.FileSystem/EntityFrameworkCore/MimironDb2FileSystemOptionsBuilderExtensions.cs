@@ -10,6 +10,27 @@ namespace MimironSQL.Providers;
 public static class MimironDb2FileSystemOptionsBuilderExtensions
 {
     /// <summary>
+    /// Configures the DB2 provider to read DB2 files and DBD definitions from the file system
+    /// using a connection string.
+    /// <para>Example: <c>Db2Directory=C:\db2;DbdDirectory=C:\dbd</c></para>
+    /// </summary>
+    /// <param name="builder">The provider options builder.</param>
+    /// <param name="connectionString">
+    /// A semicolon-delimited connection string.
+    /// See <see cref="FileSystemProviderOptions(string)"/> for supported keys and aliases.
+    /// </param>
+    /// <returns>The same <paramref name="builder"/> instance to enable chaining.</returns>
+    public static IMimironDb2DbContextOptionsBuilder UseFileSystem(
+        this IMimironDb2DbContextOptionsBuilder builder,
+        string connectionString)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+
+        var options = new FileSystemProviderOptions(connectionString);
+        return builder.UseFileSystem(options.Db2DirectoryPath, options.DbdDefinitionsDirectory);
+    }
+
+    /// <summary>
     /// Configures the DB2 provider to read DB2 files and DBD definitions from the file system.
     /// </summary>
     /// <param name="builder">The provider options builder.</param>

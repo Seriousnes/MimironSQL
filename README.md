@@ -21,7 +21,7 @@ MimironSQL lets you query game data tables using familiar LINQ and EF Core patte
 | `MimironSQL.Contracts` | Public interfaces and types for extending MimironSQL |
 | `MimironSQL.Formats.Wdc5` | WDC5 binary format reader |
 | `MimironSQL.Providers.FileSystem` | File system-based implementations of `IDb2StreamProvider`, `IDbdProvider`, and `ITactKeyProvider` |
-| `MimironSQL.Providers.CASC` | CASC-based `IDb2StreamProvider` and related CASC services |
+| `MimironSQL.Providers.CASC` | CASC-based `IDb2StreamProvider`, manifest resolution, and related CASC services |
 | `Salsa20` | Salsa20 stream cipher used for encrypted DB2 sections |
 
 ## Installation
@@ -81,9 +81,20 @@ public partial class WoWDb2Context;
 
 ```csharp
 services.AddDbContext<WoWDb2Context>(options =>
-    options.UseMimironDb2(o => o.UseFileSystem(
-        db2DirectoryPath: "path/to/db2/files",
-        dbdDefinitionsDirectory: "path/to/dbd/definitions")));
+    options.UseMimironDb2(o => o
+        .WithWowVersion(WoWDb2Context.WowVersion)
+        .UseFileSystem(
+            db2DirectoryPath: "path/to/db2/files",
+            dbdDefinitionsDirectory: "path/to/dbd/definitions")));
+```
+
+Or with a connection string:
+
+```csharp
+services.AddDbContext<WoWDb2Context>(options =>
+    options.UseMimironDb2(o => o
+        .WithWowVersion(WoWDb2Context.WowVersion)
+        .UseFileSystem("Db2Directory=path/to/db2;DbdDirectory=path/to/dbd")));
 ```
 
 #### CASC provider
@@ -91,13 +102,22 @@ services.AddDbContext<WoWDb2Context>(options =>
 ```csharp
 services.AddDbContext<WoWDb2Context>(options =>
     options.UseMimironDb2(o => o
-        .UseCasc()
-        .WithWowInstallRoot("path/to/World of Warcraft")
-        .WithDbdDefinitions("path/to/dbd/definitions")
-        .Apply()));
+        .WithWowVersion(WoWDb2Context.WowVersion)
+        .UseCasc(casc => casc
+            .WithWowInstallRoot("path/to/World of Warcraft")
+            .WithDbdDefinitions("path/to/dbd/definitions")
+            .WithManifest("path/to/manifest/cache")
+            .Apply())));
 ```
 
-`UseCasc` configures CASC for DB2 streams and uses the file system for `.dbd` definitions.
+`UseCasc` configures CASC for DB2 streams and uses the file system for `.dbd` definitions. A connection string overload is also available:
+
+```csharp
+services.AddDbContext<WoWDb2Context>(options =>
+    options.UseMimironDb2(o => o
+        .WithWowVersion(WoWDb2Context.WowVersion)
+        .UseCasc("WowInstallRoot=C:\\WoW;DbdDirectory=C:\\dbd;ManifestDirectory=C:\\cache")));
+```
 
 ### 4. Query
 
@@ -108,7 +128,7 @@ var maps = context.Maps
 ```
 
 #### Notes
-* **Read-only provider.** `SaveChanges()` throws `NotSupportedException`. Async query execution is not supported.
+* **Read-only provider.** `SaveChanges()` and `SaveChangesAsync()` throw `NotSupportedException`.
 
 ## Extensibility
 
@@ -121,14 +141,9 @@ The `MimironSQL.Contracts` package defines the extension points:
 | `IDbdParser` | Parses a `.dbd` stream or file path into an `IDbdFile` |
 | `ITactKeyProvider` | Resolves TACT encryption keys by lookup ID |
 | `IDb2Format` | Reads a DB2 binary stream into an `IDb2File` |
+| `IManifestProvider` | Resolves DB2 table names to FileDataIds for CASC lookups |
 
 Implement any of these interfaces to plug in new data sources or file format versions.
-
-If you're composing pieces outside of EF Core, you can register core services with:
-
-```csharp
-services.AddMimironSQLServices();
-```
 
 ## Acknowledgments
 

@@ -25,30 +25,19 @@ dotnet add package MimironSQL.Providers.CASC
 
 Use the `UseCasc()` extension method on `IMimironDb2DbContextOptionsBuilder` to configure the CASC provider within an EF Core context.
 
-### Configuration-based
-
-Bind options directly from `IConfiguration`:
-
-```csharp
-services.AddDbContext<MyDbContext>(options =>
-    options.UseMimironDb2(db2 =>
-        db2.UseCasc(configuration)));
-```
-
 ### Fluent builder
 
 Configure options explicitly with the fluent API:
 
 ```csharp
 services.AddDbContext<MyDbContext>(options =>
-    options.UseMimironDb2(db2 =>
-        db2.UseCasc(casc =>
-        {
-            casc.WithWowInstallRoot(@"C:\Games\World of Warcraft")
-                .WithDbdDefinitions(@"C:\WoWDBDefs\definitions")
-                .WithManifest(@"C:\cache", "manifest.json")
-                .Apply();
-        })));
+    options.UseMimironDb2(db2 => db2
+        .WithWowVersion(WoWDb2Context.WowVersion)
+        .UseCasc(casc => casc
+            .WithWowInstallRoot(@"C:\Games\World of Warcraft")
+            .WithDbdDefinitions(@"C:\WoWDBDefs\definitions")
+            .WithManifest(@"C:\cache", "manifest.json")
+            .Apply())));
 ```
 
 The builder also supports custom provider types:
@@ -57,6 +46,28 @@ The builder also supports custom provider types:
 casc.WithDbdProvider<MyCustomDbdProvider>()
     .WithManifestProvider<MyCustomManifestProvider>()
     .Apply();
+```
+
+### Connection string
+
+```csharp
+services.AddDbContext<MyDbContext>(options =>
+    options.UseMimironDb2(db2 => db2
+        .WithWowVersion(WoWDb2Context.WowVersion)
+        .UseCasc("WowInstallRoot=C:\\WoW;DbdDirectory=C:\\dbd;ManifestDirectory=C:\\cache")));
+```
+
+A combined connection string + callback overload is also available for further customization.
+
+### Configuration-based
+
+Bind options directly from `IConfiguration`:
+
+```csharp
+services.AddDbContext<MyDbContext>(options =>
+    options.UseMimironDb2(db2 => db2
+        .WithWowVersion(WoWDb2Context.WowVersion)
+        .UseCasc(configuration)));
 ```
 
 ## Standalone DI Registration
@@ -86,7 +97,7 @@ This registers:
 
 ## Configuration
 
-Keys are read from the `Casc` section of `IConfiguration`, with a fallback to root-level keys for `WowInstallRoot`:
+When using `IConfiguration`, keys are read from the `Casc` section:
 
 | Key | Required | Default | Description |
 |---|---|---|---|
@@ -94,8 +105,25 @@ Keys are read from the `Casc` section of `IConfiguration`, with a fallback to ro
 | `Casc:ManifestDirectory` | Yes* | — | Directory where the DB2 manifest file is located when using the default `FileSystemManifestProvider`. |
 | `Casc:ManifestAssetName` | No | `manifest.json` | File name of the manifest asset. |
 | `Casc:DbdDefinitionsDirectory` | No* | — | Directory containing WoWDBDefs `.dbd` files. Required when using the `UseCasc(configuration)` EF Core overload. |
+| `Casc:TactKeyFilePath` | No | — | Path to a TACT key file for encrypted DB2 sections. |
+| `Casc:Product` | No | `wow` | CASC product token (e.g. `wow`, `wowt`, `wow_classic`). |
+| `Casc:ThrowOnEncryptedBlockWithoutKey` | No | `false` | When `true`, throws if an encrypted block lacks a key. When `false`, skips it. |
 
-\* `Casc:ManifestDirectory` is only optional when you register a custom `IManifestProvider` (e.g. via `WithManifestProvider<T>()`, `ManifestProvider`, or `ManifestProviderFactory`).
+\* `Casc:ManifestDirectory` is only optional when you register a custom `IManifestProvider`.
+
+### Connection String Keys
+
+The connection string uses semicolon-delimited key=value pairs. Keys are case-insensitive and support aliases:
+
+| Key | Aliases |
+|---|---|
+| `WowInstallRoot` | `Install Root` |
+| `Product` | — |
+| `DbdDefinitionsDirectory` | `DbdDirectory`, `Dbd Directory` |
+| `ManifestDirectory` | `Manifest Directory` |
+| `ManifestAssetName` | `Manifest Asset Name` |
+| `TactKeyFilePath` | `Tact Key File` |
+| `ThrowOnEncryptedBlockWithoutKey` | `Strict Tact Keys` |
 
 Example `appsettings.json`:
 
@@ -104,7 +132,9 @@ Example `appsettings.json`:
   "Casc": {
     "WowInstallRoot": "C:\\Games\\World of Warcraft",
     "DbdDefinitionsDirectory": "C:\\WoWDBDefs\\definitions",
-    "ManifestDirectory": "C:\\cache"
+    "ManifestDirectory": "C:\\cache",
+    "Product": "wow",
+    "TactKeyFilePath": "C:\\keys\\WoW.txt"
   }
 }
 ```
@@ -125,13 +155,14 @@ The entire pipeline is encapsulated in `CascStorageService`, which implements `I
 
 This package intentionally keeps its public surface small:
 
-- `CascDb2ProviderOptions` — configuration record for CASC provider settings.
-- `CascDb2ProviderBuilder` — fluent builder for EF Core integration.
+- `CascDb2ProviderOptions` — configuration record for CASC provider settings. Supports both property initialization and connection string parsing.
+- `CascDb2ProviderBuilder` — fluent builder for EF Core integration, with methods such as `WithWowInstallRoot`, `WithDbdDefinitions`, `WithManifest`, `WithTactKeyFile`, `WithStrictTactKeys`, `WithProduct`, and `Apply`.
 - `CascStorageService` — `IDb2StreamProvider` implementation that reads DB2 streams from CASC.
 - `FileSystemManifestProvider` — default `IManifestProvider` that reads `manifest.json` from disk.
 - `ServiceCollectionExtensions.AddCasc(...)` — DI registration for standalone usage.
-- `MimironDb2CascOptionsBuilderExtensions.UseCasc(...)` — EF Core integration entry point.
+- `MimironDb2CascOptionsBuilderExtensions.UseCasc(...)` — EF Core integration entry point (five overloads: no-args builder, callback, connection string, connection string + callback, `IConfiguration`).
 - `IWowBuildIdentityProvider` / `WowBuildIdentityProvider` — resolves WoW build identity from an install directory.
+- `WowBuildIdentity` — record containing `BuildKey`, `BuildNumber`, `Version`, and `BuildConfigKey`.
 
 ## License
 
